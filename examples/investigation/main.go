@@ -3,12 +3,12 @@
 //
 // Scenario: A financial intelligence unit (FIU) analyst is investigating a
 // suspected money-laundering network. The workflow:
-//   1. Look up a phone number in the IdentityIndex to resolve the subject.
-//   2. Fetch all financial transactions linked to the resolved entity.
-//   3. Retrieve them with full PROV-O provenance metadata.
-//   4. Run a bi-temporal AS OF query to see the state at the date of the
-//      original suspicious activity report (SAR).
-//   5. Pull call-detail records (CDR) for the same period.
+//  1. Look up a phone number in the IdentityIndex to resolve the subject.
+//  2. Fetch all financial transactions linked to the resolved entity.
+//  3. Retrieve them with full PROV-O provenance metadata.
+//  4. Run a bi-temporal AS OF query to see the state at the date of the
+//     original suspicious activity report (SAR).
+//  5. Pull call-detail records (CDR) for the same period.
 //
 // Every query declares purpose="investigation" as required by SPECS §5.22.4.
 //

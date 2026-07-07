@@ -1,0 +1,291 @@
+package relata
+
+import (
+	"context"
+	"fmt"
+)
+
+// GovernanceClient is the synchronous governance surface — rules, retention
+// (legal holds + WORM), breakglass, alerts, and DSAR. Every call inherits the
+// parent client's purpose/tenant/auth context. Use NewGovernanceClient to
+// construct one from a *Client.
+type GovernanceClient struct {
+	c *Client
+}
+
+// NewGovernanceClient constructs a GovernanceClient that inherits the parent
+// client's auth, tenant, and purpose context. Mirrors the Python reference's
+// GovernanceClient.from_client classmethod.
+func NewGovernanceClient(c *Client) *GovernanceClient {
+	return &GovernanceClient{c: c}
+}
+
+// PlaceLegalHoldOptions configures the optional fields of PlaceLegalHold.
+type PlaceLegalHoldOptions struct {
+	// ObjectID limits the hold to a specific row; omit for a type-wide hold.
+	ObjectID string
+	// Reason is an optional human-friendly reason.
+	Reason string
+}
+
+// RequestBreakglassOptions configures the optional fields of RequestBreakglass.
+type RequestBreakglassOptions struct {
+	// Scope limits the emergency access scope.
+	Scope string
+	// DurationSecs is the requested access window. Defaults to 4h (14400).
+	DurationSecs int
+}
+
+// ApproveBreakglassOptions configures the optional fields of ApproveBreakglass.
+type ApproveBreakglassOptions struct {
+	// Note is an optional second-officer approver note.
+	Note string
+}
+
+// ListAlertsOptions configures the optional filters of ListAlerts.
+type ListAlertsOptions struct {
+	// Severity filters to one severity level.
+	Severity string
+	// SinceNS filters to alerts at/after the given nanosecond cursor.
+	SinceNS int64
+	// Limit caps the response. Defaults to 100.
+	Limit int
+}
+
+// UpdateAlertOptions configures the optional fields of UpdateAlert.
+type UpdateAlertOptions struct {
+	// Status transitions the alert (e.g. "ack", "closed").
+	Status string
+	// Assignee sets the owner.
+	Assignee string
+	// Note appends an investigative note.
+	Note string
+}
+
+// SubmitDSAROptions configures the optional scope of SubmitDSAR.
+type SubmitDSAROptions struct {
+	// Scope filters the DSAR to a domain ("email", "financial", …).
+	Scope string
+}
+
+// ListRules lists detection rules. A non-empty objectType filters to one type.
+func (g *GovernanceClient) ListRules(ctx context.Context, objectType string) ([]map[string]any, error) {
+	path := "/rules"
+	if objectType != "" {
+		path += "?object_type=" + objectType
+	}
+	var resp map[string]any
+	if err := g.c.get(ctx, path, &resp); err != nil {
+		return nil, err
+	}
+	return unwrapList(resp, "rules"), nil
+}
+
+// CreateRule creates a detection rule. The map shape matches the server's
+// RuleSpec (name, object_type, condition, action, …). Returns the created rule
+// record including its server-assigned id.
+func (g *GovernanceClient) CreateRule(ctx context.Context, rule map[string]any) (map[string]any, error) {
+	var resp map[string]any
+	if err := g.c.postJSON(ctx, "/rules", rule, &resp); err != nil {
+		return nil, err
+	}
+	return resp, nil
+}
+
+// DisableRule disables (logically deletes) a rule by id.
+func (g *GovernanceClient) DisableRule(ctx context.Context, ruleID string) (map[string]any, error) {
+	var resp map[string]any
+	if err := g.c.delete(ctx, fmt.Sprintf("/rules/%s", ruleID), &resp); err != nil {
+		return nil, err
+	}
+	return resp, nil
+}
+
+// ImportSigma imports a Sigma rule (YAML string). Returns the import summary
+// (rules_imported, rules_skipped, errors).
+func (g *GovernanceClient) ImportSigma(ctx context.Context, sigmaYAML string) (map[string]any, error) {
+	var resp map[string]any
+	if err := g.c.postJSON(ctx, "/rules/sigma", map[string]any{"sigma": sigmaYAML}, &resp); err != nil {
+		return nil, err
+	}
+	return resp, nil
+}
+
+// ListRetentionPolicies lists configured retention policies.
+func (g *GovernanceClient) ListRetentionPolicies(ctx context.Context) ([]map[string]any, error) {
+	var resp map[string]any
+	if err := g.c.get(ctx, "/retention/policies", &resp); err != nil {
+		return nil, err
+	}
+	return unwrapList(resp, "policies"), nil
+}
+
+// ListLegalHolds lists active legal holds.
+func (g *GovernanceClient) ListLegalHolds(ctx context.Context) ([]map[string]any, error) {
+	var resp map[string]any
+	if err := g.c.get(ctx, "/retention/holds", &resp); err != nil {
+		return nil, err
+	}
+	return unwrapList(resp, "holds"), nil
+}
+
+// PlaceLegalHold places a legal hold on an object type (optionally on a
+// specific row).
+func (g *GovernanceClient) PlaceLegalHold(ctx context.Context, caseID, objectType string, opts *PlaceLegalHoldOptions) (map[string]any, error) {
+	payload := map[string]any{
+		"case_id":     caseID,
+		"object_type": objectType,
+	}
+	if opts != nil {
+		if opts.ObjectID != "" {
+			payload["object_id"] = opts.ObjectID
+		}
+		if opts.Reason != "" {
+			payload["reason"] = opts.Reason
+		}
+	}
+	var resp map[string]any
+	if err := g.c.postJSON(ctx, "/retention/holds", payload, &resp); err != nil {
+		return nil, err
+	}
+	return resp, nil
+}
+
+// LiftLegalHold lifts (removes) a legal hold by case id.
+func (g *GovernanceClient) LiftLegalHold(ctx context.Context, caseID string) (map[string]any, error) {
+	var resp map[string]any
+	if err := g.c.delete(ctx, fmt.Sprintf("/retention/holds/%s", caseID), &resp); err != nil {
+		return nil, err
+	}
+	return resp, nil
+}
+
+// ListWormPolicies lists WORM (write-once-read-many) retention policies.
+func (g *GovernanceClient) ListWormPolicies(ctx context.Context) ([]map[string]any, error) {
+	var resp map[string]any
+	if err := g.c.get(ctx, "/retention/worm", &resp); err != nil {
+		return nil, err
+	}
+	return unwrapList(resp, "policies"), nil
+}
+
+// SetWormPolicy sets WORM retention for an object type. Rows cannot be mutated
+// or purged until retentionSecs elapses from their system_from.
+func (g *GovernanceClient) SetWormPolicy(ctx context.Context, objectType string, retentionSecs int) (map[string]any, error) {
+	var resp map[string]any
+	if err := g.c.postJSON(ctx, fmt.Sprintf("/retention/worm/%s", objectType), map[string]any{"retention_secs": retentionSecs}, &resp); err != nil {
+		return nil, err
+	}
+	return resp, nil
+}
+
+// RequestBreakglass requests emergency HUMINT breakglass access (default 4h).
+// Approval requires two distinct officers (ApproveBreakglass).
+func (g *GovernanceClient) RequestBreakglass(ctx context.Context, reason string, opts *RequestBreakglassOptions) (map[string]any, error) {
+	duration := 4 * 60 * 60
+	payload := map[string]any{
+		"reason":        reason,
+		"duration_secs": duration,
+	}
+	if opts != nil {
+		if opts.DurationSecs > 0 {
+			payload["duration_secs"] = opts.DurationSecs
+		}
+		if opts.Scope != "" {
+			payload["scope"] = opts.Scope
+		}
+	}
+	var resp map[string]any
+	if err := g.c.postJSON(ctx, "/humint/breakglass/request", payload, &resp); err != nil {
+		return nil, err
+	}
+	return resp, nil
+}
+
+// ApproveBreakglass records a second-officer approval for a breakglass request.
+// The server enforces that the requester cannot approve their own request and
+// that two distinct approvals are required.
+func (g *GovernanceClient) ApproveBreakglass(ctx context.Context, requestID string, opts *ApproveBreakglassOptions) (map[string]any, error) {
+	payload := map[string]any{"request_id": requestID}
+	if opts != nil && opts.Note != "" {
+		payload["note"] = opts.Note
+	}
+	var resp map[string]any
+	if err := g.c.postJSON(ctx, "/humint/breakglass/approve", payload, &resp); err != nil {
+		return nil, err
+	}
+	return resp, nil
+}
+
+// BreakglassStatus looks up the status of a breakglass request.
+func (g *GovernanceClient) BreakglassStatus(ctx context.Context, requestID string) (map[string]any, error) {
+	var resp map[string]any
+	if err := g.c.get(ctx, fmt.Sprintf("/humint/breakglass/status/%s", requestID), &resp); err != nil {
+		return nil, err
+	}
+	return resp, nil
+}
+
+// ListAlerts lists alerts, optionally filtered by severity / since-cursor.
+func (g *GovernanceClient) ListAlerts(ctx context.Context, opts *ListAlertsOptions) ([]map[string]any, error) {
+	limit := 100
+	params := map[string]string{"limit": fmt.Sprintf("%d", limit)}
+	if opts != nil {
+		if opts.Limit > 0 {
+			params["limit"] = fmt.Sprintf("%d", opts.Limit)
+		}
+		if opts.Severity != "" {
+			params["severity"] = opts.Severity
+		}
+		if opts.SinceNS > 0 {
+			params["since_ns"] = fmt.Sprintf("%d", opts.SinceNS)
+		}
+	}
+	var resp map[string]any
+	if err := g.c.get(ctx, encodeGetURL("/alerts/list", params), &resp); err != nil {
+		return nil, err
+	}
+	return unwrapList(resp, "alerts"), nil
+}
+
+// UpdateAlert updates an alert (ack, assign, close, add a note).
+func (g *GovernanceClient) UpdateAlert(ctx context.Context, alertID string, opts *UpdateAlertOptions) (map[string]any, error) {
+	payload := map[string]any{}
+	if opts != nil {
+		if opts.Status != "" {
+			payload["status"] = opts.Status
+		}
+		if opts.Assignee != "" {
+			payload["assignee"] = opts.Assignee
+		}
+		if opts.Note != "" {
+			payload["note"] = opts.Note
+		}
+	}
+	var resp map[string]any
+	if err := g.c.patchJSON(ctx, fmt.Sprintf("/alerts/update/%s", alertID), payload, &resp); err != nil {
+		return nil, err
+	}
+	return resp, nil
+}
+
+// SubmitDSAR files a GDPR Data Subject Access Request.
+func (g *GovernanceClient) SubmitDSAR(ctx context.Context, subjectIdentity, reason string, opts *SubmitDSAROptions) (map[string]any, error) {
+	params := map[string]any{
+		"subject_identity": subjectIdentity,
+		"reason":           reason,
+	}
+	if opts != nil && opts.Scope != "" {
+		params["scope"] = opts.Scope
+	}
+	// Python sends DSAR via GET with query params.
+	stringParams := make(map[string]string, len(params))
+	for k, v := range params {
+		stringParams[k] = fmt.Sprintf("%v", v)
+	}
+	var resp map[string]any
+	if err := g.c.get(ctx, encodeGetURL("/gdpr/dsar", stringParams), &resp); err != nil {
+		return nil, err
+	}
+	return resp, nil
+}
