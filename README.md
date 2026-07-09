@@ -46,6 +46,21 @@ func main() {
 }
 ```
 
+## Cypher
+
+RelataDB auto-detects Cypher: any query starting with `MATCH` is translated to SQL
+before execution. The SDK is language-agnostic — send the string as you would SQL:
+
+```go
+result, err := client.Query(ctx, "MATCH (n:Person {id: 'p1'}) RETURN *")
+// → SELECT * FROM Person WHERE id = 'p1'
+```
+
+Supported: `MATCH` / `OPTIONAL MATCH`, `WHERE`, `RETURN`, `UNION` / `UNION ALL`
+(#378), and `CALL traverse.*` / `CALL gds.*` procedures (#377). `CREATE` / `MERGE`
+writes route through the governed write door. See the
+[SQL reference](https://www.relatadb.dev/docs/reference/sql).
+
 ## Agent memory
 
 `Memory` is a Mem0-style surface over the governed `/memory/*` verbs — purpose + ACL
