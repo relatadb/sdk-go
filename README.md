@@ -484,9 +484,11 @@ The SDK reads no environment variables directly — all configuration is explici
 | Variable | Effect |
 |---|---|
 | `RELATA_BEARER_TOKEN` | When unset, the server accepts unauthenticated requests |
-| `RELATA_PROFILE` | `lite` / `server` / `cluster` deployment profile |
+| `RELATA_PROFILE` | `free` / `server` / `cluster` deployment profile |
 | `RELATA_DOMAIN_PROFILE` | `enterprise` / `lea` / `finint` / `security` / `custom` |
 | `RELATA_ACL_GRANT` | `<Type>:read+write` grants for strict-mode ACL |
+
+> `lite` is kept as a silent legacy alias for `free` (ADR-204).
 
 ## License
 

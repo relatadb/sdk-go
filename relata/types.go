@@ -135,7 +135,7 @@ type HealthResponse struct {
 	// Status is "ok" when the node is healthy.
 	Status string `json:"status"`
 
-	// Profile is one of "lite", "server", or "cluster".
+	// Profile is one of "free", "server", or "cluster".
 	Profile string `json:"profile"`
 
 	// NodeID is the identifier configured via the NODE_ID environment variable.
@@ -147,11 +147,11 @@ func (r *HealthResponse) IsHealthy() bool { return r.Status == "ok" }
 
 // StatusResponse is the response from GET /status.
 type StatusResponse struct {
-	// Profile is one of "lite", "server", or "cluster".
+	// Profile is one of "free", "server", or "cluster".
 	Profile string `json:"profile"`
 
 	// Role is the cluster role: "coordinator", "reader", or "writer".
-	// On lite/server profiles this is always "coordinator".
+	// On free/server profiles this is always "coordinator".
 	Role string `json:"role"`
 
 	// QueryQuota is the hard per-principal cost-unit cap configured on the node.
@@ -199,7 +199,7 @@ type VersionInfo struct {
 	// Commit is the git commit hash the binary was built from.
 	Commit string `json:"commit"`
 
-	// Profile is the deployment profile — lite / server / cluster.
+	// Profile is the deployment profile — free / server / cluster.
 	Profile string `json:"profile"`
 
 	// SchemaVersion is the ontology / row-model schema version.

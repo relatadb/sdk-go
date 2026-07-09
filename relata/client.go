@@ -169,7 +169,7 @@ func (c *Client) AuditCount(ctx context.Context) (*AuditCountResponse, error) {
 }
 
 // ClusterNodes calls GET /cluster/nodes and returns the list of known nodes.
-// On lite/server profiles the list contains only the local node.
+// On free/server profiles the list contains only the local node.
 func (c *Client) ClusterNodes(ctx context.Context) ([]ClusterNode, error) {
 	var resp ClusterNodesResponse
 	if err := c.get(ctx, "/cluster/nodes", &resp); err != nil {

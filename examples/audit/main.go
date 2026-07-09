@@ -131,7 +131,7 @@ func main() {
 	nodes, err := client.ClusterNodes(ctx)
 	if err != nil {
 		fmt.Printf("  [WARN] cluster nodes unavailable: %v\n", err)
-		// Non-fatal for lite/server profiles that don't expose cluster info.
+		// Non-fatal for free/server profiles that don't expose cluster info.
 	} else {
 		fmt.Printf("  Nodes: %d\n", len(nodes))
 		for _, node := range nodes {
