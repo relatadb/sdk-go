@@ -582,6 +582,94 @@ func TestIngestClient_BulkCSV(t *testing.T) {
 	}
 }
 
+// ---- SystemClient jobs + workflows (#723) -----------------------------------
+
+func TestSystemClient_JobsAndWorkflows(t *testing.T) {
+	var gotPaths []string
+	var gotMethods []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPaths = append(gotPaths, r.URL.Path)
+		gotMethods = append(gotMethods, r.Method)
+		switch r.URL.Path {
+		case "/jobs/c2_beacon_detect":
+			fmt.Fprint(w, `{"name":"c2_beacon_detect","status":"ok"}`)
+		case "/workflows":
+			if r.Method == "GET" {
+				fmt.Fprint(w, `{"workflows":["demo_flow"]}`)
+			} else {
+				fmt.Fprint(w, `{"name":"demo_flow"}`)
+			}
+		case "/workflows/demo_flow":
+			fmt.Fprint(w, `{"name":"demo_flow","steps":[]}`)
+		case "/workflows/demo_flow/run":
+			fmt.Fprint(w, `{"run_id":"run-1","status":"running"}`)
+		case "/workflows/demo_flow/status":
+			fmt.Fprint(w, `{"run_id":"run-1","status":"ok"}`)
+		case "/workflows/runs/run-1":
+			fmt.Fprint(w, `{"run_id":"run-1","workflow_name":"demo_flow","status":"ok","attempt_count":2,"last_error":null,"steps":[]}`)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+
+	c := newTestClient(srv, nil)
+	sys := NewSystemClient(c)
+	ctx := context.Background()
+
+	js, err := sys.JobStatus(ctx, "c2_beacon_detect")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if js["name"] != "c2_beacon_detect" {
+		t.Fatalf("job_status = %v", js)
+	}
+
+	wfs, err := sys.ListWorkflows(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if wfs["workflows"] == nil {
+		t.Fatalf("list_workflows = %v", wfs)
+	}
+
+	if _, err := sys.RegisterWorkflow(ctx, "demo_flow", []map[string]any{{"name": "s1"}}); err != nil {
+		t.Fatal(err)
+	}
+
+	def, err := sys.GetWorkflow(ctx, "demo_flow")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if def["name"] != "demo_flow" {
+		t.Fatalf("get_workflow = %v", def)
+	}
+
+	run, err := sys.RunWorkflow(ctx, "demo_flow")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if run["run_id"] != "run-1" {
+		t.Fatalf("run_workflow = %v", run)
+	}
+
+	st, err := sys.WorkflowStatus(ctx, "demo_flow")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st["status"] != "ok" {
+		t.Fatalf("workflow_status = %v", st)
+	}
+
+	detail, err := sys.WorkflowRun(ctx, "run-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if detail.AttemptCount != 2 || detail.RunID != "run-1" {
+		t.Fatalf("workflow_run = %+v", detail)
+	}
+}
+
 // ---- VectorClient -----------------------------------------------------------
 
 func TestVectorClient_PurposeRequired(t *testing.T) {
