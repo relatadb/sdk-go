@@ -135,6 +135,38 @@ func (c *Client) Query(ctx context.Context, sql string, opts ...QueryOption) (*Q
 	return &result, nil
 }
 
+// Search calls POST /search and returns matching documents for the given query
+// and object type (#670). Optional functional options control limit, facets,
+// highlight, and per-field filters.
+//
+//	results, err := client.Search(ctx, "alice smith", "Person",
+//	    WithSearchLimit(10), WithHighlight(), WithSearchFacets("agency_id"))
+func (c *Client) Search(ctx context.Context, query, objectType string, opts ...SearchOption) (*SearchResponse, error) {
+	p := &searchParams{}
+	for _, o := range opts {
+		o(p)
+	}
+	body := map[string]any{
+		"query":     query,
+		"type":      objectType,
+		"highlight": p.highlight,
+	}
+	if p.limit > 0 {
+		body["limit"] = p.limit
+	}
+	if len(p.facets) > 0 {
+		body["facets"] = p.facets
+	}
+	if len(p.filters) > 0 {
+		body["filters"] = p.filters
+	}
+	var resp SearchResponse
+	if err := c.postJSON(ctx, "/search", body, &resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
 // Health calls GET /health and returns the node health status.
 func (c *Client) Health(ctx context.Context) (*HealthResponse, error) {
 	var resp HealthResponse

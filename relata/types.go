@@ -407,3 +407,70 @@ func intFromAny(v any) int {
 		return 0
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Search (#670)
+// ---------------------------------------------------------------------------
+
+// SearchHit is a single document returned by Search.
+type SearchHit struct {
+	// ID is the object's unique identifier.
+	ID string `json:"id"`
+	// ObjectType is the ontology type name.
+	ObjectType string `json:"object_type"`
+	// Fields holds the object's attribute values.
+	Fields map[string]any `json:"fields"`
+	// Score is the BM25 relevance score.
+	Score float64 `json:"score"`
+	// Highlights contains field-level snippets with <em> tags (non-nil when
+	// WithHighlight option is used).
+	Highlights map[string]string `json:"highlights"`
+}
+
+// SearchResponse is the response from the Search method.
+type SearchResponse struct {
+	// Hits contains the matching documents, sorted by descending score.
+	Hits []SearchHit `json:"hits"`
+	// Total is the total number of matching documents (may exceed len(Hits)
+	// when a limit option is applied).
+	Total int `json:"total"`
+	// Facets contains aggregated counts keyed by field then value.
+	Facets map[string]map[string]int `json:"facets"`
+	// ProcessingTimeMs is the server-side processing time in milliseconds.
+	ProcessingTimeMs int `json:"processing_time_ms"`
+}
+
+// SearchOption is a functional option for the Search method.
+type SearchOption func(*searchParams)
+
+type searchParams struct {
+	limit     int
+	facets    []string
+	highlight bool
+	filters   map[string]string
+}
+
+// WithSearchLimit sets the maximum number of hits to return.
+func WithSearchLimit(n int) SearchOption {
+	return func(p *searchParams) { p.limit = n }
+}
+
+// WithSearchFacets requests facet counts for the given fields.
+func WithSearchFacets(fields ...string) SearchOption {
+	return func(p *searchParams) { p.facets = fields }
+}
+
+// WithHighlight enables field-level <em> highlight snippets.
+func WithHighlight() SearchOption {
+	return func(p *searchParams) { p.highlight = true }
+}
+
+// WithSearchFilter adds an equality filter for a field.
+func WithSearchFilter(field, value string) SearchOption {
+	return func(p *searchParams) {
+		if p.filters == nil {
+			p.filters = make(map[string]string)
+		}
+		p.filters[field] = value
+	}
+}

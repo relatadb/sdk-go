@@ -520,3 +520,38 @@ func TestNewRequestID(t *testing.T) {
 		t.Fatalf("id = %q, variant byte = %q", id, string(id[19]))
 	}
 }
+
+func TestSearch_HappyPath(t *testing.T) {
+	// #670 — verify Search() maps the wire shape to SearchResponse.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/search" {
+			t.Errorf("unexpected path %q", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{
+			"hits": [{"id":"p1","object_type":"Person","fields":{"name":"Alice"},"score":1.23,"highlights":{"name":"<em>Alice</em>"}}],
+			"total": 1,
+			"facets": {"agency_id": {"EUROPOL": 1}},
+			"processing_time_ms": 5
+		}`))
+	}))
+	defer srv.Close()
+
+	client := newTestClient(srv, nil)
+	resp, err := client.Search(t.Context(), "alice", "Person", WithSearchLimit(10), WithHighlight())
+	if err != nil {
+		t.Fatalf("Search returned error: %v", err)
+	}
+	if resp.Total != 1 {
+		t.Errorf("Total = %d, want 1", resp.Total)
+	}
+	if len(resp.Hits) != 1 {
+		t.Fatalf("Hits length = %d, want 1", len(resp.Hits))
+	}
+	if resp.Hits[0].ID != "p1" {
+		t.Errorf("Hit ID = %q, want p1", resp.Hits[0].ID)
+	}
+	if resp.ProcessingTimeMs != 5 {
+		t.Errorf("ProcessingTimeMs = %d, want 5", resp.ProcessingTimeMs)
+	}
+}
