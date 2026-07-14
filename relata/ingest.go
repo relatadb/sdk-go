@@ -39,6 +39,39 @@ func (i *IngestClient) BulkCSV(ctx context.Context, objectType, csvText string, 
 	return i.postIngest(ctx, objectType, csvText, "text/csv", opts)
 }
 
+// IngestIter streams rows from an iterator channel into batched POST /ingest
+// calls with backpressure. Memory is O(batchSize). Returns the total number of
+// rows successfully ingested. Stops on the first error.
+//
+//	rowsCh := make(chan map[string]any, 100)
+//	go func() { defer close(rowsCh); for _, r := range bigDataset { rowsCh <- r } }()
+//	total, err := ingest.IngestIter(ctx, "Person", rowsCh, "onboarding", 500)
+func (i *IngestClient) IngestIter(ctx context.Context, objectType string, rows <-chan map[string]any, purpose string, batchSize int) (int, error) {
+	if batchSize < 1 {
+		batchSize = 500
+	}
+	opts := &BulkOptions{Purpose: purpose}
+	total := 0
+	batch := make([]map[string]any, 0, batchSize)
+	for row := range rows {
+		batch = append(batch, row)
+		if len(batch) >= batchSize {
+			if _, err := i.Bulk(ctx, objectType, batch, opts); err != nil {
+				return total, err
+			}
+			total += len(batch)
+			batch = batch[:0]
+		}
+	}
+	if len(batch) > 0 {
+		if _, err := i.Bulk(ctx, objectType, batch, opts); err != nil {
+			return total, err
+		}
+		total += len(batch)
+	}
+	return total, nil
+}
+
 // MediaStatus polls the status of a multipart media upload.
 func (i *IngestClient) MediaStatus(ctx context.Context, taskID string) (map[string]any, error) {
 	var resp map[string]any
