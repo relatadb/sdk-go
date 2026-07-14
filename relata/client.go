@@ -160,11 +160,27 @@ func (c *Client) Search(ctx context.Context, query, objectType string, opts ...S
 	if len(p.filters) > 0 {
 		body["filters"] = p.filters
 	}
+	if p.matchingStrategy != "" {
+		body["matching_strategy"] = p.matchingStrategy
+	}
+	if p.typoTolerance != nil {
+		body["typo_tolerance"] = p.typoTolerance
+	}
 	var resp SearchResponse
 	if err := c.postJSON(ctx, "/search", body, &resp); err != nil {
 		return nil, err
 	}
 	return &resp, nil
+}
+
+// MultiSearch runs N federated queries in one round-trip (#967).
+// Each query is a map with "query", "type", and optional "limit".
+func (c *Client) MultiSearch(ctx context.Context, queries []map[string]any) (map[string]any, error) {
+	var resp map[string]any
+	if err := c.postJSON(ctx, "/multi-search", map[string]any{"queries": queries}, &resp); err != nil {
+		return nil, err
+	}
+	return resp, nil
 }
 
 // Health calls GET /health and returns the node health status.

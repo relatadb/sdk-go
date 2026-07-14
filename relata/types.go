@@ -434,8 +434,12 @@ type SearchResponse struct {
 	// Total is the total number of matching documents (may exceed len(Hits)
 	// when a limit option is applied).
 	Total int `json:"total"`
+	// EstimatedTotalHits is the full matching-set size (#967).
+	EstimatedTotalHits int `json:"estimatedTotalHits"`
 	// Facets contains aggregated counts keyed by field then value.
 	Facets map[string]map[string]int `json:"facets"`
+	// FacetStats contains numeric facet stats (min/max/sum/avg) (#967).
+	FacetStats map[string]map[string]float64 `json:"facetStats"`
 	// ProcessingTimeMs is the server-side processing time in milliseconds.
 	ProcessingTimeMs int `json:"processing_time_ms"`
 }
@@ -444,10 +448,12 @@ type SearchResponse struct {
 type SearchOption func(*searchParams)
 
 type searchParams struct {
-	limit     int
-	facets    []string
-	highlight bool
-	filters   map[string]string
+	limit             int
+	facets            []string
+	highlight         bool
+	filters           map[string]string
+	matchingStrategy  string
+	typoTolerance     map[string]any
 }
 
 // WithSearchLimit sets the maximum number of hits to return.
@@ -473,4 +479,17 @@ func WithSearchFilter(field, value string) SearchOption {
 		}
 		p.filters[field] = value
 	}
+}
+
+// WithMatchingStrategy sets the query matching strategy: "all" (AND), "last",
+// "frequency", or "any" (OR, default) (#967).
+func WithMatchingStrategy(strategy string) SearchOption {
+	return func(p *searchParams) { p.matchingStrategy = strategy }
+}
+
+// WithTypoTolerance sets per-query typo tolerance config (#967).
+// Keys: "enabled" (bool), "min_word_size" (int), "disable_on_words" ([]string),
+// "disable_on_attributes" ([]string).
+func WithTypoTolerance(config map[string]any) SearchOption {
+	return func(p *searchParams) { p.typoTolerance = config }
 }
