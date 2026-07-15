@@ -168,6 +168,15 @@ func (b *BackupClient) RestoreStatus(ctx context.Context, restoreID string) (Res
 	return newRestoreStatus(resp), nil
 }
 
+// Compact triggers background compaction of the row store (#967).
+func (b *BackupClient) Compact(ctx context.Context) (map[string]any, error) {
+	var resp map[string]any
+	if err := b.c.postJSON(ctx, "/admin/compact", map[string]any{}, &resp); err != nil {
+		return nil, err
+	}
+	return resp, nil
+}
+
 // WaitForRestore blocks until the restore completes or fails. Returns
 // context.DeadlineExceeded (wrapped) if the timeout elapses.
 func (b *BackupClient) WaitForRestore(ctx context.Context, restoreID string, opts *WaitForRestoreOptions) (RestoreStatus, error) {
