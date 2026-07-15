@@ -286,6 +286,106 @@ func (c *Client) EraseSubject(ctx context.Context, purpose, subject, reason stri
 	return c.query(ctx, purpose, sql)
 }
 
+// ── Entity merge, dedup & identity (#967) ───────────────────────────────────
+
+// IdentityCluster resolves an identity to its full cluster of linked identifiers.
+func (c *Client) IdentityCluster(ctx context.Context, purpose, value string) (map[string]any, error) {
+	sql := fmt.Sprintf("RESOLVE_IDENTITY('%s', MODE => 'cluster')", strings.ReplaceAll(value, "'", "''"))
+	return c.query(ctx, purpose, sql)
+}
+
+// ── Graph algorithm operators (#967) ─────────────────────────────────────────
+
+// GraphDijkstra finds the shortest path between two entities.
+func (c *Client) GraphDijkstra(ctx context.Context, purpose, objectType, from, to string) (map[string]any, error) {
+	sql := fmt.Sprintf("GRAPH_DIJKSTRA('%s', FROM => '%s', TO => '%s')", objectType, from, to)
+	return c.query(ctx, purpose, sql)
+}
+
+// GraphPageRank computes PageRank centrality.
+func (c *Client) GraphPageRank(ctx context.Context, purpose, objectType string, damping float64, maxIter int) (map[string]any, error) {
+	sql := fmt.Sprintf("GRAPH_PAGERANK('%s', DAMPING => %f, MAX_ITER => %d)", objectType, damping, maxIter)
+	return c.query(ctx, purpose, sql)
+}
+
+// GraphSCC finds strongly connected components (fraud-ring detection).
+func (c *Client) GraphSCC(ctx context.Context, purpose, objectType string) (map[string]any, error) {
+	return c.query(ctx, purpose, fmt.Sprintf("GRAPH_SCC('%s')", objectType))
+}
+
+// GraphCycles detects cycles in the graph.
+func (c *Client) GraphCycles(ctx context.Context, purpose, objectType string) (map[string]any, error) {
+	return c.query(ctx, purpose, fmt.Sprintf("GRAPH_CYCLES('%s')", objectType))
+}
+
+// GraphCommunity detects communities via label propagation.
+func (c *Client) GraphCommunity(ctx context.Context, purpose, objectType string) (map[string]any, error) {
+	return c.query(ctx, purpose, fmt.Sprintf("GRAPH_COMMUNITY('%s')", objectType))
+}
+
+// GraphNodeSimilarity finds entities similar to a seed node.
+func (c *Client) GraphNodeSimilarity(ctx context.Context, purpose, objectType, node string) (map[string]any, error) {
+	sql := fmt.Sprintf("GRAPH_NODE_SIMILARITY('%s', NODE => '%s')", objectType, node)
+	return c.query(ctx, purpose, sql)
+}
+
+// GraphLinkPredict predicts missing relationships.
+func (c *Client) GraphLinkPredict(ctx context.Context, purpose, objectType string) (map[string]any, error) {
+	return c.query(ctx, purpose, fmt.Sprintf("GRAPH_LINK_PREDICT('%s')", objectType))
+}
+
+// GraphTriangleCount counts triangles (graph density / cohesion).
+func (c *Client) GraphTriangleCount(ctx context.Context, purpose, objectType string) (map[string]any, error) {
+	return c.query(ctx, purpose, fmt.Sprintf("TRIANGLE_COUNT('%s')", objectType))
+}
+
+// ── Intelligence operators (#967) ────────────────────────────────────────────
+
+// BeneficialOwnershipChain traces ownership to ultimate beneficial owner.
+func (c *Client) BeneficialOwnershipChain(ctx context.Context, purpose, party string, maxDepth int) (map[string]any, error) {
+	sql := fmt.Sprintf("BENEFICIAL_OWNERSHIP_CHAIN('%s', MAX_DEPTH => %d)", party, maxDepth)
+	return c.query(ctx, purpose, sql)
+}
+
+// SanctionsScreen screens against sanctions lists with fuzzy threshold.
+func (c *Client) SanctionsScreen(ctx context.Context, purpose, party string, threshold float64) (map[string]any, error) {
+	sql := fmt.Sprintf("SANCTIONS_SCREEN('%s', THRESHOLD => %f)", party, threshold)
+	return c.query(ctx, purpose, sql)
+}
+
+// ConvoyDetect finds entities traveling together.
+func (c *Client) ConvoyDetect(ctx context.Context, purpose string, radiusM float64, timeTolSecs int, minPoints int) (map[string]any, error) {
+	sql := fmt.Sprintf("CONVOY(RADIUS => %f, TIME_TOL => %d, MIN_POINTS => %d)", radiusM, timeTolSecs*1_000_000_000, minPoints)
+	return c.query(ctx, purpose, sql)
+}
+
+// BurnerDetect detects burner phone patterns.
+func (c *Client) BurnerDetect(ctx context.Context, purpose string, maxAgeDays int, maxCalls int) (map[string]any, error) {
+	sql := fmt.Sprintf("BURNER_DETECT(MAX_AGE => %d, MAX_CALLS => %d)", maxAgeDays*86_400_000_000_000, maxCalls)
+	return c.query(ctx, purpose, sql)
+}
+
+// CryptoTrace follows cryptocurrency fund flow.
+func (c *Client) CryptoTrace(ctx context.Context, purpose, entity string) (map[string]any, error) {
+	return c.query(ctx, purpose, fmt.Sprintf("CRYPTO_TRACE('%s')", entity))
+}
+
+// DnsTunnelDetect detects DNS tunneling.
+func (c *Client) DnsTunnelDetect(ctx context.Context, purpose, entity string) (map[string]any, error) {
+	return c.query(ctx, purpose, fmt.Sprintf("DNS_TUNNEL_DETECT('%s')", entity))
+}
+
+// CrimePatternCluster performs spatial crime pattern analysis.
+func (c *Client) CrimePatternCluster(ctx context.Context, purpose, area string) (map[string]any, error) {
+	return c.query(ctx, purpose, fmt.Sprintf("CRIME_PATTERN_CLUSTER('%s')", area))
+}
+
+// Geofence finds entities within a geographic fence.
+func (c *Client) Geofence(ctx context.Context, purpose, fence, targetType string) (map[string]any, error) {
+	sql := fmt.Sprintf("GEOFENCE('%s', TARGET_TYPE => '%s')", fence, targetType)
+	return c.query(ctx, purpose, sql)
+}
+
 // query is a helper that posts SQL to /query.
 func (c *Client) query(ctx context.Context, purpose, sql string) (map[string]any, error) {
 	var resp map[string]any
