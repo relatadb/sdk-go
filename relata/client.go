@@ -183,6 +183,118 @@ func (c *Client) MultiSearch(ctx context.Context, queries []map[string]any) (map
 	return resp, nil
 }
 
+// ── Type management & ontology (#967) ───────────────────────────────────────
+
+// ListTypes lists all registered object types with row counts.
+func (c *Client) ListTypes(ctx context.Context) (map[string]any, error) {
+	var resp map[string]any
+	if err := c.get(ctx, "/types", &resp); err != nil {
+		return nil, err
+	}
+	return resp, nil
+}
+
+// RegisterType registers a custom object type at runtime.
+func (c *Client) RegisterType(ctx context.Context, name string, spec map[string]any) (map[string]any, error) {
+	body := map[string]any{"name": name}
+	for k, v := range spec {
+		body[k] = v
+	}
+	var resp map[string]any
+	if err := c.postJSON(ctx, "/types", body, &resp); err != nil {
+		return nil, err
+	}
+	return resp, nil
+}
+
+// DeregisterType deregisters a custom type. Admin token required.
+func (c *Client) DeregisterType(ctx context.Context, name string) (map[string]any, error) {
+	var resp map[string]any
+	if err := c.delete(ctx, "/types/"+name, &resp); err != nil {
+		return nil, err
+	}
+	return resp, nil
+}
+
+// TypeDetail gets type detail (properties, owner, row count).
+func (c *Client) TypeDetail(ctx context.Context, name string) (map[string]any, error) {
+	var resp map[string]any
+	if err := c.get(ctx, "/types/"+name, &resp); err != nil {
+		return nil, err
+	}
+	return resp, nil
+}
+
+// OntologyMigrate applies a SHACL schema migration.
+func (c *Client) OntologyMigrate(ctx context.Context, schema map[string]any) (map[string]any, error) {
+	var resp map[string]any
+	if err := c.postJSON(ctx, "/ontology/migrate", schema, &resp); err != nil {
+		return nil, err
+	}
+	return resp, nil
+}
+
+// EnrichmentRules registers identity enrichment rules for SmartIngest.
+func (c *Client) EnrichmentRules(ctx context.Context, rules map[string]any) (map[string]any, error) {
+	var resp map[string]any
+	if err := c.postJSON(ctx, "/ontology/enrichment-rules", rules, &resp); err != nil {
+		return nil, err
+	}
+	return resp, nil
+}
+
+// ListModules lists installed modules / extensions.
+func (c *Client) ListModules(ctx context.Context) (map[string]any, error) {
+	var resp map[string]any
+	if err := c.get(ctx, "/modules", &resp); err != nil {
+		return nil, err
+	}
+	return resp, nil
+}
+
+// CreateLink creates a typed governed link (edge) between two objects.
+func (c *Client) CreateLink(ctx context.Context, params map[string]any) (map[string]any, error) {
+	var resp map[string]any
+	if err := c.postJSON(ctx, "/links", params, &resp); err != nil {
+		return nil, err
+	}
+	return resp, nil
+}
+
+// ── Identity resolution & entity lifecycle (#967) ───────────────────────────
+
+// ResolveIdentity resolves an identity value to all known objects/clusters.
+func (c *Client) ResolveIdentity(ctx context.Context, purpose, value string) (map[string]any, error) {
+	sql := fmt.Sprintf("RESOLVE_IDENTITY('%s')", strings.ReplaceAll(value, "'", "''"))
+	return c.query(ctx, purpose, sql)
+}
+
+// DetectIdentities detects identities in free text via SmartIngest.
+func (c *Client) DetectIdentities(ctx context.Context, purpose, text string) (map[string]any, error) {
+	sql := fmt.Sprintf("DETECT_IDENTITIES('%s')", strings.ReplaceAll(text, "'", "''"))
+	return c.query(ctx, purpose, sql)
+}
+
+// EraseSubject performs GDPR Art. 17 erasure — irreversible.
+func (c *Client) EraseSubject(ctx context.Context, purpose, subject, reason string) (map[string]any, error) {
+	s := strings.ReplaceAll(subject, "'", "''")
+	r := strings.ReplaceAll(reason, "'", "''")
+	if reason == "" {
+		r = "gdpr-art17-request"
+	}
+	sql := fmt.Sprintf("ERASE SUBJECT '%s' REASON '%s' CERTIFY", s, r)
+	return c.query(ctx, purpose, sql)
+}
+
+// query is a helper that posts SQL to /query.
+func (c *Client) query(ctx context.Context, purpose, sql string) (map[string]any, error) {
+	var resp map[string]any
+	if err := c.postJSON(ctx, "/query", map[string]any{"purpose": purpose, "sql": sql}, &resp); err != nil {
+		return nil, err
+	}
+	return resp, nil
+}
+
 // Health calls GET /health and returns the node health status.
 func (c *Client) Health(ctx context.Context) (*HealthResponse, error) {
 	var resp HealthResponse

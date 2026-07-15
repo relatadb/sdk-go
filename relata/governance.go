@@ -111,6 +111,42 @@ func (g *GovernanceClient) ImportSigma(ctx context.Context, sigmaYAML string) (m
 	return resp, nil
 }
 
+// SnoozeRule temporarily disables a rule for durationSecs (#967).
+func (g *GovernanceClient) SnoozeRule(ctx context.Context, ruleID string, durationSecs int) (map[string]any, error) {
+	var resp map[string]any
+	if err := g.c.postJSON(ctx, "/rules/"+ruleID+"/snooze", map[string]any{"duration_secs": durationSecs}, &resp); err != nil {
+		return nil, err
+	}
+	return resp, nil
+}
+
+// SuppressRule suppresses all future matches of pattern for a rule (#967).
+func (g *GovernanceClient) SuppressRule(ctx context.Context, ruleID, pattern string) (map[string]any, error) {
+	var resp map[string]any
+	if err := g.c.postJSON(ctx, "/rules/"+ruleID+"/suppress", map[string]any{"pattern": pattern}, &resp); err != nil {
+		return nil, err
+	}
+	return resp, nil
+}
+
+// AddRuleException adds an exception so specific matches are ignored (#967).
+func (g *GovernanceClient) AddRuleException(ctx context.Context, ruleID string, exception map[string]any) (map[string]any, error) {
+	var resp map[string]any
+	if err := g.c.postJSON(ctx, "/rules/"+ruleID+"/exceptions", exception, &resp); err != nil {
+		return nil, err
+	}
+	return resp, nil
+}
+
+// GetRuleTuning retrieves the tuning state (snoozes, suppressions, exceptions) (#967).
+func (g *GovernanceClient) GetRuleTuning(ctx context.Context, ruleID string) (map[string]any, error) {
+	var resp map[string]any
+	if err := g.c.get(ctx, "/rules/"+ruleID+"/tuning", &resp); err != nil {
+		return nil, err
+	}
+	return resp, nil
+}
+
 // ListRetentionPolicies lists configured retention policies.
 func (g *GovernanceClient) ListRetentionPolicies(ctx context.Context) ([]map[string]any, error) {
 	var resp map[string]any
