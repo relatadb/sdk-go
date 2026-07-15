@@ -294,6 +294,13 @@ func (c *Client) IdentityCluster(ctx context.Context, purpose, value string) (ma
 	return c.query(ctx, purpose, sql)
 }
 
+// FuseIdentities merges two identities — writes an IdentityLink with
+// link_type='fused' and returns the merged cluster (#967).
+func (c *Client) FuseIdentities(ctx context.Context, purpose, idA, idB string) (map[string]any, error) {
+	sql := fmt.Sprintf("FUSE_IDENTITIES('%s', '%s')", strings.ReplaceAll(idA, "'", "''"), strings.ReplaceAll(idB, "'", "''"))
+	return c.query(ctx, purpose, sql)
+}
+
 // ── Graph algorithm operators (#967) ─────────────────────────────────────────
 
 // GraphDijkstra finds the shortest path between two entities.
