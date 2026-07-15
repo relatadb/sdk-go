@@ -338,6 +338,33 @@ func (c *Client) ExportData(ctx context.Context, objectType, format string) (map
 	return resp, nil
 }
 
+// RegisterWebhook registers a webhook for push notifications (#967 Tier 5b).
+func (c *Client) RegisterWebhook(ctx context.Context, url string, eventTypes []string) (map[string]any, error) {
+	var resp map[string]any
+	if err := c.postJSON(ctx, "/webhooks", map[string]any{"url": url, "event_types": eventTypes}, &resp); err != nil {
+		return nil, err
+	}
+	return resp, nil
+}
+
+// ListWebhooks lists registered webhooks.
+func (c *Client) ListWebhooks(ctx context.Context) (map[string]any, error) {
+	var resp map[string]any
+	if err := c.get(ctx, "/webhooks", &resp); err != nil {
+		return nil, err
+	}
+	return resp, nil
+}
+
+// DeleteWebhook deletes a webhook.
+func (c *Client) DeleteWebhook(ctx context.Context, id string) (map[string]any, error) {
+	var resp map[string]any
+	if err := c.delete(ctx, "/webhooks/"+id, &resp); err != nil {
+		return nil, err
+	}
+	return resp, nil
+}
+
 // Sparql executes a SPARQL query.
 func (c *Client) Sparql(ctx context.Context, query string) (map[string]any, error) {
 	var resp map[string]any
