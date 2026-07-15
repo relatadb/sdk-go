@@ -286,6 +286,71 @@ func (c *Client) EraseSubject(ctx context.Context, purpose, subject, reason stri
 	return c.query(ctx, purpose, sql)
 }
 
+// ── SPARQL, sessions & cluster (#967 Tier 2d) ───────────────────────────────
+
+// Sparql executes a SPARQL query.
+func (c *Client) Sparql(ctx context.Context, query string) (map[string]any, error) {
+	var resp map[string]any
+	if err := c.postJSON(ctx, "/sparql", map[string]any{"query": query}, &resp); err != nil {
+		return nil, err
+	}
+	return resp, nil
+}
+
+// ClusterTopology returns the cluster topology.
+func (c *Client) ClusterTopology(ctx context.Context) (map[string]any, error) {
+	var resp map[string]any
+	if err := c.get(ctx, "/cluster/topology", &resp); err != nil {
+		return nil, err
+	}
+	return resp, nil
+}
+
+// ClusterRebalance triggers a cluster rebalance.
+func (c *Client) ClusterRebalance(ctx context.Context) (map[string]any, error) {
+	var resp map[string]any
+	if err := c.postJSON(ctx, "/cluster/rebalance", map[string]any{}, &resp); err != nil {
+		return nil, err
+	}
+	return resp, nil
+}
+
+// ClusterDrain drains a node for maintenance.
+func (c *Client) ClusterDrain(ctx context.Context, nodeID string) (map[string]any, error) {
+	var resp map[string]any
+	if err := c.postJSON(ctx, "/cluster/drain/"+nodeID, map[string]any{}, &resp); err != nil {
+		return nil, err
+	}
+	return resp, nil
+}
+
+// SessionDiff views uncommitted session changes.
+func (c *Client) SessionDiff(ctx context.Context, sessionID string) (map[string]any, error) {
+	var resp map[string]any
+	if err := c.get(ctx, "/session/"+sessionID+"/diff", &resp); err != nil {
+		return nil, err
+	}
+	return resp, nil
+}
+
+// SessionCommit commits a session's draft writes.
+func (c *Client) SessionCommit(ctx context.Context, sessionID string) (map[string]any, error) {
+	var resp map[string]any
+	if err := c.postJSON(ctx, "/session/"+sessionID+"/commit", map[string]any{}, &resp); err != nil {
+		return nil, err
+	}
+	return resp, nil
+}
+
+// SessionDiscard discards uncommitted session changes.
+func (c *Client) SessionDiscard(ctx context.Context, sessionID string) (map[string]any, error) {
+	var resp map[string]any
+	if err := c.delete(ctx, "/session/"+sessionID+"/draft", &resp); err != nil {
+		return nil, err
+	}
+	return resp, nil
+}
+
 // ── Entity merge, dedup & identity (#967) ───────────────────────────────────
 
 // IdentityCluster resolves an identity to its full cluster of linked identifiers.
