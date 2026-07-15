@@ -261,6 +261,44 @@ func (c *Client) CreateLink(ctx context.Context, params map[string]any) (map[str
 	return resp, nil
 }
 
+// UpsertTyped inserts a typed object (any struct). The struct is JSON-marshalled
+// and sent to /ingest — the Go compiler ensures field-name correctness at build
+// time (#967 Tier 2a).
+//
+//	type Person struct {
+//	    PK   string `json:"_pk"`
+//	    Name string `json:"name"`
+//	}
+//	client.UpsertTyped(ctx, "Person", "p1", Person{PK: "p1", Name: "Alice"})
+func (c *Client) UpsertTyped(ctx context.Context, objectType, pk string, obj any) (map[string]any, error) {
+	data, err := json.Marshal(obj)
+	if err != nil {
+		return nil, fmt.Errorf("relata: marshal typed object: %w", err)
+	}
+	var fields map[string]any
+	if err := json.Unmarshal(data, &fields); err != nil {
+		return nil, fmt.Errorf("relata: unmarshal typed object: %w", err)
+	}
+	fields["_pk"] = pk
+	ndjson, _ := json.Marshal(fields)
+	status, respBody, _, err := c.rawHTTPRequest(ctx, "POST",
+		encodeGetURL("/ingest", map[string]string{"object_type": objectType, "purpose": "typed-crud"}),
+		ndjson, "application/x-ndjson")
+	if err != nil {
+		return nil, err
+	}
+	if status < 200 || status >= 300 {
+		return nil, errorFromStatus(status, respBody, "", 0)
+	}
+	var resp map[string]any
+	if len(respBody) > 0 {
+		if err := json.Unmarshal(respBody, &resp); err != nil {
+			return nil, fmt.Errorf("relata: decode response: %w", err)
+		}
+	}
+	return resp, nil
+}
+
 // ── Identity resolution & entity lifecycle (#967) ───────────────────────────
 
 // ResolveIdentity resolves an identity value to all known objects/clusters.
