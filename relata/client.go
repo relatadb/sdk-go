@@ -140,7 +140,7 @@ func (c *Client) Query(ctx context.Context, sql string, opts ...QueryOption) (*Q
 // highlight, and per-field filters.
 //
 //	results, err := client.Search(ctx, "alice smith", "Person",
-//	    WithSearchLimit(10), WithHighlight(), WithSearchFacets("agency_id"))
+//	    WithSearchLimit(10), WithHighlight(), WithSearchFacets("tenant_id"))
 func (c *Client) Search(ctx context.Context, query, objectType string, opts ...SearchOption) (*SearchResponse, error) {
 	p := &searchParams{}
 	for _, o := range opts {

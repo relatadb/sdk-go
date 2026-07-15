@@ -531,7 +531,7 @@ func TestSearch_HappyPath(t *testing.T) {
 		_, _ = w.Write([]byte(`{
 			"hits": [{"id":"p1","object_type":"Person","fields":{"name":"Alice"},"score":1.23,"highlights":{"name":"<em>Alice</em>"}}],
 			"total": 1,
-			"facets": {"agency_id": {"EUROPOL": 1}},
+			"facets": {"tenant_id": {"EUROPOL": 1}},
 			"processing_time_ms": 5
 		}`))
 	}))
