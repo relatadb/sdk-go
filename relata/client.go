@@ -288,6 +288,18 @@ func (c *Client) EraseSubject(ctx context.Context, purpose, subject, reason stri
 
 // ── SPARQL, sessions & cluster (#967 Tier 2d) ───────────────────────────────
 
+// ExportData bulk-exports all rows of a type (#967 Tier 5c).
+func (c *Client) ExportData(ctx context.Context, objectType, format string) (map[string]any, error) {
+	if format == "" {
+		format = "json"
+	}
+	var resp map[string]any
+	if err := c.get(ctx, fmt.Sprintf("/export?type=%s&format=%s&purpose=export", objectType, format), &resp); err != nil {
+		return nil, err
+	}
+	return resp, nil
+}
+
 // Sparql executes a SPARQL query.
 func (c *Client) Sparql(ctx context.Context, query string) (map[string]any, error) {
 	var resp map[string]any
