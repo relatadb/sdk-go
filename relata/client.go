@@ -366,6 +366,12 @@ func (c *Client) FuseIdentities(ctx context.Context, purpose, idA, idB string) (
 	return c.query(ctx, purpose, sql)
 }
 
+// SplitIdentities unmerges two identities — inverse of FuseIdentities (#967).
+func (c *Client) SplitIdentities(ctx context.Context, purpose, idA, idB string) (map[string]any, error) {
+	sql := fmt.Sprintf("SPLIT_IDENTITIES('%s', '%s')", strings.ReplaceAll(idA, "'", "''"), strings.ReplaceAll(idB, "'", "''"))
+	return c.query(ctx, purpose, sql)
+}
+
 // ── Graph algorithm operators (#967) ─────────────────────────────────────────
 
 // GraphDijkstra finds the shortest path between two entities.
