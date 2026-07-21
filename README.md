@@ -505,6 +505,24 @@ The SDK reads no environment variables directly — all configuration is explici
 
 > `lite` is kept as a silent legacy alias for `free` (ADR-204).
 
+## Testing with an ephemeral server
+
+`relata/ephemeral_test.go` provides `StartEphemeral(t)` — starts a `relata serve`
+process on a free port and registers `t.Cleanup` to kill it.
+
+```go
+func TestHealth(t *testing.T) {
+    srv := StartEphemeral(t)
+    resp, err := http.Get(srv.BaseURL + "/health")
+    if err != nil || resp.StatusCode != 200 {
+        t.Fatalf("health check failed: %v %v", err, resp)
+    }
+}
+```
+
+Set `RELATA_BIN` to the binary path and `RELATA_TEST_TOKEN` to override the
+bearer token (defaults: `relata` / `relata-test`).
+
 ## License
 
 AGPL-3.0-only — see the root `LICENSE` file.
