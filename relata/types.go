@@ -57,8 +57,12 @@ type QueryResult struct {
 	// It appears in the audit trail and can be used to correlate log entries.
 	QueryID string `json:"query_id"`
 
-	// ElapsedMs is the server-side wall-clock time in milliseconds.
+	// ElapsedMs is the server-side wall-clock time in milliseconds (legacy field).
 	ElapsedMs int `json:"elapsed_ms"`
+
+	// ProcessingTimeMs is the server-side processing time in milliseconds (#1252).
+	// Populated from processing_time_ms when present; falls back to ElapsedMs.
+	ProcessingTimeMs uint64 `json:"processing_time_ms"`
 
 	// RowCount is the number of rows returned. Matches len(Rows); populated by
 	// UnmarshalJSON so callers need not call len() unless they want to.
@@ -71,12 +75,13 @@ type QueryResult struct {
 
 // queryResultWire is the raw wire shape used for normalisation.
 type queryResultWire struct {
-	Rows      json.RawMessage  `json:"rows"`
-	Data      []map[string]any `json:"data"`
-	QueryID   string           `json:"query_id"`
-	ElapsedMs int              `json:"elapsed_ms"`
-	RowCount  int              `json:"row_count"`
-	Columns   []string         `json:"columns"`
+	Rows             json.RawMessage  `json:"rows"`
+	Data             []map[string]any `json:"data"`
+	QueryID          string           `json:"query_id"`
+	ElapsedMs        int              `json:"elapsed_ms"`
+	ProcessingTimeMs uint64           `json:"processing_time_ms"`
+	RowCount         int              `json:"row_count"`
+	Columns          []string         `json:"columns"`
 }
 
 // UnmarshalJSON normalises the two wire shapes the server emits for POST /query
@@ -91,6 +96,12 @@ func (r *QueryResult) UnmarshalJSON(b []byte) error {
 	}
 	r.QueryID = wire.QueryID
 	r.ElapsedMs = wire.ElapsedMs
+	// Populate ProcessingTimeMs from the new field; fall back to ElapsedMs (#1252).
+	if wire.ProcessingTimeMs > 0 {
+		r.ProcessingTimeMs = wire.ProcessingTimeMs
+	} else {
+		r.ProcessingTimeMs = uint64(wire.ElapsedMs) //nolint:gosec // ElapsedMs is non-negative
+	}
 	r.Columns = wire.Columns
 	if r.Columns == nil {
 		r.Columns = []string{}

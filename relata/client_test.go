@@ -555,3 +555,39 @@ func TestSearch_HappyPath(t *testing.T) {
 		t.Errorf("ProcessingTimeMs = %d, want 5", resp.ProcessingTimeMs)
 	}
 }
+
+func TestQuery_ProcessingTimeMs(t *testing.T) {
+	// #1252: verify ProcessingTimeMs is populated from processing_time_ms when
+	// present, and falls back to elapsed_ms for backward compat.
+	t.Run("from_processing_time_ms", func(t *testing.T) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			fmt.Fprint(w, `{"query_id":"q-2","elapsed_ms":3,"processing_time_ms":7,"row_count":0,"rows":[]}`)
+		}))
+		defer srv.Close()
+		c := newTestClient(srv, &ClientOptions{DefaultPurpose: "analytics"})
+		result, err := c.Query(context.Background(), "SELECT 1")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if result.ProcessingTimeMs != 7 {
+			t.Errorf("ProcessingTimeMs = %d, want 7", result.ProcessingTimeMs)
+		}
+	})
+
+	t.Run("fallback_to_elapsed_ms", func(t *testing.T) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			fmt.Fprint(w, `{"query_id":"q-3","elapsed_ms":5,"row_count":0,"rows":[]}`)
+		}))
+		defer srv.Close()
+		c := newTestClient(srv, &ClientOptions{DefaultPurpose: "analytics"})
+		result, err := c.Query(context.Background(), "SELECT 1")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if result.ProcessingTimeMs != 5 {
+			t.Errorf("ProcessingTimeMs = %d (fallback from elapsed_ms), want 5", result.ProcessingTimeMs)
+		}
+	})
+}
