@@ -40,6 +40,10 @@ type QueryRequest struct {
 	//   LOOKUP_IDENTITY(...)       — IdentityIndex resolution
 	//   HYBRID_SCORE(...)          — combined BM25 + vector ranking
 	SQL string `json:"sql"`
+
+	// Params holds positional bind values for $1, $2, … placeholders (#1162).
+	// Omit (nil) when the SQL has no placeholders.
+	Params []any `json:"params,omitempty"`
 }
 
 // QueryResult is the response from POST /query.

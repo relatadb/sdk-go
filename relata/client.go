@@ -135,6 +135,49 @@ func (c *Client) Query(ctx context.Context, sql string, opts ...QueryOption) (*Q
 	return &result, nil
 }
 
+// QueryWithParams executes a parameterized SQL query (#1162).
+//
+// Positional placeholders `$1`, `$2`, … in sql are substituted server-side
+// with the corresponding values from params.
+//
+// Example:
+//
+//	result, err := client.QueryWithParams(ctx,
+//	    "SELECT * FROM Person WHERE age = $1 AND city = $2",
+//	    []any{25, "Karachi"},
+//	    relata.WithPurpose("analytics"),
+//	)
+func (c *Client) QueryWithParams(ctx context.Context, sql string, params []any, opts ...QueryOption) (*QueryResult, error) {
+	cfg := &queryConfig{
+		purpose: c.defaultPurpose,
+	}
+	for _, opt := range opts {
+		opt(cfg)
+	}
+
+	if cfg.purpose == "" {
+		return nil, ErrPurposeRequired
+	}
+
+	payload := QueryRequest{
+		Purpose: cfg.purpose,
+		SQL:     sql,
+		Params:  params,
+	}
+
+	if cfg.timeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, cfg.timeout)
+		defer cancel()
+	}
+
+	var result QueryResult
+	if err := c.postJSON(ctx, "/query", payload, &result); err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
 // Search calls POST /search and returns matching documents for the given query
 // and object type (#670). Optional functional options control limit, facets,
 // highlight, and per-field filters.
