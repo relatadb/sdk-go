@@ -5,7 +5,7 @@
 // Usage:
 //
 //	go run ./examples/basic \
-//	    -url http://localhost:8080 \
+//	    -url http://localhost:9090 \
 //	    -token $RELATA_BEARER_TOKEN
 package main
 
@@ -20,7 +20,7 @@ import (
 )
 
 func main() {
-	url := flag.String("url", "http://localhost:8080", "Relata server base URL")
+	url := flag.String("url", "http://localhost:9090", "Relata server base URL")
 	token := flag.String("token", "", "Bearer token (optional)")
 	flag.Parse()
 

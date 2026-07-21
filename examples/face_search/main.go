@@ -15,7 +15,7 @@
 // Usage:
 //
 //	go run ./examples/face_search \
-//	    -url   http://localhost:8080  \
+//	    -url   http://localhost:9090  \
 //	    -token $RELATA_BEARER_TOKEN   \
 //	    -image s3://relata-evidence/cctv-frame-2024-11-03T14:22:00Z.jpg \
 //	    -top   10
@@ -33,7 +33,7 @@ import (
 )
 
 func main() {
-	url := flag.String("url", "http://localhost:8080", "Relata server base URL")
+	url := flag.String("url", "http://localhost:9090", "Relata server base URL")
 	token := flag.String("token", "", "Bearer token")
 	imageRef := flag.String("image",
 		"s3://relata-evidence/cctv-frame-2024-11-03T14:22:00Z.jpg",

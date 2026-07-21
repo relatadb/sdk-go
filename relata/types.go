@@ -6,7 +6,7 @@
 //
 // Basic usage:
 //
-//	client := relata.New("http://localhost:8080", &relata.ClientOptions{
+//	client := relata.New("http://localhost:9090", &relata.ClientOptions{
 //	    BearerToken:    os.Getenv("RELATA_TOKEN"),
 //	    DefaultPurpose: "investigation",
 //	})

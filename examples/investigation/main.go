@@ -15,7 +15,7 @@
 // Usage:
 //
 //	go run ./examples/investigation \
-//	    -url  http://localhost:8080  \
+//	    -url  http://localhost:9090  \
 //	    -token $RELATA_BEARER_TOKEN
 package main
 
@@ -31,7 +31,7 @@ import (
 )
 
 func main() {
-	url := flag.String("url", "http://localhost:8080", "Relata server base URL")
+	url := flag.String("url", "http://localhost:9090", "Relata server base URL")
 	token := flag.String("token", "", "Bearer token")
 	phone := flag.String("phone", "+919876543210", "Subject phone number (MSISDN)")
 	sarDate := flag.String("sar-date", "2024-11-01", "Date of suspicious activity (AS OF)")

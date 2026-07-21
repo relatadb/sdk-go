@@ -3,7 +3,7 @@
 // Usage:
 //
 //	go run ./examples/jobs_workflows \
-//	    -url http://localhost:8080 \
+//	    -url http://localhost:9090 \
 //	    -token $RELATA_BEARER_TOKEN
 package main
 
@@ -17,7 +17,7 @@ import (
 )
 
 func main() {
-	rawURL := flag.String("url", "http://localhost:8080", "Relata server URL")
+	rawURL := flag.String("url", "http://localhost:9090", "Relata server URL")
 	token := flag.String("token", "demo", "Bearer token")
 	flag.Parse()
 

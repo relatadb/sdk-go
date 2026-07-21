@@ -17,7 +17,7 @@ import (
 //
 // Example:
 //
-//	m, _ := relata.NewMemory("http://localhost:8080", "agent-notes",
+//	m, _ := relata.NewMemory("http://localhost:9090", "agent-notes",
 //	    &relata.MemoryOptions{BearerToken: token})
 //	id, _ := m.Add(ctx, "Alice prefers dark mode")
 //	hits, _ := m.Search(ctx, "ui preferences", relata.WithTopK(5))

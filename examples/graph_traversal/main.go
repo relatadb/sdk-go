@@ -13,7 +13,7 @@
 // Usage:
 //
 //	go run ./examples/graph_traversal \
-//	    -url    http://localhost:8080     \
+//	    -url    http://localhost:9090     \
 //	    -token  $RELATA_BEARER_TOKEN      \
 //	    -from   "entity-financier-001"   \
 //	    -to     "entity-frontco-009"     \
@@ -32,7 +32,7 @@ import (
 )
 
 func main() {
-	url := flag.String("url", "http://localhost:8080", "Relata server base URL")
+	url := flag.String("url", "http://localhost:9090", "Relata server base URL")
 	token := flag.String("token", "", "Bearer token")
 	fromID := flag.String("from", "entity-financier-001", "Source entity ID")
 	toID := flag.String("to", "entity-frontco-009", "Target entity ID")

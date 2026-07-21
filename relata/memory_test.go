@@ -12,12 +12,12 @@ import (
 )
 
 func TestNewMemory_RequiresPurpose(t *testing.T) {
-	_, err := NewMemory("http://localhost:8080", "", nil)
+	_, err := NewMemory("http://localhost:9090", "", nil)
 	if !errors.Is(err, ErrPurposeRequired) {
 		t.Fatalf("err = %v, want ErrPurposeRequired", err)
 	}
 	// whitespace-only purpose is also rejected
-	_, err = NewMemory("http://localhost:8080", "   ", nil)
+	_, err = NewMemory("http://localhost:9090", "   ", nil)
 	if !errors.Is(err, ErrPurposeRequired) {
 		t.Fatalf("err = %v, want ErrPurposeRequired for whitespace", err)
 	}

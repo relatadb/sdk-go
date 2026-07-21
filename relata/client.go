@@ -51,7 +51,7 @@ type Client struct {
 // all defaults apply (30 s timeout, no authentication, no default purpose, no
 // retry).
 //
-// baseURL must not have a trailing slash, e.g. "http://localhost:8080".
+// baseURL must not have a trailing slash, e.g. "http://localhost:9090".
 func New(baseURL string, opts *ClientOptions) *Client {
 	baseURL = strings.TrimRight(baseURL, "/")
 
