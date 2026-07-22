@@ -12,13 +12,13 @@ import (
 // verbs (GET/PUT/DELETE on /<bucket>/<key>) against the door.
 //
 // The bearer token is sent as "Authorization: Bearer <token>"; the tenant, if
-// set, is sent as "X-Organization-Id". Path-style addressing is used.
+// set, is sent as "X-Relata-Tenant-Id". Path-style addressing is used.
 type S3Client struct {
 	// EndpointURL is the base URL of the S3 door (no trailing slash).
 	EndpointURL string
 	// BearerToken is sent as Authorization: Bearer.
 	BearerToken string
-	// Tenant is sent as X-Organization-Id when non-empty.
+	// Tenant is sent as X-Relata-Tenant-Id when non-empty.
 	Tenant string
 	// Region is the (cosmetic) AWS region; the door does not validate it.
 	Region string
@@ -88,7 +88,7 @@ func (t *s3BearerTransport) RoundTrip(req *http.Request) (*http.Response, error)
 		clone.Header.Set("Authorization", "Bearer "+t.tok)
 	}
 	if t.tnt != "" {
-		clone.Header.Set("X-Organization-Id", t.tnt)
+		clone.Header.Set("X-Relata-Tenant-Id", t.tnt)
 	}
 	base := t.base
 	if base == nil {

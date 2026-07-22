@@ -359,7 +359,7 @@ type ClientOptions struct {
 	// with Timeout applied is constructed.
 	HTTPClient *http.Client
 
-	// Tenant is sent as "X-Organization-Id" on every request. Required for
+	// Tenant is sent as "X-Relata-Tenant-Id" on every request. Required for
 	// multi-tenant deployments.
 	Tenant string
 
@@ -404,7 +404,7 @@ type MemoryOptions struct {
 	// request.
 	Headers map[string]string
 
-	// Tenant is sent as "X-Organization-Id" on every memory request.
+	// Tenant is sent as "X-Relata-Tenant-Id" on every memory request.
 	Tenant string
 }
 

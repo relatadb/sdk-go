@@ -188,7 +188,7 @@ func TestRequestIDCallerPinned(t *testing.T) {
 func TestTenantAndDelegationHeaders(t *testing.T) {
 	var gotTenant, gotActing, gotDelegated string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		gotTenant = r.Header.Get("X-Organization-Id")
+		gotTenant = r.Header.Get("X-Relata-Tenant-Id")
 		gotActing = r.Header.Get("X-Acting-As")
 		gotDelegated = r.Header.Get("X-Delegated-By")
 		fmt.Fprint(w, `{"status":"ok","profile":"free","node_id":"n1"}`)

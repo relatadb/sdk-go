@@ -21,7 +21,7 @@ const (
 	headerContentType   = "Content-Type"
 	headerAccept        = "Accept"
 	headerRequestID     = "X-Request-ID"
-	headerTenant        = "X-Organization-Id"
+	headerTenant = "X-Relata-Tenant-Id" // #1228 canonical tenant header
 	headerActingAs      = "X-Acting-As"
 	headerDelegatedBy   = "X-Delegated-By"
 	headerRetryAfter    = "Retry-After"
@@ -224,6 +224,37 @@ func (c *Client) MultiSearch(ctx context.Context, queries []map[string]any) (map
 		return nil, err
 	}
 	return resp, nil
+}
+
+// GraphQL executes a GraphQL query against the governed query path (ADR-220).
+//
+// gqlQuery is the GraphQL query string; variables and operationName are optional.
+// Returns the "data" field on success (a []map[string]any of row objects for a
+// query, or a map[string]any for an introspection __schema request). Returns an
+// error if the server returns a non-empty "errors" array.
+func (c *Client) GraphQL(ctx context.Context, gqlQuery string, variables map[string]any, operationName string) (any, error) {
+	body := map[string]any{"query": gqlQuery}
+	if variables != nil {
+		body["variables"] = variables
+	}
+	if operationName != "" {
+		body["operationName"] = operationName
+	}
+	var resp struct {
+		Data   any              `json:"data"`
+		Errors []map[string]any `json:"errors"`
+	}
+	if err := c.postJSON(ctx, "/graphql", body, &resp); err != nil {
+		return nil, err
+	}
+	if len(resp.Errors) > 0 {
+		msg := "graphql error"
+		if m, ok := resp.Errors[0]["message"].(string); ok {
+			msg = m
+		}
+		return nil, fmt.Errorf("relata: graphql: %s", msg)
+	}
+	return resp.Data, nil
 }
 
 // ── Type management & ontology (#967) ───────────────────────────────────────
@@ -700,7 +731,7 @@ func (c *Client) httpClient() *http.Client { return c.http }
 // own requests against the shared http client.
 func (c *Client) bearer() string { return c.bearerToken }
 
-// tenantID returns the configured X-Organization-Id, if any.
+// tenantID returns the configured X-Relata-Tenant-Id, if any.
 func (c *Client) tenantID() string { return c.tenant }
 
 // sharedHeaders returns a copy of the static caller-supplied header bag, for

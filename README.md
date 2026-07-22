@@ -129,7 +129,7 @@ type ClientOptions struct {
     HTTPClient     *http.Client      // inject for mTLS, proxies, tracing
 
     // Multi-tenant + delegation (#220, ADR-132)
-    Tenant         string            // X-Organization-Id (multi-tenant)
+    Tenant         string            // X-Relata-Tenant-Id (multi-tenant)
     ActingAs       string            // X-Acting-As (delegation)
     DelegatedBy    string            // X-Delegated-By
 
@@ -181,7 +181,7 @@ Set `BearerToken` in `ClientOptions`. The token is sent as
 ```go
 client := relata.New(url, &relata.ClientOptions{
     BearerToken: token,
-    Tenant:      "org-acme",     // X-Organization-Id
+    Tenant:      "org-acme",     // X-Relata-Tenant-Id
     ActingAs:    "user-bob",     // X-Acting-As
     DelegatedBy: "user-alice",   // X-Delegated-By
 })
