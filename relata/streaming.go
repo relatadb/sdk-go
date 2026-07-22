@@ -403,7 +403,9 @@ func (c *Client) openStream(ctx context.Context, method, path string, body []byt
 		data, _ := io.ReadAll(resp.Body)
 		rid := resp.Header.Get(headerRequestID)
 		retryAfter := parseRetryAfter(resp.Header.Get(headerRetryAfter))
-		return nil, errorFromStatus(resp.StatusCode, data, rid, retryAfter)
+		rerr := errorFromStatus(resp.StatusCode, data, rid, retryAfter)
+		rerr.RateLimitLimit, rerr.RateLimitRemaining, rerr.RateLimitReset = readRateLimitHeaders(resp.Header)
+		return nil, rerr
 	}
 	return resp.Body, nil
 }

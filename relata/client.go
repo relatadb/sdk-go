@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -25,6 +26,9 @@ const (
 	headerActingAs      = "X-Acting-As"
 	headerDelegatedBy   = "X-Delegated-By"
 	headerRetryAfter    = "Retry-After"
+	headerRateLimitLimit     = "X-RateLimit-Limit"
+	headerRateLimitRemaining = "X-RateLimit-Remaining"
+	headerRateLimitReset     = "X-RateLimit-Reset"
 
 	userAgent = "relata-go/0.2.0"
 
@@ -857,6 +861,7 @@ func (c *Client) doRequest(ctx context.Context, method, path string, body []byte
 		rid := resp.Header.Get(headerRequestID)
 		retryAfter := parseRetryAfter(resp.Header.Get(headerRetryAfter))
 		rerr := errorFromStatus(resp.StatusCode, respBody, rid, retryAfter)
+		rerr.RateLimitLimit, rerr.RateLimitRemaining, rerr.RateLimitReset = readRateLimitHeaders(resp.Header)
 		if isRetryableStatus(resp.StatusCode) && attempt < maxAttempts {
 			lastErr = rerr
 			c.sleepBackoffWithJitter(ctx, attempt, retryAfter)
@@ -960,6 +965,15 @@ func isRetryableTransport(ctx context.Context, err error) bool {
 		return false
 	}
 	return true
+}
+
+// readRateLimitHeaders extracts the X-RateLimit-{Limit,Remaining,Reset} quota
+// headers (#1321). Returns zeros for any that are absent or unparseable.
+func readRateLimitHeaders(h http.Header) (limit, remaining, reset int64) {
+	limit, _ = strconv.ParseInt(h.Get(headerRateLimitLimit), 10, 64)
+	remaining, _ = strconv.ParseInt(h.Get(headerRateLimitRemaining), 10, 64)
+	reset, _ = strconv.ParseInt(h.Get(headerRateLimitReset), 10, 64)
+	return
 }
 
 // parseRetryAfter parses the Retry-After header (HTTP-date or delta-seconds).

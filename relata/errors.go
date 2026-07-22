@@ -97,6 +97,14 @@ type RelataError struct {
 	// RetryAfter is the requested retry back-off, from the Retry-After header
 	// or the problem+json retry_after extension. Zero when not supplied.
 	RetryAfter time.Duration
+
+	// RateLimitLimit is the X-RateLimit-Limit header — the per-window request
+	// budget (#1321). Zero when the server did not emit the header.
+	RateLimitLimit int64
+	// RateLimitRemaining is the X-RateLimit-Remaining header. Zero when absent.
+	RateLimitRemaining int64
+	// RateLimitReset is the X-RateLimit-Reset header (unix seconds). Zero when absent.
+	RateLimitReset int64
 }
 
 // Error implements the error interface.
