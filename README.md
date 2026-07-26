@@ -5,7 +5,7 @@ dependencies), context-based blocking API, fluent query builder, Mem0-style Memo
 client, 15 typed v1.1 clients, and RFC 7807 problem+json-aware errors.
 
 - **Source:** [`sdks/go/relata/`](./relata/)
-- **Module:** `github.com/OpenWorkBench-Co/RelataDB/sdks/go`
+- **Module:** `github.com/relatadb/RelataDB/sdks/go`
 - **Go:** 1.25+
 - **Dependencies:** none (stdlib only — `net/http`, `encoding/json`, `crypto/rand`,
   `context`, `time`)
@@ -13,7 +13,7 @@ client, 15 typed v1.1 clients, and RFC 7807 problem+json-aware errors.
 ## Install
 
 ```bash
-go get github.com/OpenWorkBench-Co/RelataDB/sdks/go
+go get github.com/relatadb/RelataDB/sdks/go
 ```
 
 ## Quick start
@@ -26,7 +26,7 @@ import (
     "fmt"
     "log"
 
-    "github.com/OpenWorkBench-Co/RelataDB/sdks/go/relata"
+    "github.com/relatadb/RelataDB/sdks/go/relata"
 )
 
 func main() {

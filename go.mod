@@ -1,3 +1,3 @@
-module github.com/OpenWorkBench-Co/RelataDB/sdks/go
+module github.com/relatadb/sdk-go
 
 go 1.25.0

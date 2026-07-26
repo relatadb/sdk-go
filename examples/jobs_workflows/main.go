@@ -13,7 +13,7 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/OpenWorkBench-Co/RelataDB/sdks/go/relata"
+	"github.com/relatadb/sdk-go/relata"
 )
 
 func main() {
