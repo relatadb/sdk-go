@@ -1,14 +1,16 @@
 # Relata Go SDK
 
-Go client for the [RelataDB](../../README.md) engine. Stdlib-only (no external
+Go client for the [Relata DB](https://relatadb.dev) engine. Stdlib-only (no external
 dependencies), context-based blocking API, fluent query builder, Mem0-style Memory
 client, 15 typed v1.1 clients, and RFC 7807 problem+json-aware errors.
 
-- **Source:** [`sdks/go/relata/`](./relata/)
+- **Repo:** [github.com/relatadb/sdk-go](https://github.com/relatadb/sdk-go)
 - **Module:** `github.com/relatadb/sdk-go`
+- **Docs:** [relatadb.dev](https://relatadb.dev) · [Issues](https://github.com/relatadb/sdk-go/issues)
 - **Go:** 1.25+
 - **Dependencies:** none (stdlib only — `net/http`, `encoding/json`, `crypto/rand`,
   `context`, `time`)
+- **By:** [ZySec AI](https://zysec.ai) — Frontier Sovereign Intelligence · hello@zysec.ai
 
 ## Install
 
