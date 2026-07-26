@@ -1,0 +1,58 @@
+name: Tag & index on pkg.go.dev
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: publish-go
+  cancel-in-progress: false
+
+jobs:
+  tag:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Build check
+        run: go build ./...
+
+      - name: Tag new version
+        run: |
+          LATEST=$(git tag --list 'v*' --sort=-version:refname | head -1)
+          if [ -z "$LATEST" ]; then
+            NEW="v0.1.0"
+          else
+            PATCH=$(echo "$LATEST" | awk -F. '{print $3}')
+            PREFIX=$(echo "$LATEST" | awk -F. '{print $1"."$2}')
+            NEW="${PREFIX}.$((PATCH + 1))"
+          fi
+
+          # Skip if tag already exists
+          if git rev-parse "$NEW" >/dev/null 2>&1; then
+            echo "Tag $NEW already exists — skipping."
+            exit 0
+          fi
+
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag "$NEW"
+          git push origin "$NEW"
+          echo "Tagged $NEW — pkg.go.dev indexes automatically within minutes."
+
+      - name: Trigger pkg.go.dev index
+        run: |
+          LATEST=$(git tag --list 'v*' --sort=-version:refname | head -1)
+          curl -s "https://sum.golang.org/lookup/github.com/relatadb/sdk-go@${LATEST}" || true
+          echo "https://pkg.go.dev/github.com/relatadb/sdk-go@${LATEST}"
