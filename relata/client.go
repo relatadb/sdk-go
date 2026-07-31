@@ -826,10 +826,10 @@ func (c *Client) doRequest(ctx context.Context, method, path string, body []byte
 
 		resp, err := c.http.Do(req)
 		if err != nil {
-			// Network error or timeout. Retry if attempts remain and the
-			// context is still live.
+			// Network error or timeout. Retry if attempts remain, the
+			// context is still live, AND the method is idempotent.
 			lastErr = c.classifyTransportError(ctx, err)
-			if attempt < maxAttempts && isRetryableTransport(ctx, err) {
+			if attempt < maxAttempts && isRetryableTransport(ctx, err) && isIdempotent(method) {
 				c.sleepBackoff(ctx, attempt)
 				continue
 			}
@@ -840,7 +840,7 @@ func (c *Client) doRequest(ctx context.Context, method, path string, body []byte
 		resp.Body.Close()
 		if readErr != nil {
 			lastErr = fmt.Errorf("relata: read body: %w", readErr)
-			if attempt < maxAttempts {
+			if attempt < maxAttempts && isIdempotent(method) {
 				c.sleepBackoff(ctx, attempt)
 				continue
 			}
@@ -857,12 +857,12 @@ func (c *Client) doRequest(ctx context.Context, method, path string, body []byte
 			return nil
 		}
 
-		// Error status. Retry 502/503/504 if attempts remain.
+		// Error status. Retry 502/503/504 if attempts remain AND method is idempotent.
 		rid := resp.Header.Get(headerRequestID)
 		retryAfter := parseRetryAfter(resp.Header.Get(headerRetryAfter))
 		rerr := errorFromStatus(resp.StatusCode, respBody, rid, retryAfter)
 		rerr.RateLimitLimit, rerr.RateLimitRemaining, rerr.RateLimitReset = readRateLimitHeaders(resp.Header)
-		if isRetryableStatus(resp.StatusCode) && attempt < maxAttempts {
+		if isRetryableStatus(resp.StatusCode) && attempt < maxAttempts && isIdempotent(method) {
 			lastErr = rerr
 			c.sleepBackoffWithJitter(ctx, attempt, retryAfter)
 			continue
@@ -956,6 +956,19 @@ func (c *Client) sleepBackoffWithJitter(ctx context.Context, attempt int, retryA
 // isRetryableStatus reports whether the HTTP status warrants a retry.
 func isRetryableStatus(code int) bool {
 	return code == 502 || code == 503 || code == 504
+}
+
+// isIdempotent reports whether the HTTP method is safe to retry without
+// risk of double-execution (e.g. erase_subject, fuse_identities,
+// session_commit). POST/DELETE/PATCH/PUT are NOT retried — parity with
+// the Rust and Python SDKs which also skip non-idempotent methods.
+func isIdempotent(method string) bool {
+	switch method {
+	case http.MethodGet, http.MethodHead, http.MethodOptions:
+		return true
+	default:
+		return false
+	}
 }
 
 // isRetryableTransport reports whether a transport-level error is worth
