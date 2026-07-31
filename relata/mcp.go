@@ -167,7 +167,7 @@ func (m *McpClient) SearchKnowledge(ctx context.Context, query, purpose string, 
 	return m.CallTool(ctx, "search_knowledge", map[string]any{
 		"query":   query,
 		"purpose": purpose,
-		"top_k":   topK,
+		"limit":   topK,
 	})
 }
 
@@ -179,7 +179,8 @@ func (m *McpClient) ExplainPolicy(ctx context.Context, sql, purpose string) (map
 
 // SuggestExtensions is type/canonical-kind autocomplete.
 func (m *McpClient) SuggestExtensions(ctx context.Context, prefix string) (map[string]any, error) {
-	return m.CallTool(ctx, "suggest_extensions", map[string]any{"prefix": prefix})
+	_ = prefix
+	return m.CallTool(ctx, "suggest_extensions", map[string]any{})
 }
 
 // ListEntityTypes returns every registered ontology type.
@@ -190,13 +191,13 @@ func (m *McpClient) ListEntityTypes(ctx context.Context) (map[string]any, error)
 // GetEntities is the paginated "get_entities" MCP tool.
 func (m *McpClient) GetEntities(ctx context.Context, objectType string, opts *GetEntitiesOptions) (map[string]any, error) {
 	limit := 50
-	args := map[string]any{"object_type": objectType, "limit": limit}
+	args := map[string]any{"entity_type": objectType, "limit": limit}
 	if opts != nil {
 		if opts.Limit > 0 {
 			args["limit"] = opts.Limit
 		}
 		if opts.FilterExpr != "" {
-			args["filter"] = opts.FilterExpr
+			args["filters"] = opts.FilterExpr
 		}
 	}
 	return m.CallTool(ctx, "get_entities", args)
@@ -206,26 +207,19 @@ func (m *McpClient) GetEntities(ctx context.Context, objectType string, opts *Ge
 func (m *McpClient) SearchEntities(ctx context.Context, query string, opts *SearchEntitiesOptions) (map[string]any, error) {
 	args := map[string]any{"query": query}
 	if opts != nil && opts.ObjectType != "" {
-		args["object_type"] = opts.ObjectType
+		args["entity_types"] = []string{opts.ObjectType}
 	}
 	return m.CallTool(ctx, "search_entities", args)
 }
 
 // GetDomainSummary returns counts + freshness per type.
-func (m *McpClient) GetDomainSummary(ctx context.Context, opts *GetDomainSummaryOptions) (map[string]any, error) {
-	args := map[string]any{}
-	if opts != nil && opts.ObjectType != "" {
-		args["object_type"] = opts.ObjectType
-	}
-	return m.CallTool(ctx, "get_domain_summary", args)
+func (m *McpClient) GetDomainSummary(ctx context.Context, domain string) (map[string]any, error) {
+	return m.CallTool(ctx, "get_domain_summary", map[string]any{"domain": domain})
 }
 
 // FindInSocialCorpus searches the ingested social-media corpus.
 func (m *McpClient) FindInSocialCorpus(ctx context.Context, query string, opts *FindInSocialCorpusOptions) (map[string]any, error) {
-	args := map[string]any{"query": query}
-	if opts != nil && opts.Corpus != "" {
-		args["corpus"] = opts.Corpus
-	}
+	args := map[string]any{"object_type": query}
 	return m.CallTool(ctx, "find_in_social_corpus", args)
 }
 
@@ -235,25 +229,18 @@ func (m *McpClient) LookupIdentity(ctx context.Context, value string, opts *Look
 	if opts != nil && opts.Purpose != "" {
 		purpose = opts.Purpose
 	}
-	return m.CallTool(ctx, "lookup_identity", map[string]any{"value": value, "purpose": purpose})
+	return m.CallTool(ctx, "lookup_identity", map[string]any{"raw": value, "purpose": purpose})
 }
 
 // GetEntityProfile returns a rich per-entity dossier.
 func (m *McpClient) GetEntityProfile(ctx context.Context, entityID, purpose string) (map[string]any, error) {
-	return m.CallTool(ctx, "get_entity_profile", map[string]any{"entity_id": entityID, "purpose": purpose})
+	return m.CallTool(ctx, "get_entity_profile", map[string]any{"name": entityID, "purpose": purpose})
 }
 
 // GetTimeline returns a chronological event list for an entity.
 func (m *McpClient) GetTimeline(ctx context.Context, entityID, purpose string, opts *GetTimelineOptions) (map[string]any, error) {
-	args := map[string]any{"entity_id": entityID, "purpose": purpose}
-	if opts != nil {
-		if opts.SinceNS > 0 {
-			args["since_ns"] = opts.SinceNS
-		}
-		if opts.UntilNS > 0 {
-			args["until_ns"] = opts.UntilNS
-		}
-	}
+	_ = opts
+	args := map[string]any{"entity": entityID, "purpose": purpose}
 	return m.CallTool(ctx, "get_timeline", args)
 }
 
@@ -270,11 +257,8 @@ func (m *McpClient) FindConnections(ctx context.Context, entity, purpose string,
 
 // GetRelationships returns the direct neighbours of an entity.
 func (m *McpClient) GetRelationships(ctx context.Context, entityID, purpose string, opts *GetRelationshipsOptions) (map[string]any, error) {
-	depth := 1
-	args := map[string]any{"entity_id": entityID, "depth": depth, "purpose": purpose}
-	if opts != nil && opts.Depth > 0 {
-		args["depth"] = opts.Depth
-	}
+	_ = opts
+	args := map[string]any{"subject": entityID, "purpose": purpose}
 	return m.CallTool(ctx, "get_relationships", args)
 }
 
@@ -289,15 +273,8 @@ func (m *McpClient) AddCaseNote(ctx context.Context, caseID, note string, opts *
 
 // GetAuditTrail returns the provenance chain for a case or entity.
 func (m *McpClient) GetAuditTrail(ctx context.Context, opts *GetAuditTrailOptions) (map[string]any, error) {
+	_ = opts
 	args := map[string]any{}
-	if opts != nil {
-		if opts.CaseID != "" {
-			args["case_id"] = opts.CaseID
-		}
-		if opts.EntityID != "" {
-			args["entity_id"] = opts.EntityID
-		}
-	}
 	return m.CallTool(ctx, "get_audit_trail", args)
 }
 
@@ -310,22 +287,22 @@ func (m *McpClient) GetCaseSummary(ctx context.Context, caseID, purpose string) 
 func (m *McpClient) RagStoreAnswer(ctx context.Context, question, answer, purpose string, opts *RagStoreAnswerOptions) (map[string]any, error) {
 	args := map[string]any{"question": question, "answer": answer, "purpose": purpose}
 	if opts != nil && len(opts.SourceIDs) > 0 {
-		args["source_ids"] = opts.SourceIDs
+		args["sources"] = opts.SourceIDs
 	}
 	return m.CallTool(ctx, "rag_store_answer", args)
 }
 
 // RagStoreElements bulk-persists structured RAG elements.
-func (m *McpClient) RagStoreElements(ctx context.Context, elements []map[string]any, purpose string) (map[string]any, error) {
-	return m.CallTool(ctx, "rag_store_elements", map[string]any{"elements": elements, "purpose": purpose})
+func (m *McpClient) RagStoreElements(ctx context.Context, elements []map[string]any, sourceFilename, purpose string) (map[string]any, error) {
+	return m.CallTool(ctx, "rag_store_elements", map[string]any{"elements": elements, "source_filename": sourceFilename, "purpose": purpose})
 }
 
 // IngestDocument is the datagrep-envelope document ingest via MCP.
 func (m *McpClient) IngestDocument(ctx context.Context, chunksJSONL, manifestJSON, purpose string) (map[string]any, error) {
 	return m.CallTool(ctx, "ingest_document", map[string]any{
-		"chunks_jsonl":  chunksJSONL,
-		"manifest_json": manifestJSON,
-		"purpose":       purpose,
+		"text":    chunksJSONL,
+		"source":  manifestJSON,
+		"purpose": purpose,
 	})
 }
 
