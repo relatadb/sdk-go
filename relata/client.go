@@ -514,6 +514,25 @@ func (c *Client) IdentityCluster(ctx context.Context, purpose, value string) (ma
 	return c.query(ctx, purpose, sql)
 }
 
+// SameIdentity is a predicate: do two identifiers resolve to the same entity?
+// It executes `SAME_IDENTITY('<a>', '<b>')` via `POST /query` and decodes the
+// `match` verdict as a boolean (#2246).
+func (c *Client) SameIdentity(ctx context.Context, purpose, idA, idB string) (bool, error) {
+	sql := fmt.Sprintf("SAME_IDENTITY('%s', '%s')", strings.ReplaceAll(idA, "'", "''"), strings.ReplaceAll(idB, "'", "''"))
+	resp, err := c.query(ctx, purpose, sql)
+	if err != nil {
+		return false, err
+	}
+	if data, ok := resp["data"].([]any); ok && len(data) > 0 {
+		if row, ok := data[0].(map[string]any); ok {
+			if m, ok := row["match"].(bool); ok {
+				return m, nil
+			}
+		}
+	}
+	return false, nil
+}
+
 // FuseIdentities merges two identities — writes an IdentityLink with
 // link_type='fused' and returns the merged cluster (#967).
 func (c *Client) FuseIdentities(ctx context.Context, purpose, idA, idB string) (map[string]any, error) {
