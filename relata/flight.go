@@ -141,10 +141,7 @@ func queryFlightDoGet(ctx context.Context, endpoint, ticketSQL, bearer string) (
 		rec.Retain()
 		records = append(records, rec)
 	}
-	table, err := array.NewTableFromRecords(rdr.Schema(), records)
-	if err != nil {
-		return nil, fmt.Errorf("relata flight: build table: %w", err)
-	}
+	table := array.NewTableFromRecords(rdr.Schema(), records)
 	for _, rec := range records {
 		rec.Release()
 	}

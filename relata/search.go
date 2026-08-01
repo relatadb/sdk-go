@@ -26,16 +26,32 @@ type SearchRequest struct {
 	MatchColumn string `json:"-"`
 }
 
-// Search runs a typed search against req.From (an object type) through the
+// SearchClient is the typed client for the `/search` JSON query door (#1983,
+// #2169). It is a separate type from *Client because the untyped
+// [Client.Search] (query/objectType/opts, #670) already owns that method
+// name; this mirrors the Python/TS SDKs, which likewise expose the typed
+// door through a dedicated `SearchClient`, not a `Client` method.
+type SearchClient struct {
+	c *Client
+}
+
+// NewSearchClient constructs a SearchClient that backs onto the parent
+// client's auth, tenant, and purpose context.
+func NewSearchClient(c *Client) *SearchClient {
+	return &SearchClient{c: c}
+}
+
+// Query runs a typed search against req.From (an object type) through the
 // governed /search door and returns the governed query result. PURPOSE / ACL /
 // cell-masking / tenant isolation apply identically to a hand-written query —
 // no SQL is constructed on the client side.
 //
-//	result, err := client.Search(ctx, relata.SearchRequest{
+//	search := relata.NewSearchClient(client)
+//	result, err := search.Query(ctx, relata.SearchRequest{
 //	    From: "Document", Text: "fraud pattern", Limit: 20,
 //	    Filters: []relata.SearchFilter{{Field: "status", Op: "eq", Value: "open"}},
 //	})
-func (c *Client) Search(ctx context.Context, req SearchRequest) (*QueryResult, error) {
+func (s *SearchClient) Query(ctx context.Context, req SearchRequest) (*QueryResult, error) {
 	if req.Limit == 0 {
 		req.Limit = 20
 	}
@@ -62,7 +78,7 @@ func (c *Client) Search(ctx context.Context, req SearchRequest) (*QueryResult, e
 		body.RankBy = []any{"bm25", col, req.Text}
 	}
 	var qr QueryResult
-	if err := c.postJSON(ctx, "/search", body, &qr); err != nil {
+	if err := s.c.postJSON(ctx, "/search", body, &qr); err != nil {
 		return nil, err
 	}
 	return &qr, nil

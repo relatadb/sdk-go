@@ -151,3 +151,48 @@ func (v *VectorClient) query(ctx context.Context, sql, purpose string) (*QueryRe
 	}
 	return v.c.Query(ctx, sql, WithPurpose(eff))
 }
+
+// EmbedResponse is the body of POST /embed (#1172).
+type EmbedResponse struct {
+	Embedding []float64 `json:"embedding"`
+	Model     string    `json:"model"`
+	Dim       int       `json:"dim"`
+}
+
+// EmbedBatchResponse is the body of POST /embed/batch (#1172).
+type EmbedBatchResponse struct {
+	Embeddings [][]float64 `json:"embeddings"`
+	Model      string      `json:"model"`
+	Dim        int         `json:"dim"`
+	Count      int         `json:"count"`
+}
+
+// Embed embeds a single text string via POST /embed. Uses the server's
+// built-in CPU lexical embedder when no sidecar is configured, or the GPU
+// sidecar (RELATA_ACCEL_ENDPOINT) when set. model is an optional model hint
+// passed through to the server; pass "" to omit it.
+func (v *VectorClient) Embed(ctx context.Context, text, model string) (*EmbedResponse, error) {
+	body := map[string]any{"text": text}
+	if model != "" {
+		body["model"] = model
+	}
+	var out EmbedResponse
+	if err := v.c.postJSON(ctx, "/embed", body, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// EmbedBatch embeds multiple texts in one call via POST /embed/batch. model
+// is an optional model hint passed through to the server; pass "" to omit it.
+func (v *VectorClient) EmbedBatch(ctx context.Context, texts []string, model string) (*EmbedBatchResponse, error) {
+	body := map[string]any{"texts": texts}
+	if model != "" {
+		body["model"] = model
+	}
+	var out EmbedBatchResponse
+	if err := v.c.postJSON(ctx, "/embed/batch", body, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
