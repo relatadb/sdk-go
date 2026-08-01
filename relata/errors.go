@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 )
 
@@ -136,12 +137,71 @@ type problemShape struct {
 	RetryAfter json.Number `json:"retry_after"`
 }
 
+// isAdminOnlyPath reports whether path is mounted only on the loopbound admin
+// control-plane listener — see the identical helper in client.go
+// (relatadb/RelataDB#2321, ADR-0261).
+//
+// (Duplicated here rather than shared to keep errorFromStatus a pure,
+// dependency-free function usable from tests without a *Client.)
+func errorPathIsAdminOnly(path string) bool {
+	return strings.HasPrefix(path, "/admin/") || strings.HasPrefix(path, "/platform/")
+}
+
+// responseDetailIsBlank reports whether a non-2xx response body carries no
+// human-readable error text at all — the shape the server's own RFC 7807
+// normalisation (normalize_error_body, crates/relata-cli/src/serve.rs) leaves
+// behind for a request that never matched any route on the listener that
+// answered ({"type":"about:blank","status":404,"title":"Not Found",
+// "detail":""}), as opposed to a real business error, which always carries a
+// non-empty detail/error/message by convention across this codebase. Also
+// true for a genuinely empty/whitespace non-JSON body.
+func responseDetailIsBlank(contentType string, body []byte) bool {
+	if strings.Contains(contentType, "json") {
+		var v map[string]any
+		if err := json.Unmarshal(body, &v); err != nil {
+			return strings.TrimSpace(string(body)) == ""
+		}
+		blank := func(key string) bool {
+			s, ok := v[key].(string)
+			return !ok || strings.TrimSpace(s) == ""
+		}
+		return blank("detail") && blank("error") && blank("message")
+	}
+	return strings.TrimSpace(string(body)) == ""
+}
+
+// adminListenerHint builds the "you're probably pointed at the wrong port"
+// hint for a bare 404 against an admin/platform-only path (#2321).
+func adminListenerHint(path string) string {
+	return fmt.Sprintf(
+		"%s returned a bare 404 with no error detail. This route is served "+
+			"only by Relata's loopbound admin control-plane listener "+
+			"(RELATA_ADMIN_BIND, default 127.0.0.1:9091 per ADR-0261) — it is "+
+			"never mounted on the main data-plane listener, so a bare 404 here "+
+			"almost always means this client's BaseURL points at the "+
+			"data-plane port instead. Set ClientOptions.AdminBaseURL to point "+
+			"admin-only calls at the admin listener, or verify "+
+			"RELATA_ADMIN_BIND. See "+
+			"docs/src/decisions/0261-zero-trust-authorization-model.md.",
+		path,
+	)
+}
+
 // errorFromStatus maps an HTTP status code to the appropriate sentinel error
 // and constructs a RelataError. body is the raw response body text; it is
 // parsed as RFC 7807 problem+json when possible, otherwise the raw text is used
 // as the message. requestID is the X-Request-ID from the response headers;
-// retryAfter is the parsed Retry-After header value (zero if absent).
-func errorFromStatus(statusCode int, body []byte, requestID string, retryAfter time.Duration) *RelataError {
+// retryAfter is the parsed Retry-After header value (zero if absent). path is
+// the request path (used only to detect an admin/platform-listener-split
+// 404, #2321); contentType is the response's Content-Type header.
+func errorFromStatus(
+	statusCode int,
+	body []byte,
+	requestID string,
+	retryAfter time.Duration,
+	path string,
+	contentType string,
+) *RelataError {
 	var (
 		code      string
 		typeURL   string
@@ -151,7 +211,8 @@ func errorFromStatus(statusCode int, body []byte, requestID string, retryAfter t
 	)
 
 	var prob problemShape
-	if json.Unmarshal(body, &prob) == nil {
+	hasProblemShape := json.Unmarshal(body, &prob) == nil
+	if hasProblemShape {
 		code = prob.Code
 		typeURL = prob.Type
 		retryable = prob.Retryable
@@ -172,6 +233,16 @@ func errorFromStatus(statusCode int, body []byte, requestID string, retryAfter t
 				retryAfter = time.Duration(secs * float64(time.Second))
 			}
 		}
+	}
+
+	// #2321 (ADR-0261): a bare 404 with no detail text against an
+	// admin/platform-only path almost always means this client is pointed at
+	// the data-plane listener rather than the loopbound admin listener those
+	// routes are exclusively mounted on. A real business 404 always carries a
+	// non-empty detail/error/message by convention across this codebase, so
+	// this only fires on the router's own "no matching route" fallback.
+	if statusCode == 404 && errorPathIsAdminOnly(path) && responseDetailIsBlank(contentType, body) {
+		detail = adminListenerHint(path)
 	}
 	if detail == "" {
 		detail = string(body)

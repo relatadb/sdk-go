@@ -40,6 +40,7 @@ const (
 // A single Client may be shared across goroutines.
 type Client struct {
 	baseURL        string
+	adminBaseURL   string
 	bearerToken    string
 	defaultPurpose string
 	tenant         string
@@ -70,6 +71,7 @@ func New(baseURL string, opts *ClientOptions) *Client {
 
 	c.bearerToken = opts.BearerToken
 	c.defaultPurpose = opts.DefaultPurpose
+	c.adminBaseURL = strings.TrimRight(opts.AdminBaseURL, "/")
 	c.tenant = opts.Tenant
 	c.actingAs = opts.ActingAs
 	c.delegatedBy = opts.DelegatedBy
@@ -366,7 +368,7 @@ func (c *Client) UpsertTyped(ctx context.Context, objectType, pk string, obj any
 		return nil, err
 	}
 	if status < 200 || status >= 300 {
-		return nil, errorFromStatus(status, respBody, "", 0)
+		return nil, errorFromStatus(status, respBody, "", 0, "", "")
 	}
 	var resp map[string]any
 	if len(respBody) > 0 {
@@ -808,6 +810,25 @@ func (c *Client) IngestDocument(ctx context.Context, chunksJSONL, manifestJSON s
 // build absolute paths when they need to step outside the JSON helpers.
 func (c *Client) baseURLValue() string { return c.baseURL }
 
+// isAdminOnlyPath reports whether path is mounted only on the loopbound admin
+// control-plane listener (RELATA_ADMIN_BIND, default 127.0.0.1:9091) — never
+// the main data-plane listener baseURL usually targets. See ADR-0261 and
+// crates/relata-cli/src/serve/admin_listener.rs (relatadb/RelataDB#2321).
+func isAdminOnlyPath(path string) bool {
+	return strings.HasPrefix(path, "/admin/") || strings.HasPrefix(path, "/platform/")
+}
+
+// effectiveBaseURL resolves the base URL a request to path should target:
+// adminBaseURL for /admin/*|/platform/* when configured (ClientOptions.
+// AdminBaseURL, #2321), baseURL otherwise — unchanged behaviour when
+// AdminBaseURL is unset.
+func (c *Client) effectiveBaseURL(path string) string {
+	if c.adminBaseURL != "" && isAdminOnlyPath(path) {
+		return c.adminBaseURL
+	}
+	return c.baseURL
+}
+
 // httpClient returns the underlying *http.Client. Typed clients (e.g. the S3
 // door wrapper) use it for non-JSON or raw streaming requests.
 func (c *Client) httpClient() *http.Client { return c.http }
@@ -881,7 +902,7 @@ func (c *Client) postRaw(ctx context.Context, path, contentType string, body []b
 // retry on 502/503/504 + network errors, reads the body, classifies errors via
 // RFC 7807 problem+json, and decodes successful responses into out.
 func (c *Client) doRequest(ctx context.Context, method, path string, body []byte, contentType string, out any) error {
-	url := c.baseURL + path
+	url := c.effectiveBaseURL(path) + path
 
 	maxAttempts := c.maxRetries
 	if maxAttempts > defaultRetryMaxAttempts {
@@ -941,7 +962,7 @@ func (c *Client) doRequest(ctx context.Context, method, path string, body []byte
 		// Error status. Retry 502/503/504 if attempts remain AND method is idempotent.
 		rid := resp.Header.Get(headerRequestID)
 		retryAfter := parseRetryAfter(resp.Header.Get(headerRetryAfter))
-		rerr := errorFromStatus(resp.StatusCode, respBody, rid, retryAfter)
+		rerr := errorFromStatus(resp.StatusCode, respBody, rid, retryAfter, path, resp.Header.Get(headerContentType))
 		rerr.RateLimitLimit, rerr.RateLimitRemaining, rerr.RateLimitReset = readRateLimitHeaders(resp.Header)
 		if isRetryableStatus(resp.StatusCode) && attempt < maxAttempts && isIdempotent(method) {
 			lastErr = rerr
