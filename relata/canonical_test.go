@@ -21,7 +21,7 @@ type vecKind struct {
 func loadVectors(t *testing.T) map[string]vecKind {
 	t.Helper()
 	// The test runs with cwd = the package dir (sdks/go/relata).
-	path := filepath.Join("..", "shared", "canonical-vectors.json")
+	path := filepath.Join("..", "..", "shared", "canonical-vectors.json")
 	data, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("read shared vectors: %v", err)

@@ -291,7 +291,8 @@ Python `from_client` classmethod. Optional parameters use struct-pointer options
 | `relata.identity` | `NewIdentityClient` | Identity label/uncertainty + lookup tables + `ERASE SUBJECT` |
 | `relata.objects` | `NewObjectClient` | Typed upsert + batch via `/ingest?object_type=` (NDJSON) |
 | `relata.ingest` | `NewIngestClient` | Bulk NDJSON + CSV + media status |
-| `relata.vectors` | `NewVectorClient` | KNN + hybrid search + similar-to (SQL-backed) |
+| `relata.vectors` | `NewVectorClient` | KNN + hybrid search + similar-to (SQL-backed) + `Embed`/`EmbedBatch` (`POST /embed[/batch]`) |
+| `relata.search` (`SearchClient`) | `NewSearchClient` | Typed `POST /search` JSON query door (`rank_by`/`filters`) — separate from the untyped `Client.Search` |
 | `relata.s3` | `NewS3Client` | Native `net/http` wrapper for the S3 protocol door (`HTTP()`) |
 | `relata.system` | `NewSystemClient` | LLM config + test + jobs status |
 | `relata.streaming` | `NewStreamingClient` | NDJSON `RowIterator` + SSE `SSEIterator` + Arrow `BytesIterator` |

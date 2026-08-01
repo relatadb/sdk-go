@@ -683,3 +683,150 @@ func TestVectorClient_PurposeRequired(t *testing.T) {
 		t.Fatalf("err = %v, want ErrPurposeRequired", err)
 	}
 }
+
+func TestVectorClient_HybridSearch(t *testing.T) {
+	var gotSQL string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]any
+		b, _ := io.ReadAll(r.Body)
+		_ = json.Unmarshal(b, &body)
+		gotSQL, _ = body["sql"].(string)
+		fmt.Fprint(w, `{"rows":[],"query_id":"q1","elapsed_ms":1}`)
+	}))
+	defer srv.Close()
+
+	c := newTestClient(srv, &ClientOptions{DefaultPurpose: "analytics"})
+	v := NewVectorClient(c)
+	_, err := v.HybridSearch(context.Background(), "Document", "fraud", nil, "", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "SELECT * FROM HYBRID_SEARCH(from => 'Document', limit => 10, query_text => 'fraud')"
+	if gotSQL != want {
+		t.Fatalf("sql = %q, want %q", gotSQL, want)
+	}
+}
+
+func TestVectorClient_HybridSearch_RequiresTextOrEmbedding(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+	defer srv.Close()
+
+	c := newTestClient(srv, &ClientOptions{DefaultPurpose: "analytics"})
+	v := NewVectorClient(c)
+	_, err := v.HybridSearch(context.Background(), "Document", "", nil, "", nil)
+	if err == nil {
+		t.Fatal("expected error when neither query_text nor query_embedding is set")
+	}
+}
+
+func TestVectorClient_SimilarTo(t *testing.T) {
+	var gotSQL string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]any
+		b, _ := io.ReadAll(r.Body)
+		_ = json.Unmarshal(b, &body)
+		gotSQL, _ = body["sql"].(string)
+		fmt.Fprint(w, `{"rows":[],"query_id":"q1","elapsed_ms":1}`)
+	}))
+	defer srv.Close()
+
+	c := newTestClient(srv, &ClientOptions{DefaultPurpose: "analytics"})
+	v := NewVectorClient(c)
+	_, err := v.SimilarTo(context.Background(), "Document", "d-1", &SimilarToOptions{K: 3})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "SELECT * FROM SIMILAR TO Document WHERE id = 'd-1' LIMIT 3"
+	if gotSQL != want {
+		t.Fatalf("sql = %q, want %q", gotSQL, want)
+	}
+}
+
+func TestVectorClient_Embed(t *testing.T) {
+	var gotPath string
+	var gotBody map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		b, _ := io.ReadAll(r.Body)
+		_ = json.Unmarshal(b, &gotBody)
+		fmt.Fprint(w, `{"embedding":[0.1,0.2],"model":"lexical","dim":2}`)
+	}))
+	defer srv.Close()
+
+	c := newTestClient(srv, nil)
+	v := NewVectorClient(c)
+	resp, err := v.Embed(context.Background(), "Alice Smith", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gotPath != "/embed" {
+		t.Fatalf("path = %q, want /embed", gotPath)
+	}
+	if _, hasModel := gotBody["model"]; hasModel {
+		t.Fatalf("model should be omitted when empty, got body = %v", gotBody)
+	}
+	if resp.Dim != 2 || resp.Model != "lexical" || len(resp.Embedding) != 2 {
+		t.Fatalf("resp = %+v", resp)
+	}
+}
+
+func TestVectorClient_EmbedBatch(t *testing.T) {
+	var gotBody map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/embed/batch" {
+			t.Errorf("path = %q, want /embed/batch", r.URL.Path)
+		}
+		b, _ := io.ReadAll(r.Body)
+		_ = json.Unmarshal(b, &gotBody)
+		fmt.Fprint(w, `{"embeddings":[[0.1],[0.2]],"model":"lexical","dim":1,"count":2}`)
+	}))
+	defer srv.Close()
+
+	c := newTestClient(srv, nil)
+	v := NewVectorClient(c)
+	resp, err := v.EmbedBatch(context.Background(), []string{"Alice", "Bob"}, "lexical")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gotBody["model"] != "lexical" {
+		t.Fatalf("body = %v", gotBody)
+	}
+	if resp.Count != 2 || len(resp.Embeddings) != 2 {
+		t.Fatalf("resp = %+v", resp)
+	}
+}
+
+// ---- SearchClient (typed /search JSON query door, #1983/#2169) -------------
+
+func TestSearchClient_Query(t *testing.T) {
+	var gotBody map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		_ = json.Unmarshal(b, &gotBody)
+		fmt.Fprint(w, `{"rows":[{"id":"doc-1"}],"query_id":"q1","elapsed_ms":1}`)
+	}))
+	defer srv.Close()
+
+	c := newTestClient(srv, nil)
+	s := NewSearchClient(c)
+	result, err := s.Query(context.Background(), SearchRequest{
+		From: "Document",
+		Text: "fraud pattern",
+		Filters: []SearchFilter{
+			{Field: "status", Op: "eq", Value: "open"},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Rows) != 1 || result.Rows[0]["id"] != "doc-1" {
+		t.Fatalf("rows = %v", result.Rows)
+	}
+	if gotBody["from"] != "Document" {
+		t.Fatalf("body = %v", gotBody)
+	}
+	rankBy, _ := gotBody["rank_by"].([]any)
+	if len(rankBy) != 3 || rankBy[0] != "bm25" || rankBy[2] != "fraud pattern" {
+		t.Fatalf("rank_by = %v", gotBody["rank_by"])
+	}
+}
