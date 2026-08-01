@@ -634,3 +634,48 @@ func TestHawalaTrace_BuildsSQL(t *testing.T) {
 		t.Fatalf("sql = %v", got["sql"])
 	}
 }
+
+func TestResolveIdentity_ModeOmittedByDefault(t *testing.T) {
+	var got map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		_ = json.Unmarshal(b, &got)
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"query_id":"q1","elapsed_ms":1,"rows":[]}`)
+	}))
+	defer srv.Close()
+
+	c := newTestClient(srv, nil)
+	if _, err := c.ResolveIdentity(context.Background(), "analytics", "alice@example.com", ""); err != nil {
+		t.Fatalf("ResolveIdentity: %v", err)
+	}
+	if got["sql"] != "RESOLVE_IDENTITY('alice@example.com')" {
+		t.Fatalf("sql = %v", got["sql"])
+	}
+}
+
+func TestResolveIdentity_SupportsCanonicalAndFuseModes(t *testing.T) {
+	var got map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		_ = json.Unmarshal(b, &got)
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"query_id":"q1","elapsed_ms":1,"rows":[]}`)
+	}))
+	defer srv.Close()
+
+	c := newTestClient(srv, nil)
+	if _, err := c.ResolveIdentity(context.Background(), "analytics", "alice@example.com", "canonical"); err != nil {
+		t.Fatalf("ResolveIdentity: %v", err)
+	}
+	if got["sql"] != "RESOLVE_IDENTITY('alice@example.com', MODE => 'canonical')" {
+		t.Fatalf("sql = %v", got["sql"])
+	}
+
+	if _, err := c.ResolveIdentity(context.Background(), "analytics", "alice@example.com", "fuse"); err != nil {
+		t.Fatalf("ResolveIdentity: %v", err)
+	}
+	if got["sql"] != "RESOLVE_IDENTITY('alice@example.com', MODE => 'fuse')" {
+		t.Fatalf("sql = %v", got["sql"])
+	}
+}
