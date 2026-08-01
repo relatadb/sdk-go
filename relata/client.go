@@ -619,6 +619,50 @@ func (c *Client) Geofence(ctx context.Context, purpose, fence, targetType string
 	return c.query(ctx, purpose, sql)
 }
 
+// ── Maritime operators (#2247) ───────────────────────────────────────────────
+
+// VesselTrack tracks a vessel's AIS position reports over a time window.
+// windowSecs (when > 0) is converted to nanoseconds to match the server's
+// window_ns parameter; pass 0 for "all reported positions".
+func (c *Client) VesselTrack(ctx context.Context, purpose string, mmsi int64, windowSecs int64) (map[string]any, error) {
+	sql := fmt.Sprintf("VESSEL_TRACK(%d", mmsi)
+	if windowSecs > 0 {
+		sql += fmt.Sprintf(", WINDOW => %d", windowSecs*1_000_000_000)
+	}
+	sql += ")"
+	return c.query(ctx, purpose, sql)
+}
+
+// DarkFleetDetect flags vessels with AIS gaps (transponder-off "going dark"
+// periods). Pass maxGapHours <= 0 for the server default.
+func (c *Client) DarkFleetDetect(ctx context.Context, purpose string, maxGapHours float64) (map[string]any, error) {
+	var sql string
+	if maxGapHours > 0 {
+		sql = fmt.Sprintf("DARK_FLEET_DETECT(MAX_GAP_HOURS => %f)", maxGapHours)
+	} else {
+		sql = "DARK_FLEET_DETECT()"
+	}
+	return c.query(ctx, purpose, sql)
+}
+
+// VesselToVesselTransfer detects ship-to-ship transfers (close-proximity
+// vessel encounters). Pass proximityNm <= 0 and timeWindowMinutes <= 0 for the
+// server defaults.
+func (c *Client) VesselToVesselTransfer(ctx context.Context, purpose string, proximityNm float64, timeWindowMinutes int) (map[string]any, error) {
+	parts := []string{}
+	if proximityNm > 0 {
+		parts = append(parts, fmt.Sprintf("PROXIMITY_NM => %f", proximityNm))
+	}
+	if timeWindowMinutes > 0 {
+		parts = append(parts, fmt.Sprintf("TIME_WINDOW_MINUTES => %d", timeWindowMinutes))
+	}
+	sql := "VESSEL_TO_VESSEL_TRANSFER()"
+	if len(parts) > 0 {
+		sql = fmt.Sprintf("VESSEL_TO_VESSEL_TRANSFER(%s)", strings.Join(parts, ", "))
+	}
+	return c.query(ctx, purpose, sql)
+}
+
 // query is a helper that posts SQL to /query.
 func (c *Client) query(ctx context.Context, purpose, sql string) (map[string]any, error) {
 	var resp map[string]any
