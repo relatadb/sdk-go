@@ -622,6 +622,18 @@ func (c *Client) CryptoTrace(ctx context.Context, purpose, entity string) (map[s
 	return c.query(ctx, purpose, fmt.Sprintf("CRYPTO_TRACE('%s')", entity))
 }
 
+// WireReconstruction reconstructs a wire-transfer chain (FinINT, #2249).
+func (c *Client) WireReconstruction(ctx context.Context, purpose, account string, tolerancePct float64) (map[string]any, error) {
+	sql := fmt.Sprintf("WIRE_RECONSTRUCTION('%s', TOLERANCE_PCT => %f)", account, tolerancePct)
+	return c.query(ctx, purpose, sql)
+}
+
+// HawalaTrace traces an informal hawala value-transfer network (FinINT, #2249).
+func (c *Client) HawalaTrace(ctx context.Context, purpose, seed string, maxHops int) (map[string]any, error) {
+	sql := fmt.Sprintf("HAWALA_TRACE('%s', MAX_HOPS => %d)", seed, maxHops)
+	return c.query(ctx, purpose, sql)
+}
+
 // DnsTunnelDetect detects DNS tunneling.
 func (c *Client) DnsTunnelDetect(ctx context.Context, purpose, entity string) (map[string]any, error) {
 	return c.query(ctx, purpose, fmt.Sprintf("DNS_TUNNEL_DETECT('%s')", entity))

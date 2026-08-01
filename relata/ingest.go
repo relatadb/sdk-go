@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 )
 
 // IngestClient is the synchronous bulk-ingest client. It surfaces the server's
@@ -79,6 +80,123 @@ func (i *IngestClient) MediaStatus(ctx context.Context, taskID string) (map[stri
 		return nil, err
 	}
 	return resp, nil
+}
+
+// IngestCDR ingests CDR (call detail records) via POST /ingest/cdr (#2252).
+//
+// Each row is a map whose keys map to CDR fields (caller, callee, start,
+// duration, tower, type); common aliases like caller_msisdn/a_number are
+// accepted. Rows are serialised to the CSV shape the server's CdrBatch::from_csv
+// expects. Purpose is mandatory server-side — pass it via opts or the parent
+// client's default purpose.
+func (i *IngestClient) IngestCDR(ctx context.Context, rows []map[string]any, opts *BulkOptions) (map[string]any, error) {
+	body := rowsToCDRCSV(rows)
+	status, data, _, err := i.c.rawHTTPRequest(ctx, "POST", encodeGetURL("/ingest/cdr", i.purposeParams(opts)), []byte(body), "text/csv")
+	if err != nil {
+		return nil, err
+	}
+	if status < 200 || status >= 300 {
+		return nil, errorFromStatus(status, data, "", 0)
+	}
+	var resp map[string]any
+	if len(data) == 0 {
+		return resp, nil
+	}
+	if err := json.Unmarshal(data, &resp); err != nil {
+		return nil, fmt.Errorf("relata: decode response: %w", err)
+	}
+	return resp, nil
+}
+
+// OTLPTraces ingests an OTLP/JSON trace payload via POST /v1/traces (#2252).
+func (i *IngestClient) OTLPTraces(ctx context.Context, payload map[string]any, opts *BulkOptions) (map[string]any, error) {
+	return i.otlp(ctx, "/v1/traces", payload, opts)
+}
+
+// OTLPLogs ingests an OTLP/JSON log payload via POST /v1/logs (#2252).
+func (i *IngestClient) OTLPLogs(ctx context.Context, payload map[string]any, opts *BulkOptions) (map[string]any, error) {
+	return i.otlp(ctx, "/v1/logs", payload, opts)
+}
+
+// OTLPMetrics ingests an OTLP/JSON metric payload via POST /v1/metrics (#2252).
+func (i *IngestClient) OTLPMetrics(ctx context.Context, payload map[string]any, opts *BulkOptions) (map[string]any, error) {
+	return i.otlp(ctx, "/v1/metrics", payload, opts)
+}
+
+// effectivePurpose resolves a per-call purpose override against the parent default.
+func (i *IngestClient) effectivePurpose(opts *BulkOptions) string {
+	if opts != nil && opts.Purpose != "" {
+		return opts.Purpose
+	}
+	return i.purpose
+}
+
+// purposeParams builds the query-param map carrying only the effective purpose.
+func (i *IngestClient) purposeParams(opts *BulkOptions) map[string]string {
+	purpose := i.effectivePurpose(opts)
+	if purpose == "" {
+		return nil
+	}
+	return map[string]string{"purpose": purpose}
+}
+
+// otlp POSTs an OTLP/JSON payload to one of the /v1/{traces,logs,metrics} doors.
+func (i *IngestClient) otlp(ctx context.Context, path string, payload map[string]any, opts *BulkOptions) (map[string]any, error) {
+	var resp map[string]any
+	if err := i.c.postJSON(ctx, encodeGetURL(path, i.purposeParams(opts)), payload, &resp); err != nil {
+		return nil, err
+	}
+	return resp, nil
+}
+
+// ── CDR CSV serialisation (#2252) ─────────────────────────────────────────────
+
+// cdrAliases maps the canonical CDR column to its accepted aliases — mirrors
+// the server's CdrRecord::from_csv_row header recognition (case-insensitive).
+var cdrAliases = map[string][]string{
+	"caller":   {"caller", "caller_msisdn", "a_number", "a_msisdn"},
+	"callee":   {"callee", "callee_msisdn", "b_number", "b_msisdn", "called"},
+	"start":    {"start", "call_start", "start_time", "timestamp", "call_start_ns"},
+	"duration": {"duration", "duration_secs", "duration_seconds"},
+	"tower":    {"tower", "tower_id", "cell_id", "site", "cell"},
+	"type":     {"type", "call_type", "record_type"},
+}
+
+var cdrColumns = []string{"caller", "callee", "start", "duration", "tower", "type"}
+
+// cdrField renders a CDR cell value — the server parses CSV via naive split(',').
+func cdrField(value any) string {
+	if value == nil {
+		return ""
+	}
+	// Strip commas / CR / LF so a value can never break column alignment.
+	s := strings.ReplaceAll(fmt.Sprintf("%v", value), ",", "")
+	s = strings.ReplaceAll(s, "\r", " ")
+	s = strings.ReplaceAll(s, "\n", " ")
+	return s
+}
+
+// rowsToCDRCSV serialises typed CDR rows into the CSV shape POST /ingest/cdr
+// expects.
+func rowsToCDRCSV(rows []map[string]any) string {
+	var b strings.Builder
+	b.WriteString(strings.Join(cdrColumns, ","))
+	for _, row := range rows {
+		b.WriteByte('\n')
+		fields := make([]string, len(cdrColumns))
+		for i, col := range cdrColumns {
+			var val any
+			for _, key := range cdrAliases[col] {
+				if v, ok := row[key]; ok {
+					val = v
+					break
+				}
+			}
+			fields[i] = cdrField(val)
+		}
+		b.WriteString(strings.Join(fields, ","))
+	}
+	return b.String()
 }
 
 // postIngest sends a raw body to /ingest?object_type=… and decodes the receipt.
