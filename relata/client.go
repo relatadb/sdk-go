@@ -514,6 +514,25 @@ func (c *Client) IdentityCluster(ctx context.Context, purpose, value string) (ma
 	return c.query(ctx, purpose, sql)
 }
 
+// SameIdentity is a predicate: do two identifiers resolve to the same entity?
+// It executes `SAME_IDENTITY('<a>', '<b>')` via `POST /query` and decodes the
+// `match` verdict as a boolean (#2246).
+func (c *Client) SameIdentity(ctx context.Context, purpose, idA, idB string) (bool, error) {
+	sql := fmt.Sprintf("SAME_IDENTITY('%s', '%s')", strings.ReplaceAll(idA, "'", "''"), strings.ReplaceAll(idB, "'", "''"))
+	resp, err := c.query(ctx, purpose, sql)
+	if err != nil {
+		return false, err
+	}
+	if data, ok := resp["data"].([]any); ok && len(data) > 0 {
+		if row, ok := data[0].(map[string]any); ok {
+			if m, ok := row["match"].(bool); ok {
+				return m, nil
+			}
+		}
+	}
+	return false, nil
+}
+
 // FuseIdentities merges two identities — writes an IdentityLink with
 // link_type='fused' and returns the merged cluster (#967).
 func (c *Client) FuseIdentities(ctx context.Context, purpose, idA, idB string) (map[string]any, error) {
@@ -601,6 +620,18 @@ func (c *Client) BurnerDetect(ctx context.Context, purpose string, maxAgeDays in
 // CryptoTrace follows cryptocurrency fund flow.
 func (c *Client) CryptoTrace(ctx context.Context, purpose, entity string) (map[string]any, error) {
 	return c.query(ctx, purpose, fmt.Sprintf("CRYPTO_TRACE('%s')", entity))
+}
+
+// WireReconstruction reconstructs a wire-transfer chain (FinINT, #2249).
+func (c *Client) WireReconstruction(ctx context.Context, purpose, account string, tolerancePct float64) (map[string]any, error) {
+	sql := fmt.Sprintf("WIRE_RECONSTRUCTION('%s', TOLERANCE_PCT => %f)", account, tolerancePct)
+	return c.query(ctx, purpose, sql)
+}
+
+// HawalaTrace traces an informal hawala value-transfer network (FinINT, #2249).
+func (c *Client) HawalaTrace(ctx context.Context, purpose, seed string, maxHops int) (map[string]any, error) {
+	sql := fmt.Sprintf("HAWALA_TRACE('%s', MAX_HOPS => %d)", seed, maxHops)
+	return c.query(ctx, purpose, sql)
 }
 
 // DnsTunnelDetect detects DNS tunneling.
