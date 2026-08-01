@@ -380,8 +380,14 @@ func (c *Client) UpsertTyped(ctx context.Context, objectType, pk string, obj any
 // ── Identity resolution & entity lifecycle (#967) ───────────────────────────
 
 // ResolveIdentity resolves an identity value to all known objects/clusters.
-func (c *Client) ResolveIdentity(ctx context.Context, purpose, value string) (map[string]any, error) {
-	sql := fmt.Sprintf("RESOLVE_IDENTITY('%s')", strings.ReplaceAll(value, "'", "''"))
+// mode selects the resolution strategy ("canonical", "cluster", or "fuse");
+// pass "" to use the server default (cluster) — same as IdentityCluster.
+func (c *Client) ResolveIdentity(ctx context.Context, purpose, value, mode string) (map[string]any, error) {
+	escaped := strings.ReplaceAll(value, "'", "''")
+	sql := fmt.Sprintf("RESOLVE_IDENTITY('%s')", escaped)
+	if mode != "" {
+		sql = fmt.Sprintf("RESOLVE_IDENTITY('%s', MODE => '%s')", escaped, mode)
+	}
 	return c.query(ctx, purpose, sql)
 }
 
