@@ -3,6 +3,7 @@ package relata
 import (
 	"context"
 	"fmt"
+	"net/url"
 )
 
 // GovernanceClient is the synchronous governance surface — rules, retention
@@ -81,12 +82,43 @@ func (g *GovernanceClient) ListRules(ctx context.Context, objectType string) ([]
 	return unwrapList(resp, "rules"), nil
 }
 
+// CreateRuleOptions configures the optional fields of CreateRule.
+type CreateRuleOptions struct {
+	// Purpose overrides the client's DefaultPurpose for this call.
+	// The server rejects the request with 403 if neither is set.
+	Purpose string
+}
+
+// resolvePurpose returns the effective purpose (override, else the client's
+// DefaultPurpose), or ErrPurposeRequired if neither is set.
+func (g *GovernanceClient) resolvePurpose(override string) (string, error) {
+	if override != "" {
+		return override, nil
+	}
+	if g.c.defaultPurpose == "" {
+		return "", ErrPurposeRequired
+	}
+	return g.c.defaultPurpose, nil
+}
+
 // CreateRule creates a detection rule. The map shape matches the server's
 // RuleSpec (name, object_type, condition, action, …). Returns the created rule
 // record including its server-assigned id.
-func (g *GovernanceClient) CreateRule(ctx context.Context, rule map[string]any) (map[string]any, error) {
+//
+// purpose is mandatory server-side (POST /rules?purpose=<p>) — pass it via
+// opts.Purpose or set DefaultPurpose on the parent client.
+func (g *GovernanceClient) CreateRule(ctx context.Context, rule map[string]any, opts *CreateRuleOptions) (map[string]any, error) {
+	override := ""
+	if opts != nil {
+		override = opts.Purpose
+	}
+	purpose, err := g.resolvePurpose(override)
+	if err != nil {
+		return nil, err
+	}
 	var resp map[string]any
-	if err := g.c.postJSON(ctx, "/rules", rule, &resp); err != nil {
+	path := "/rules?purpose=" + url.QueryEscape(purpose)
+	if err := g.c.postJSON(ctx, path, rule, &resp); err != nil {
 		return nil, err
 	}
 	return resp, nil
@@ -101,11 +133,30 @@ func (g *GovernanceClient) DisableRule(ctx context.Context, ruleID string) (map[
 	return resp, nil
 }
 
+// ImportSigmaOptions configures the optional fields of ImportSigma.
+type ImportSigmaOptions struct {
+	// Purpose overrides the client's DefaultPurpose for this call.
+	// The server rejects the request with 403 if neither is set.
+	Purpose string
+}
+
 // ImportSigma imports a Sigma rule (YAML string). Returns the import summary
 // (rules_imported, rules_skipped, errors).
-func (g *GovernanceClient) ImportSigma(ctx context.Context, sigmaYAML string) (map[string]any, error) {
+//
+// The server (POST /rules/sigma?purpose=<p>) requires purpose as a query
+// param and the raw YAML text as the request body — not a JSON envelope.
+func (g *GovernanceClient) ImportSigma(ctx context.Context, sigmaYAML string, opts *ImportSigmaOptions) (map[string]any, error) {
+	override := ""
+	if opts != nil {
+		override = opts.Purpose
+	}
+	purpose, err := g.resolvePurpose(override)
+	if err != nil {
+		return nil, err
+	}
 	var resp map[string]any
-	if err := g.c.postJSON(ctx, "/rules/sigma", map[string]any{"sigma": sigmaYAML}, &resp); err != nil {
+	path := "/rules/sigma?purpose=" + url.QueryEscape(purpose)
+	if err := g.c.postRaw(ctx, path, "application/x-yaml", []byte(sigmaYAML), &resp); err != nil {
 		return nil, err
 	}
 	return resp, nil
@@ -120,10 +171,22 @@ func (g *GovernanceClient) SnoozeRule(ctx context.Context, ruleID string, durati
 	return resp, nil
 }
 
-// SuppressRule suppresses all future matches of pattern for a rule (#967).
-func (g *GovernanceClient) SuppressRule(ctx context.Context, ruleID, pattern string) (map[string]any, error) {
+// SuppressRuleOptions configures the optional fields of SuppressRule.
+type SuppressRuleOptions struct {
+	// Condition is an informational note about why entityID is suppressed.
+	Condition string
+}
+
+// SuppressRule permanently suppresses future matches of the rule for a
+// specific entity (#967). The server requires entity_id — a bare match
+// pattern is not accepted.
+func (g *GovernanceClient) SuppressRule(ctx context.Context, ruleID, entityID string, opts *SuppressRuleOptions) (map[string]any, error) {
+	body := map[string]any{"entity_id": entityID}
+	if opts != nil && opts.Condition != "" {
+		body["condition"] = opts.Condition
+	}
 	var resp map[string]any
-	if err := g.c.postJSON(ctx, "/rules/"+ruleID+"/suppress", map[string]any{"pattern": pattern}, &resp); err != nil {
+	if err := g.c.postJSON(ctx, "/rules/"+ruleID+"/suppress", body, &resp); err != nil {
 		return nil, err
 	}
 	return resp, nil

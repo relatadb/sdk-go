@@ -37,31 +37,97 @@ func TestGovernanceClient_ListRules(t *testing.T) {
 }
 
 func TestGovernanceClient_CreateRule(t *testing.T) {
-	var gotMethod, gotPath string
+	var gotMethod, gotPath, gotQuery string
 	var gotBody map[string]any
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotMethod = r.Method
 		gotPath = r.URL.Path
+		gotQuery = r.URL.RawQuery
 		b, _ := io.ReadAll(r.Body)
 		_ = json.Unmarshal(b, &gotBody)
 		fmt.Fprint(w, `{"id":"r1","name":"x"}`)
 	}))
 	defer srv.Close()
 
-	c := newTestClient(srv, nil)
+	c := newTestClient(srv, &ClientOptions{DefaultPurpose: "audit"})
 	g := NewGovernanceClient(c)
-	out, err := g.CreateRule(context.Background(), map[string]any{"name": "x", "object_type": "Person"})
+	out, err := g.CreateRule(context.Background(), map[string]any{"name": "x", "object_type": "Person"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if gotMethod != "POST" || gotPath != "/rules" {
-		t.Fatalf("method/path = %s %s", gotMethod, gotPath)
+	if gotMethod != "POST" || gotPath != "/rules" || gotQuery != "purpose=audit" {
+		t.Fatalf("method/path/query = %s %s %s", gotMethod, gotPath, gotQuery)
 	}
 	if gotBody["name"] != "x" {
 		t.Fatalf("body = %v", gotBody)
 	}
 	if out["id"] != "r1" {
 		t.Fatalf("out = %v", out)
+	}
+}
+
+func TestGovernanceClient_CreateRule_PurposeRequired(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+	defer srv.Close()
+
+	c := newTestClient(srv, nil) // no default purpose
+	g := NewGovernanceClient(c)
+	_, err := g.CreateRule(context.Background(), map[string]any{"name": "x"}, nil)
+	if !errors.Is(err, ErrPurposeRequired) {
+		t.Fatalf("err = %v, want ErrPurposeRequired", err)
+	}
+}
+
+func TestGovernanceClient_ImportSigma(t *testing.T) {
+	var gotPath, gotQuery, gotContentType, gotBody string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		gotQuery = r.URL.RawQuery
+		gotContentType = r.Header.Get("Content-Type")
+		b, _ := io.ReadAll(r.Body)
+		gotBody = string(b)
+		fmt.Fprint(w, `{"rules_imported":1,"rules_skipped":0,"errors":[]}`)
+	}))
+	defer srv.Close()
+
+	c := newTestClient(srv, &ClientOptions{DefaultPurpose: "audit"})
+	g := NewGovernanceClient(c)
+	yaml := "title: test\ndetection:\n  condition: selection\n"
+	out, err := g.ImportSigma(context.Background(), yaml, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gotPath != "/rules/sigma" || gotQuery != "purpose=audit" {
+		t.Fatalf("path/query = %s %s", gotPath, gotQuery)
+	}
+	if gotContentType != "application/x-yaml" {
+		t.Fatalf("content-type = %s", gotContentType)
+	}
+	if gotBody != yaml {
+		t.Fatalf("body = %q, want raw YAML %q", gotBody, yaml)
+	}
+	if out["rules_imported"] != float64(1) {
+		t.Fatalf("out = %v", out)
+	}
+}
+
+func TestGovernanceClient_SuppressRule(t *testing.T) {
+	var gotBody map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		_ = json.Unmarshal(b, &gotBody)
+		fmt.Fprint(w, `{"rule_id":"r1"}`)
+	}))
+	defer srv.Close()
+
+	c := newTestClient(srv, nil)
+	g := NewGovernanceClient(c)
+	_, err := g.SuppressRule(context.Background(), "r1", "entity-42", &SuppressRuleOptions{Condition: "known FP"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gotBody["entity_id"] != "entity-42" || gotBody["condition"] != "known FP" {
+		t.Fatalf("body = %v", gotBody)
 	}
 }
 
