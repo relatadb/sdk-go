@@ -591,3 +591,46 @@ func TestQuery_ProcessingTimeMs(t *testing.T) {
 		}
 	})
 }
+
+// #2249 — FinINT trace ops.
+
+func TestWireReconstruction_BuildsSQL(t *testing.T) {
+	var got map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		_ = json.Unmarshal(b, &got)
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"query_id":"q1","elapsed_ms":1,"rows":[]}`)
+	}))
+	defer srv.Close()
+
+	c := newTestClient(srv, nil)
+	if _, err := c.WireReconstruction(context.Background(), "finint", "ACC-007", 2.5); err != nil {
+		t.Fatalf("WireReconstruction: %v", err)
+	}
+	if got["purpose"] != "finint" {
+		t.Fatalf("purpose = %v", got["purpose"])
+	}
+	if got["sql"] != "WIRE_RECONSTRUCTION('ACC-007', TOLERANCE_PCT => 2.500000)" {
+		t.Fatalf("sql = %v", got["sql"])
+	}
+}
+
+func TestHawalaTrace_BuildsSQL(t *testing.T) {
+	var got map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		_ = json.Unmarshal(b, &got)
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"query_id":"q2","elapsed_ms":1,"rows":[]}`)
+	}))
+	defer srv.Close()
+
+	c := newTestClient(srv, &ClientOptions{DefaultPurpose: "analytics"})
+	if _, err := c.HawalaTrace(context.Background(), "analytics", "SEED-1", 7); err != nil {
+		t.Fatalf("HawalaTrace: %v", err)
+	}
+	if got["sql"] != "HAWALA_TRACE('SEED-1', MAX_HOPS => 7)" {
+		t.Fatalf("sql = %v", got["sql"])
+	}
+}
