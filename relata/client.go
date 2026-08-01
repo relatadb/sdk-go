@@ -560,9 +560,37 @@ func (c *Client) GraphDijkstra(ctx context.Context, purpose, objectType, from, t
 	return c.query(ctx, purpose, sql)
 }
 
-// GraphPageRank computes PageRank centrality.
-func (c *Client) GraphPageRank(ctx context.Context, purpose, objectType string, damping float64, maxIter int) (map[string]any, error) {
-	sql := fmt.Sprintf("GRAPH_PAGERANK('%s', DAMPING => %f, MAX_ITER => %d)", objectType, damping, maxIter)
+// GraphPageRankOptions configures the optional GraphPageRank tunables. The
+// server (`parse_graph_pagerank`) treats both as optional, defaulting DAMPING
+// to 0.85 and MAX_ITER to 20 when omitted — leave a field <= 0 (or pass nil)
+// to fall back to the server default instead of sending a literal 0 (#2319).
+type GraphPageRankOptions struct {
+	// Damping is the PageRank damping factor. <= 0 omits the clause (server
+	// default 0.85).
+	Damping float64
+	// MaxIter caps the iteration count. <= 0 omits the clause (server default
+	// 20).
+	MaxIter int
+}
+
+// GraphPageRank computes PageRank centrality. opts may be nil; DAMPING/MAX_ITER
+// are only appended to the SQL when explicitly set (#2319 — a Go caller who
+// left the zero value in a mandatory int/float arg used to silently send
+// "MAX_ITER => 0", not "use the default").
+func (c *Client) GraphPageRank(ctx context.Context, purpose, objectType string, opts *GraphPageRankOptions) (map[string]any, error) {
+	parts := []string{}
+	if opts != nil {
+		if opts.Damping > 0 {
+			parts = append(parts, fmt.Sprintf("DAMPING => %f", opts.Damping))
+		}
+		if opts.MaxIter > 0 {
+			parts = append(parts, fmt.Sprintf("MAX_ITER => %d", opts.MaxIter))
+		}
+	}
+	sql := fmt.Sprintf("GRAPH_PAGERANK('%s')", objectType)
+	if len(parts) > 0 {
+		sql = fmt.Sprintf("GRAPH_PAGERANK('%s', %s)", objectType, strings.Join(parts, ", "))
+	}
 	return c.query(ctx, purpose, sql)
 }
 
@@ -605,21 +633,92 @@ func (c *Client) BeneficialOwnershipChain(ctx context.Context, purpose, party st
 	return c.query(ctx, purpose, sql)
 }
 
-// SanctionsScreen screens against sanctions lists with fuzzy threshold.
-func (c *Client) SanctionsScreen(ctx context.Context, purpose, party string, threshold float64) (map[string]any, error) {
-	sql := fmt.Sprintf("SANCTIONS_SCREEN('%s', THRESHOLD => %f)", party, threshold)
+// SanctionsScreenOptions configures the optional SanctionsScreen tunables. The
+// server (`parse_sanctions_screen`) treats THRESHOLD as optional, defaulting
+// to 0.75 when omitted (#2319).
+type SanctionsScreenOptions struct {
+	// Threshold is the fuzzy-match threshold. <= 0 omits the clause (server
+	// default 0.75). Do not pass the Go zero value 0.0 expecting the default —
+	// it is a valid, maximally-permissive threshold and would be sent literally
+	// prior to this fix.
+	Threshold float64
+}
+
+// SanctionsScreen screens against sanctions lists with fuzzy threshold. opts
+// may be nil to use the server default threshold.
+func (c *Client) SanctionsScreen(ctx context.Context, purpose, party string, opts *SanctionsScreenOptions) (map[string]any, error) {
+	sql := fmt.Sprintf("SANCTIONS_SCREEN('%s')", party)
+	if opts != nil && opts.Threshold > 0 {
+		sql = fmt.Sprintf("SANCTIONS_SCREEN('%s', THRESHOLD => %f)", party, opts.Threshold)
+	}
 	return c.query(ctx, purpose, sql)
 }
 
-// ConvoyDetect finds entities traveling together.
-func (c *Client) ConvoyDetect(ctx context.Context, purpose string, radiusM float64, timeTolSecs int, minPoints int) (map[string]any, error) {
-	sql := fmt.Sprintf("CONVOY(RADIUS => %f, TIME_TOL => %d, MIN_POINTS => %d)", radiusM, timeTolSecs*1_000_000_000, minPoints)
+// ConvoyDetectOptions configures the optional CONVOY tunables. The server
+// treats RADIUS/TIME_TOL/MIN_POINTS as all optional, defaulting to 100.0
+// meters / 60 s / 2 points respectively (#2319).
+type ConvoyDetectOptions struct {
+	// RadiusM is the co-location radius in meters. <= 0 omits the clause
+	// (server default 100.0).
+	RadiusM float64
+	// TimeTolSecs is the time tolerance in seconds. <= 0 omits the clause
+	// (server default 60 s).
+	TimeTolSecs int
+	// MinPoints is the minimum convoy size. <= 0 omits the clause (server
+	// default 2).
+	MinPoints int
+}
+
+// ConvoyDetect finds entities traveling together. opts may be nil to use all
+// server defaults.
+func (c *Client) ConvoyDetect(ctx context.Context, purpose string, opts *ConvoyDetectOptions) (map[string]any, error) {
+	parts := []string{}
+	if opts != nil {
+		if opts.RadiusM > 0 {
+			parts = append(parts, fmt.Sprintf("RADIUS => %f", opts.RadiusM))
+		}
+		if opts.TimeTolSecs > 0 {
+			parts = append(parts, fmt.Sprintf("TIME_TOL => %d", int64(opts.TimeTolSecs)*1_000_000_000))
+		}
+		if opts.MinPoints > 0 {
+			parts = append(parts, fmt.Sprintf("MIN_POINTS => %d", opts.MinPoints))
+		}
+	}
+	sql := "CONVOY()"
+	if len(parts) > 0 {
+		sql = fmt.Sprintf("CONVOY(%s)", strings.Join(parts, ", "))
+	}
 	return c.query(ctx, purpose, sql)
 }
 
-// BurnerDetect detects burner phone patterns.
-func (c *Client) BurnerDetect(ctx context.Context, purpose string, maxAgeDays int, maxCalls int) (map[string]any, error) {
-	sql := fmt.Sprintf("BURNER_DETECT(MAX_AGE => %d, MAX_CALLS => %d)", maxAgeDays*86_400_000_000_000, maxCalls)
+// BurnerDetectOptions configures the optional BURNER_DETECT tunables. The
+// server treats MAX_AGE/MAX_CALLS as both optional, defaulting to 7 days / 10
+// calls respectively (#2319).
+type BurnerDetectOptions struct {
+	// MaxAgeDays is the burner-window lookback in days. <= 0 omits the clause
+	// (server default 7 days).
+	MaxAgeDays int
+	// MaxCalls is the call-count ceiling. <= 0 omits the clause (server
+	// default 10).
+	MaxCalls int
+}
+
+// BurnerDetect detects burner phone patterns. opts may be nil to use all
+// server defaults.
+func (c *Client) BurnerDetect(ctx context.Context, purpose string, opts *BurnerDetectOptions) (map[string]any, error) {
+	parts := []string{}
+	if opts != nil {
+		if opts.MaxAgeDays > 0 {
+			parts = append(parts, fmt.Sprintf("MAX_AGE => %d", int64(opts.MaxAgeDays)*86_400_000_000_000))
+		}
+		if opts.MaxCalls > 0 {
+			parts = append(parts, fmt.Sprintf("MAX_CALLS => %d", opts.MaxCalls))
+		}
+	}
+	sql := "BURNER_DETECT()"
+	if len(parts) > 0 {
+		sql = fmt.Sprintf("BURNER_DETECT(%s)", strings.Join(parts, ", "))
+	}
 	return c.query(ctx, purpose, sql)
 }
 
@@ -634,9 +733,21 @@ func (c *Client) WireReconstruction(ctx context.Context, purpose, account string
 	return c.query(ctx, purpose, sql)
 }
 
+// HawalaTraceOptions configures the optional HawalaTrace tunable. The server
+// (`parse_hawala_trace`) treats MAX_HOPS as optional, defaulting to 6 when
+// omitted (#2319).
+type HawalaTraceOptions struct {
+	// MaxHops caps the trace depth. <= 0 omits the clause (server default 6).
+	MaxHops int
+}
+
 // HawalaTrace traces an informal hawala value-transfer network (FinINT, #2249).
-func (c *Client) HawalaTrace(ctx context.Context, purpose, seed string, maxHops int) (map[string]any, error) {
-	sql := fmt.Sprintf("HAWALA_TRACE('%s', MAX_HOPS => %d)", seed, maxHops)
+// opts may be nil to use the server default MAX_HOPS.
+func (c *Client) HawalaTrace(ctx context.Context, purpose, seed string, opts *HawalaTraceOptions) (map[string]any, error) {
+	sql := fmt.Sprintf("HAWALA_TRACE('%s')", seed)
+	if opts != nil && opts.MaxHops > 0 {
+		sql = fmt.Sprintf("HAWALA_TRACE('%s', MAX_HOPS => %d)", seed, opts.MaxHops)
+	}
 	return c.query(ctx, purpose, sql)
 }
 

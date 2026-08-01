@@ -52,7 +52,7 @@ func main() {
 
 	// ── 2. Centrality ─────────────────────────────────────────────────────
 	fmt.Println("\n=== 2. GRAPH_PAGERANK: centrality (damping=0.85, 20 iter) ===")
-	centrality, err := client.GraphPageRank(ctx, "investigation", objectType, 0.85, 20)
+	centrality, err := client.GraphPageRank(ctx, "investigation", objectType, &relata.GraphPageRankOptions{Damping: 0.85, MaxIter: 20})
 	printRows("centrality", centrality, err, []string{"node_id", "score"})
 
 	// ── 3. SCC (fraud rings) ───────────────────────────────────────────────

@@ -44,7 +44,7 @@ func main() {
 
 	// ── 1. Sanctions screening ────────────────────────────────────────────
 	fmt.Printf("=== 1. SANCTIONS_SCREEN: %s (threshold=0.85) ===\n", *target)
-	hits, err := client.SanctionsScreen(ctx, "investigation", *target, 0.85)
+	hits, err := client.SanctionsScreen(ctx, "investigation", *target, &relata.SanctionsScreenOptions{Threshold: 0.85})
 	if err != nil {
 		fmt.Printf("  error: %v\n", err)
 		hits = map[string]any{}
@@ -100,7 +100,7 @@ func main() {
 
 	// ── 4. Convoy detection ───────────────────────────────────────────────
 	fmt.Println("\n=== 4. CONVOY_DETECT: radius=200m, time_tol=300s, min_points=2 ===")
-	convoys, err := client.ConvoyDetect(ctx, "investigation", 200.0, 300, 2)
+	convoys, err := client.ConvoyDetect(ctx, "investigation", &relata.ConvoyDetectOptions{RadiusM: 200.0, TimeTolSecs: 300, MinPoints: 2})
 	if err != nil {
 		fmt.Printf("  error: %v\n", err)
 		convoys = map[string]any{}
