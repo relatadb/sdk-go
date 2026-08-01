@@ -382,6 +382,18 @@ type ClientOptions struct {
 	// RetryBackoff is the base delay for the exponential retry backoff. The
 	// delay for attempt N is RetryBackoff * 2^N. Defaults to 500ms if zero.
 	RetryBackoff time.Duration
+
+	// AdminBaseURL points /admin/* and /platform/* requests at the loopbound
+	// admin control-plane listener (RELATA_ADMIN_BIND, default
+	// 127.0.0.1:9091 — ADR-0261) instead of BaseURL (relatadb/RelataDB#2321).
+	// Per ADR-0261 v1, those routes are mounted ONLY on that listener, never
+	// the main data-plane listener BaseURL usually targets, so a hardened
+	// server/cluster deployment needs this set for BackupClient/
+	// TenantAdminClient's platform-tenant methods to reach them at all.
+	// Leave empty (the default) when the admin listener isn't split from the
+	// data plane (e.g. local/free-profile dev) — every request then goes to
+	// BaseURL exactly as before this option existed.
+	AdminBaseURL string
 }
 
 // MemoryOptions configures the standalone Memory client.

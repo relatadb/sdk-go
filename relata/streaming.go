@@ -386,7 +386,7 @@ func (c *Client) openStream(ctx context.Context, method, path string, body []byt
 	if body != nil {
 		bodyReader = bytes.NewReader(body)
 	}
-	req, err := http.NewRequestWithContext(ctx, method, c.baseURL+path, bodyReader)
+	req, err := http.NewRequestWithContext(ctx, method, c.effectiveBaseURL(path)+path, bodyReader)
 	if err != nil {
 		return nil, fmt.Errorf("relata: build request: %w", err)
 	}
@@ -403,7 +403,7 @@ func (c *Client) openStream(ctx context.Context, method, path string, body []byt
 		data, _ := io.ReadAll(resp.Body)
 		rid := resp.Header.Get(headerRequestID)
 		retryAfter := parseRetryAfter(resp.Header.Get(headerRetryAfter))
-		rerr := errorFromStatus(resp.StatusCode, data, rid, retryAfter)
+		rerr := errorFromStatus(resp.StatusCode, data, rid, retryAfter, path, resp.Header.Get(headerContentType))
 		rerr.RateLimitLimit, rerr.RateLimitRemaining, rerr.RateLimitReset = readRateLimitHeaders(resp.Header)
 		return nil, rerr
 	}

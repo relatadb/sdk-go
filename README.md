@@ -301,6 +301,17 @@ Python `from_client` classmethod. Optional parameters use struct-pointer options
 | `relata.tokens` | `NewTokenClient` | Dedup / uniqueness tokens (test-and-set, check, revoke, stats) |
 | `relata.log` | `NewLogClient` | Ordered integrity log (append, head, load leaves) |
 
+**Admin-listener reachability (`ClientOptions.AdminBaseURL`, #2321):** on a
+hardened `server`/`cluster` deployment, `/admin/*` and `/platform/*` are
+mounted only on the loopbound admin control-plane listener
+(`RELATA_ADMIN_BIND`, default `127.0.0.1:9091` — ADR-0261), never the main
+data-plane `BaseURL`. Set `AdminBaseURL` when constructing the `Client` so
+`NewBackupClient`/`NewTenantAdminClient`'s platform-tenant methods reach
+those routes. Leave it unset (the default) on the free profile, where the
+admin listener isn't split from the data plane. A bare 404 from an
+admin/platform-only route with no error detail is rewritten into a hint
+pointing at this option instead of a confusing plain 404.
+
 ### Example — typed client chain
 
 ```go

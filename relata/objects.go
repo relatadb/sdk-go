@@ -82,7 +82,7 @@ func (o *ObjectClient) postIngest(ctx context.Context, objectType, body, content
 		return nil, err
 	}
 	if status < 200 || status >= 300 {
-		return nil, errorFromStatus(status, data, "", 0)
+		return nil, errorFromStatus(status, data, "", 0, "", "")
 	}
 	var resp map[string]any
 	if len(data) == 0 {

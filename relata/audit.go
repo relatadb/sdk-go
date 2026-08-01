@@ -126,7 +126,7 @@ func (a *AuditClient) ExportPDF(ctx context.Context, caseID, template string) ([
 	if status < 200 || status >= 300 {
 		rid := ""
 		retryAfter := parseRetryAfter("")
-		return nil, errorFromStatus(status, data, rid, retryAfter)
+		return nil, errorFromStatus(status, data, rid, retryAfter, "", "")
 	}
 	return data, nil
 }

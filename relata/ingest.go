@@ -96,7 +96,7 @@ func (i *IngestClient) IngestCDR(ctx context.Context, rows []map[string]any, opt
 		return nil, err
 	}
 	if status < 200 || status >= 300 {
-		return nil, errorFromStatus(status, data, "", 0)
+		return nil, errorFromStatus(status, data, "", 0, "", "")
 	}
 	var resp map[string]any
 	if len(data) == 0 {
@@ -214,7 +214,7 @@ func (i *IngestClient) postIngest(ctx context.Context, objectType, body, content
 		return nil, err
 	}
 	if status < 200 || status >= 300 {
-		return nil, errorFromStatus(status, data, "", 0)
+		return nil, errorFromStatus(status, data, "", 0, "", "")
 	}
 	var resp map[string]any
 	if len(data) == 0 {
