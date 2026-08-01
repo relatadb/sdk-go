@@ -3,6 +3,7 @@ package relata
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -16,6 +17,7 @@ import (
 	"github.com/apache/arrow/go/v15/arrow/ipc"
 	"github.com/apache/arrow/go/v15/arrow/memory"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
 )
@@ -38,7 +40,9 @@ func FlightTicket(sql, purpose string) string {
 }
 
 // ResolveFlightEndpoint derives the Arrow Flight gRPC endpoint from baseURL
-// (grpc://<host>:8815 by default) unless flightEndpoint overrides it.
+// (grpc://<host>:8815 by default) unless flightEndpoint overrides it. Pass an
+// explicit grpcs://host:port (or tls://host:port) endpoint to request a
+// TLS-protected Flight connection — see isSecureFlightEndpoint (#2362).
 func ResolveFlightEndpoint(baseURL, flightEndpoint string) string {
 	if flightEndpoint != "" {
 		return flightEndpoint
@@ -48,6 +52,41 @@ func ResolveFlightEndpoint(baseURL, flightEndpoint string) string {
 		host = parsed.Hostname()
 	}
 	return "grpc://" + host + ":" + DefaultFlightPort
+}
+
+// isSecureFlightEndpoint reports whether endpoint requests a TLS-protected
+// Arrow Flight connection (#2362). The `grpcs://` / `tls://` schemes select
+// TLS; `grpc://` (and the legacy bare `http://` form `ResolveFlightEndpoint`
+// used to be the only option) remain plaintext — mirroring the scheme-driven
+// convention the endpoint string already follows.
+func isSecureFlightEndpoint(endpoint string) bool {
+	return strings.HasPrefix(endpoint, "grpcs://") || strings.HasPrefix(endpoint, "tls://")
+}
+
+// stripFlightScheme removes endpoint's scheme prefix (grpc://, grpcs://,
+// tls://, http://), leaving the bare host:port grpc.NewClient's target wants.
+func stripFlightScheme(endpoint string) string {
+	for _, prefix := range []string{"grpcs://", "grpc://", "tls://", "http://"} {
+		if strings.HasPrefix(endpoint, prefix) {
+			return strings.TrimPrefix(endpoint, prefix)
+		}
+	}
+	return endpoint
+}
+
+// flightTransportCredentials selects the gRPC transport credentials for a
+// Flight endpoint (#2362): TLS, verified against the system root CA pool,
+// for `grpcs://`/`tls://` endpoints; plaintext otherwise. Prior to this fix
+// queryFlightDoGet hardcoded insecure.NewCredentials() unconditionally, so
+// the Flight bearer token traveled in cleartext on every connection —
+// including ones deliberately widened off loopback via RELATA_FLIGHT_BIND.
+func flightTransportCredentials(endpoint string) credentials.TransportCredentials {
+	if isSecureFlightEndpoint(endpoint) {
+		//nolint:gosec // MinVersion is set explicitly below; server cert is
+		// verified against the system root CA pool (no InsecureSkipVerify).
+		return credentials.NewTLS(&tls.Config{MinVersion: tls.VersionTLS12})
+	}
+	return insecure.NewCredentials()
 }
 
 // QueryFlight executes sql against the server's Arrow Flight door (do_get) and
@@ -81,11 +120,16 @@ func (c *Client) QueryFlight(
 // queryFlightDoGet opens a gRPC Flight client, sends DoGet with the ticket, and
 // decodes the FlightData stream into an arrow.Table by reconstructing the IPC
 // streaming framing (each FlightData carries one IPC Message header + body).
+//
+// #2362: the transport is TLS-protected whenever endpoint uses the
+// `grpcs://`/`tls://` scheme (see flightTransportCredentials) — required
+// because the bearer token below travels as cleartext gRPC metadata over
+// whatever transport is selected here.
 func queryFlightDoGet(ctx context.Context, endpoint, ticketSQL, bearer string) (arrow.Table, error) {
-	target := strings.TrimPrefix(strings.TrimPrefix(endpoint, "grpc://"), "http://")
+	target := stripFlightScheme(endpoint)
 	conn, err := grpc.NewClient(
 		target,
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithTransportCredentials(flightTransportCredentials(endpoint)),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("relata flight: dial %s: %w", endpoint, err)
