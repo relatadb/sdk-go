@@ -30,7 +30,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/relatadb/sdk-go/relata"
+	"github.com/relatadb/sdk-go/v2/relata"
 )
 
 func main() {
