@@ -15,12 +15,17 @@ type SearchFilter struct {
 // rank_by=["bm25", MatchColumn, Text]); RankBy overrides Text with an explicit
 // directive (["bm25"|"text", column, query] or ["vector","ann", query]).
 type SearchRequest struct {
-	From              string         `json:"from"`
-	RankBy            []any          `json:"rank_by,omitempty"`
-	Filters           []SearchFilter `json:"filters,omitempty"`
-	IncludeAttributes []string       `json:"include_attributes,omitempty"`
-	Consistency       string         `json:"consistency,omitempty"`
-	Limit             int            `json:"limit,omitempty"`
+	From              string            `json:"from"`
+	RankBy            []any             `json:"rank_by,omitempty"`
+	Filters           []SearchFilter    `json:"filters,omitempty"`
+	IncludeAttributes []string          `json:"include_attributes,omitempty"`
+	Consistency       string            `json:"consistency,omitempty"`
+	Limit             int               `json:"limit,omitempty"`
+	// ComputeAttributes carries side-output ranking signals per hit,
+	// label -> expr (e.g. {"bm25_score": "BM25()"}) — compiles to a trailing
+	// COMPUTE clause (#1985 T3, #2465). Purely additive: never affects which
+	// rows match or their order.
+	ComputeAttributes map[string]string `json:"compute_attributes,omitempty"`
 	// BM25 shorthand — set Text (and optionally MatchColumn) instead of RankBy.
 	Text        string `json:"-"`
 	MatchColumn string `json:"-"`
@@ -56,12 +61,13 @@ func (s *SearchClient) Query(ctx context.Context, req SearchRequest) (*QueryResu
 		req.Limit = 20
 	}
 	body := struct {
-		From              string         `json:"from"`
-		RankBy            []any          `json:"rank_by,omitempty"`
-		Filters           []SearchFilter `json:"filters,omitempty"`
-		IncludeAttributes []string       `json:"include_attributes,omitempty"`
-		Consistency       string         `json:"consistency,omitempty"`
-		Limit             int            `json:"limit"`
+		From              string            `json:"from"`
+		RankBy            []any             `json:"rank_by,omitempty"`
+		Filters           []SearchFilter    `json:"filters,omitempty"`
+		IncludeAttributes []string          `json:"include_attributes,omitempty"`
+		Consistency       string            `json:"consistency,omitempty"`
+		Limit             int               `json:"limit"`
+		ComputeAttributes map[string]string `json:"compute_attributes,omitempty"`
 	}{
 		From:              req.From,
 		RankBy:            req.RankBy,
@@ -69,6 +75,7 @@ func (s *SearchClient) Query(ctx context.Context, req SearchRequest) (*QueryResu
 		IncludeAttributes: req.IncludeAttributes,
 		Consistency:       req.Consistency,
 		Limit:             req.Limit,
+		ComputeAttributes: req.ComputeAttributes,
 	}
 	if len(body.RankBy) == 0 && req.Text != "" {
 		col := req.MatchColumn

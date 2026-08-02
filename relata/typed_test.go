@@ -896,3 +896,28 @@ func TestSearchClient_Query(t *testing.T) {
 		t.Fatalf("rank_by = %v", gotBody["rank_by"])
 	}
 }
+
+func TestSearchClient_Query_ComputeAttributes(t *testing.T) {
+	var gotBody map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		_ = json.Unmarshal(b, &gotBody)
+		fmt.Fprint(w, `{"rows":[{"id":"doc-1"}],"query_id":"q1","elapsed_ms":1}`)
+	}))
+	defer srv.Close()
+
+	c := newTestClient(srv, nil)
+	s := NewSearchClient(c)
+	_, err := s.Query(context.Background(), SearchRequest{
+		From:              "Document",
+		Text:              "fraud pattern",
+		ComputeAttributes: map[string]string{"bm25_score": "BM25()"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	computeAttrs, _ := gotBody["compute_attributes"].(map[string]any)
+	if computeAttrs["bm25_score"] != "BM25()" {
+		t.Fatalf("compute_attributes = %v", gotBody["compute_attributes"])
+	}
+}
