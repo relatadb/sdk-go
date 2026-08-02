@@ -172,6 +172,34 @@ func TestMemory_Associate(t *testing.T) {
 	}
 }
 
+func TestMemory_Resolve(t *testing.T) {
+	var gotMethod, gotPath, gotQuery string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotMethod = r.Method
+		gotPath = r.URL.Path
+		gotQuery = r.URL.RawQuery
+		inner := `{"resolved_id":"mem-10"}`
+		fmt.Fprintf(w, `{"content":[{"type":"text","text":%s}],"isError":false}`, strconvQuote(inner))
+	}))
+	defer srv.Close()
+
+	m, _ := NewMemory(srv.URL, "agent-notes", nil)
+	out, err := m.Resolve(context.Background(), "mem-9")
+	if err != nil {
+		t.Fatalf("Resolve: %v", err)
+	}
+	// The server route is GET-only (#2675) — a POST body/policy param 405s.
+	if gotMethod != "GET" || gotPath != "/memory/resolve/mem-9" {
+		t.Fatalf("method/path = %s %s", gotMethod, gotPath)
+	}
+	if !contains(gotQuery, "purpose=agent-notes") {
+		t.Fatalf("query = %q, want purpose=agent-notes", gotQuery)
+	}
+	if out["resolved_id"] != "mem-10" {
+		t.Fatalf("resolved_id = %v", out)
+	}
+}
+
 // strconvQuote is a tiny helper kept to avoid pulling "strconv" into the test
 // file header when only one call site needs it.
 func strconvQuote(s string) string {

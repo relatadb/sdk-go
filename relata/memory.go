@@ -39,7 +39,6 @@ type memoryCall struct {
 	sessionID   string
 	topK        int
 	asOf        string
-	policy      string
 	summary     string
 }
 
@@ -68,12 +67,6 @@ func WithTopK(k int) MemoryOption {
 // WithAsOf makes a Search/Episodes lookup bi-temporal at the given timestamp.
 func WithAsOf(ts string) MemoryOption {
 	return func(cfg *memoryCall) { cfg.asOf = ts }
-}
-
-// WithPolicy selects the resolver policy on Resolve ("latest_wins",
-// "highest_confidence", "manual"). Defaults to "latest_wins".
-func WithPolicy(p string) MemoryOption {
-	return func(cfg *memoryCall) { cfg.policy = p }
 }
 
 // WithSummaryContent lets the caller supply the summary text on Summarise.
@@ -266,19 +259,13 @@ func (m *Memory) Justify(ctx context.Context, memoryID string) (map[string]any, 
 	return unwrapMCP(resp), nil
 }
 
-// Resolve resolves a contradiction between memoryID and a newer belief. The
-// policy selects the resolver ("latest_wins" / "highest_confidence" / "manual").
-// Returns the resolution record.
-func (m *Memory) Resolve(ctx context.Context, memoryID string, opts ...MemoryOption) (map[string]any, error) {
-	cfg := applyMemoryOpts(opts, 1.0, "semantic")
-	policy := orDefault(cfg.policy, "latest_wins")
-	payload := map[string]any{
-		"policy":  policy,
-		"purpose": m.purpose,
-	}
-	path := fmt.Sprintf("/memory/resolve/%s", url.PathEscape(memoryID))
+// Resolve resolves memoryID's supersession chain to its canonical head.
+// Wraps GET /memory/resolve/:id; the server route is GET-only and does not
+// read a policy field (#2675).
+func (m *Memory) Resolve(ctx context.Context, memoryID string) (map[string]any, error) {
+	path := fmt.Sprintf("/memory/resolve/%s?purpose=%s", url.PathEscape(memoryID), url.QueryEscape(m.purpose))
 	var resp map[string]any
-	if err := m.c.postJSON(ctx, path, payload, &resp); err != nil {
+	if err := m.c.get(ctx, path, &resp); err != nil {
 		return nil, err
 	}
 	return unwrapMCP(resp), nil

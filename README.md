@@ -267,11 +267,11 @@ m, err := relata.NewMemory(url, "agent-notes", &relata.MemoryOptions{
 | `Associate(ctx, src, tgt, rel, opts...)` | `(map[string]any, error)` | Link two memories |
 | `Episodes(ctx, opts...)` | `([]map[string]any, error)` | List episodes |
 | `Justify(ctx, id)` | `(map[string]any, error)` | PROV-O derivation chain |
-| `Resolve(ctx, id, opts...)` | `(map[string]any, error)` | Resolve a contradiction |
+| `Resolve(ctx, id)` | `(map[string]any, error)` | Resolve a supersession chain to its canonical head |
 | `Summarise(ctx, ids, opts...)` | `(map[string]any, error)` | Produce a summary belief |
 
 Per-call options use functional setters: `WithTopK`, `WithConfidence`,
-`WithMemoryClass`, `WithSessionID`, `WithAsOf`, `WithPolicy`, `WithSummaryContent`.
+`WithMemoryClass`, `WithSessionID`, `WithAsOf`, `WithSummaryContent`.
 `Forget` is a governed retention-policy retract, **not** a hard delete — it returns the
 policy decision (`memory_item_id`, `policy`, `forget_at_ns`).
 
