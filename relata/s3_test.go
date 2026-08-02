@@ -2,7 +2,6 @@ package relata
 
 import (
 	"context"
-	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"

@@ -1,17 +1,20 @@
-// Command hybrid_search demonstrates BM25 + vector fusion via
-// VectorClient.HybridSearch (#2678).
+// Command hybrid_search demonstrates BM25 + vector search via
+// VectorClient.HybridSearch and VectorClient.KNNSearch (#2678).
 //
 // HYBRID_SEARCH is the operator that makes Relata more than "yet another
-// vector DB" or "yet another BM25 engine": supply queryText (BM25 leg),
-// queryEmbedding (vector leg), or both — when both are present the server
-// fuses the two rankings via reciprocal rank fusion (ADR-175).
+// vector DB" or "yet another BM25 engine": the server embeds queryText
+// itself and fuses the BM25 + vector rankings via reciprocal rank fusion
+// (ADR-175) — the /query SQL surface has no caller-supplied-embedding
+// grammar, so HybridSearch only accepts queryText (see HybridSearch's doc
+// comment in relata/vectors.go).
 //
 // This walkthrough embeds a few short texts (POST /embed, #1172), ingests
 // them into a Document type with the embedding pre-computed in the
 // _emb_text slot (the caller-supplied convention, see
-// docs/src/end-users/search.md), then runs HybridSearch three ways —
-// BM25-only, vector-only, and fused — so the effect of fusion is visible
-// side by side.
+// docs/src/end-users/search.md), then runs three searches side by side:
+// BM25-only via HybridSearch, vector-only via KNNSearch against the
+// pre-computed _emb_text slot, and BM25+vector fusion via HybridSearch with
+// RERANK + METRIC options.
 //
 // Usage:
 //
@@ -96,10 +99,10 @@ func main() {
 	}
 	fmt.Printf("  wrote %d rows with pre-computed _emb_text embeddings\n", len(rows))
 
-	// ── 2. BM25-only leg (queryText, no embedding) ───────────────────────────
-	fmt.Println("\n=== 2. BM25-only: queryText=\"graph retrieval\" ===")
+	// ── 2. BM25-only leg via HybridSearch ────────────────────────────────────
+	fmt.Println("\n=== 2. BM25-only: HybridSearch queryText=\"graph retrieval\" ===")
 	hits, err := vectors.HybridSearch(
-		ctx, "Document", "graph retrieval", nil, "", &relata.HybridSearchOptions{K: 5},
+		ctx, "Document", "graph retrieval", &relata.HybridSearchOptions{K: 5},
 	)
 	if err != nil {
 		fmt.Printf("  error: %v\n", err)
@@ -107,32 +110,27 @@ func main() {
 	}
 	printHits(hits)
 
-	// ── 3. Vector-only leg (queryEmbedding, no text) ─────────────────────────
-	fmt.Println("\n=== 3. Vector-only: nearest neighbour to doc-2's embedding ===")
+	// ── 3. Vector-only leg via KNNSearch against the pre-computed slot ───────
+	fmt.Println("\n=== 3. Vector-only: KNNSearch nearest neighbour to doc-2's embedding ===")
 	probe, err := vectors.Embed(ctx, "approximate nearest neighbour search", "")
 	if err != nil {
 		fmt.Printf("  embed error: %v\n", err)
 		return
 	}
-	hits, err = vectors.HybridSearch(
-		ctx, "Document", "", probe.Embedding, "_emb_text", &relata.HybridSearchOptions{K: 5},
-	)
+	hits, err = vectors.KNNSearch(ctx, "Document", "_emb_text", probe.Embedding, 5, nil)
 	if err != nil {
 		fmt.Printf("  error: %v\n", err)
 		return
 	}
 	printHits(hits)
 
-	// ── 4. Fused: both legs — reciprocal rank fusion (ADR-175) ───────────────
-	fmt.Println("\n=== 4. Fused: queryText + queryEmbedding together ===")
-	fused, err := vectors.Embed(ctx, "graph retrieval with vectors", "")
-	if err != nil {
-		fmt.Printf("  embed error: %v\n", err)
-		return
-	}
+	// ── 4. Fused: BM25 + vector via HybridSearch's RERANK/METRIC options ────
+	// (ADR-175). The server, not the caller, supplies the vector leg's
+	// embedding — HybridSearch has no caller-supplied-embedding grammar.
+	fmt.Println("\n=== 4. Fused: HybridSearch with RERANK + METRIC ===")
 	hits, err = vectors.HybridSearch(
-		ctx, "Document", "graph retrieval", fused.Embedding, "_emb_text",
-		&relata.HybridSearchOptions{K: 5},
+		ctx, "Document", "graph retrieval",
+		&relata.HybridSearchOptions{K: 5, Rerank: true, Metric: "cosine"},
 	)
 	if err != nil {
 		fmt.Printf("  error: %v\n", err)

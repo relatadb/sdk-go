@@ -126,11 +126,24 @@ func (c *Client) QueryFlight(
 // because the bearer token below travels as cleartext gRPC metadata over
 // whatever transport is selected here.
 func queryFlightDoGet(ctx context.Context, endpoint, ticketSQL, bearer string) (arrow.Table, error) {
+	return queryFlightDoGetWithDialOpts(ctx, endpoint, ticketSQL, bearer)
+}
+
+// queryFlightDoGetWithDialOpts is queryFlightDoGet's testable seam (#2758):
+// extraDialOpts are appended after the transport-credentials option, letting
+// a test inject grpc.WithContextDialer(bufconn.Listener.DialContext) to run
+// the real dial → DoGet → IPC-reconstruction path in-process against a fake
+// Arrow Flight gRPC service (google.golang.org/grpc/test/bufconn), with no
+// live server required. Production callers (queryFlightDoGet, and therefore
+// Client.QueryFlight) never pass extraDialOpts, so this is purely additive —
+// the real dial path is unaffected.
+func queryFlightDoGetWithDialOpts(ctx context.Context, endpoint, ticketSQL, bearer string, extraDialOpts ...grpc.DialOption) (arrow.Table, error) {
 	target := stripFlightScheme(endpoint)
-	conn, err := grpc.NewClient(
-		target,
-		grpc.WithTransportCredentials(flightTransportCredentials(endpoint)),
+	dialOpts := append(
+		[]grpc.DialOption{grpc.WithTransportCredentials(flightTransportCredentials(endpoint))},
+		extraDialOpts...,
 	)
+	conn, err := grpc.NewClient(target, dialOpts...)
 	if err != nil {
 		return nil, fmt.Errorf("relata flight: dial %s: %w", endpoint, err)
 	}
