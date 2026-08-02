@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"strings"
 )
 
 // VectorClient is the synchronous typed vector / hybrid-search client. The
@@ -43,6 +42,14 @@ type HybridSearchOptions struct {
 	Purpose string
 	// K caps the result count (default 10).
 	K int
+	// Rerank re-scores the top-K via the sidecar cross-encoder (#611).
+	Rerank bool
+	// Metric is the distance metric for the vector channel (#1330), e.g.
+	// "cosine", "l2", "dotproduct". Empty leaves the server default.
+	Metric string
+	// Weights optionally overrides per-query fusion weights [graph, bm25,
+	// vector] (#1338). Nil leaves the server's default fusion.
+	Weights *[3]float64
 }
 
 // SimilarToOptions configures SimilarTo.
@@ -79,38 +86,53 @@ func (v *VectorClient) KNNSearch(ctx context.Context, objectType, embeddingSlot 
 	return result.Rows, nil
 }
 
-// HybridSearch performs a hybrid BM25 + vector search via the HYBRID_SEARCH
-// operator. At least one of queryText or queryEmbedding (with embeddingSlot)
-// must be supplied; when both are supplied the server fuses via reciprocal rank
-// fusion (ADR-175).
-func (v *VectorClient) HybridSearch(ctx context.Context, objectType string, queryText string, queryEmbedding []float64, embeddingSlot string, opts *HybridSearchOptions) ([]map[string]any, error) {
-	if queryText == "" && len(queryEmbedding) == 0 {
-		return nil, fmt.Errorf("relata: hybrid_search requires query_text or query_embedding")
+// buildHybridSearchSQL assembles the HYBRID_SEARCH FROM ... QUERY ... LIMIT ...
+// statement the server's parser accepts (relata_query::parser), with optional
+// RERANK / METRIC / WEIGHTS trailing clauses. The previous
+// "SELECT * FROM HYBRID_SEARCH(from => …)" TVF shape was never accepted by the
+// server (named args aren't a real grammar). Mirrors the TypeScript
+// buildHybridSearchSql / Python _hybrid_search_sql helpers.
+func buildHybridSearchSQL(objectType, queryText string, k int, rerank bool, metric string, weights *[3]float64) string {
+	if k <= 0 {
+		k = 10
 	}
-	k := 10
-	purpose := ""
+	sql := fmt.Sprintf("HYBRID_SEARCH FROM %s QUERY '%s' LIMIT %d",
+		objectType, escapeSingleQuotes(queryText), k)
+	if rerank {
+		sql += " RERANK"
+	}
+	if metric != "" {
+		sql += fmt.Sprintf(" METRIC %s", metric)
+	}
+	if weights != nil {
+		sql += fmt.Sprintf(" WEIGHTS %v %v %v", weights[0], weights[1], weights[2])
+	}
+	return sql
+}
+
+// HybridSearch performs a hybrid BM25 + vector search via the HYBRID_SEARCH
+// operator. Executes "HYBRID_SEARCH FROM <type> QUERY '<text>' LIMIT <k>"
+// through the governed /query door so PURPOSE / ACL / cell-masking / tenant
+// isolation apply identically to a hand-written query. The server embeds
+// queryText server-side; caller-supplied embeddings are NOT accepted by the
+// /query SQL surface (no vector-literal grammar — use Embed() for text→vector
+// instead).
+func (v *VectorClient) HybridSearch(ctx context.Context, objectType, queryText string, opts *HybridSearchOptions) ([]map[string]any, error) {
+	if queryText == "" {
+		return nil, fmt.Errorf("relata: hybrid_search requires query_text")
+	}
+	k, purpose, rerank, metric := 10, "", false, ""
+	var weights *[3]float64
 	if opts != nil {
 		if opts.K > 0 {
 			k = opts.K
 		}
 		purpose = opts.Purpose
+		rerank = opts.Rerank
+		metric = opts.Metric
+		weights = opts.Weights
 	}
-	args := []string{
-		fmt.Sprintf("from => '%s'", objectType),
-		fmt.Sprintf("limit => %d", k),
-	}
-	if queryText != "" {
-		args = append(args, fmt.Sprintf("query_text => '%s'", escapeSingleQuotes(queryText)))
-	}
-	if len(queryEmbedding) > 0 && embeddingSlot != "" {
-		embStr, err := json.Marshal(queryEmbedding)
-		if err != nil {
-			return nil, fmt.Errorf("relata: encode embedding: %w", err)
-		}
-		args = append(args, fmt.Sprintf("query_embedding => '%s'", escapeSingleQuotes(string(embStr))))
-		args = append(args, fmt.Sprintf("embedding_slot => '%s'", embeddingSlot))
-	}
-	sql := fmt.Sprintf("SELECT * FROM HYBRID_SEARCH(%s)", strings.Join(args, ", "))
+	sql := buildHybridSearchSQL(objectType, queryText, k, rerank, metric, weights)
 	result, err := v.query(ctx, sql, purpose)
 	if err != nil {
 		return nil, err

@@ -763,11 +763,37 @@ func TestVectorClient_HybridSearch(t *testing.T) {
 
 	c := newTestClient(srv, &ClientOptions{DefaultPurpose: "analytics"})
 	v := NewVectorClient(c)
-	_, err := v.HybridSearch(context.Background(), "Document", "fraud", nil, "", nil)
+	_, err := v.HybridSearch(context.Background(), "Document", "fraud", &HybridSearchOptions{K: 10})
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := "SELECT * FROM HYBRID_SEARCH(from => 'Document', limit => 10, query_text => 'fraud')"
+	want := "HYBRID_SEARCH FROM Document QUERY 'fraud' LIMIT 10"
+	if gotSQL != want {
+		t.Fatalf("sql = %q, want %q", gotSQL, want)
+	}
+}
+
+func TestVectorClient_HybridSearch_TuningClauses(t *testing.T) {
+	var gotSQL string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]any
+		b, _ := io.ReadAll(r.Body)
+		_ = json.Unmarshal(b, &body)
+		gotSQL, _ = body["sql"].(string)
+		fmt.Fprint(w, `{"rows":[],"query_id":"q1","elapsed_ms":1}`)
+	}))
+	defer srv.Close()
+
+	c := newTestClient(srv, &ClientOptions{DefaultPurpose: "research"})
+	v := NewVectorClient(c)
+	w := [3]float64{0.3, 0.5, 0.2}
+	_, err := v.HybridSearch(context.Background(), "Document", "o'reilly", &HybridSearchOptions{
+		K: 5, Rerank: true, Metric: "cosine", Weights: &w,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "HYBRID_SEARCH FROM Document QUERY 'o''reilly' LIMIT 5 RERANK METRIC cosine WEIGHTS 0.3 0.5 0.2"
 	if gotSQL != want {
 		t.Fatalf("sql = %q, want %q", gotSQL, want)
 	}
@@ -779,9 +805,9 @@ func TestVectorClient_HybridSearch_RequiresTextOrEmbedding(t *testing.T) {
 
 	c := newTestClient(srv, &ClientOptions{DefaultPurpose: "analytics"})
 	v := NewVectorClient(c)
-	_, err := v.HybridSearch(context.Background(), "Document", "", nil, "", nil)
+	_, err := v.HybridSearch(context.Background(), "Document", "", nil)
 	if err == nil {
-		t.Fatal("expected error when neither query_text nor query_embedding is set")
+		t.Fatal("expected error when query_text is empty")
 	}
 }
 
