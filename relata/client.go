@@ -305,6 +305,35 @@ func (c *Client) TypeDetail(ctx context.Context, name string) (map[string]any, e
 	return resp, nil
 }
 
+// SchemaAlterOptions configures an online schema evolution (#1307).
+type SchemaAlterOptions struct {
+	NewColumn string // rename target (action == "rename")
+	ColType   string // new column type (action == "add" | "retype")
+	Optional  *bool  // nullability override
+}
+
+// SchemaAlter applies online schema evolution via PATCH /types/:name/schema
+// (#1307). action is "add" | "drop" | "rename" | "retype"; column is the target.
+func (c *Client) SchemaAlter(ctx context.Context, name, action, column string, opts *SchemaAlterOptions) (map[string]any, error) {
+	body := map[string]any{"action": action, "column": column}
+	if opts != nil {
+		if opts.NewColumn != "" {
+			body["new_column"] = opts.NewColumn
+		}
+		if opts.ColType != "" {
+			body["col_type"] = opts.ColType
+		}
+		if opts.Optional != nil {
+			body["optional"] = *opts.Optional
+		}
+	}
+	var resp map[string]any
+	if err := c.patchJSON(ctx, "/types/"+name+"/schema", body, &resp); err != nil {
+		return nil, err
+	}
+	return resp, nil
+}
+
 // OntologyMigrate applies a SHACL schema migration.
 func (c *Client) OntologyMigrate(ctx context.Context, schema map[string]any) (map[string]any, error) {
 	var resp map[string]any
@@ -561,6 +590,58 @@ func (c *Client) GraphDijkstra(ctx context.Context, purpose, objectType, from, t
 	sql := fmt.Sprintf("GRAPH_DIJKSTRA('%s', FROM => '%s', TO => '%s')", objectType, from, to)
 	return c.query(ctx, purpose, sql)
 }
+
+// GraphShortestPathOptions configures the governed GET /graph/shortest-path door.
+type GraphShortestPathOptions struct {
+	// MaxHops caps the path length. <= 0 omits the param (server default).
+	MaxHops int
+}
+
+// GraphShortestPath finds the shortest path via the governed GET /graph/shortest-path
+// HTTP door (#2344). Unlike GraphDijkstra (a SQL operator), it exposes MaxHops.
+func (c *Client) GraphShortestPath(ctx context.Context, from, to string, opts *GraphShortestPathOptions) (map[string]any, error) {
+	params := map[string]string{"from": from, "to": to}
+	if opts != nil && opts.MaxHops > 0 {
+		params["max_hops"] = strconv.Itoa(opts.MaxHops)
+	}
+	var resp map[string]any
+	if err := c.get(ctx, encodeGetURL("/graph/shortest-path", params), &resp); err != nil {
+		return nil, err
+	}
+	return resp, nil
+}
+
+// GraphTraverseOptions configures the governed GET /graph/traverse door.
+type GraphTraverseOptions struct {
+	// Direction: "out" | "in" | "both" ("" = server default out).
+	Direction string
+	// MaxDepth caps the BFS depth. <= 0 omits the param.
+	MaxDepth int
+	// Limit caps the number of visited nodes. <= 0 omits the param.
+	Limit int
+}
+
+// GraphTraverse runs a breadth-first traversal via GET /graph/traverse.
+func (c *Client) GraphTraverse(ctx context.Context, from string, opts *GraphTraverseOptions) (map[string]any, error) {
+	params := map[string]string{"from": from}
+	if opts != nil {
+		if opts.Direction != "" {
+			params["direction"] = opts.Direction
+		}
+		if opts.MaxDepth > 0 {
+			params["max_depth"] = strconv.Itoa(opts.MaxDepth)
+		}
+		if opts.Limit > 0 {
+			params["limit"] = strconv.Itoa(opts.Limit)
+		}
+	}
+	var resp map[string]any
+	if err := c.get(ctx, encodeGetURL("/graph/traverse", params), &resp); err != nil {
+		return nil, err
+	}
+	return resp, nil
+}
+
 
 // GraphPageRankOptions configures the optional GraphPageRank tunables. The
 // server (`parse_graph_pagerank`) treats both as optional, defaulting DAMPING
