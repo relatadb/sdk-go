@@ -70,6 +70,62 @@ func TestMcpClient_Recognize_SendsID(t *testing.T) {
 	}
 }
 
+func TestMcpClient_Recall_SendsADR145RetrievalQualityParams(t *testing.T) {
+	// #2674: CONFIDENCE/RECENCY/BUDGET/FORGETTING_CURVE/CANCEL_WHEN must be
+	// reachable from the low-level MCP Recall wrapper, not just Memory.Search.
+	mcp, gotBody := mcpCapture(t)
+	minConf := 0.5
+	halfLife := 1800.0
+	budget := uint64(256)
+	stability := 14.0
+	cancel := 0.99
+	_, err := mcp.Recall(context.Background(), "hello", "x", &RecallOptions{
+		MinConfidence:       &minConf,
+		RecencyHalfLifeSecs: &halfLife,
+		BudgetTokens:        &budget,
+		StabilityDays:       &stability,
+		CancelThreshold:     &cancel,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if (*gotBody)["name"] != "recall" {
+		t.Fatalf("name = %v", (*gotBody)["name"])
+	}
+	args := argsOf(t, gotBody)
+	if args["min_confidence"] != 0.5 {
+		t.Fatalf("min_confidence = %v", args["min_confidence"])
+	}
+	if args["recency_half_life_secs"] != 1800.0 {
+		t.Fatalf("recency_half_life_secs = %v", args["recency_half_life_secs"])
+	}
+	if args["budget_tokens"] != float64(256) {
+		t.Fatalf("budget_tokens = %v", args["budget_tokens"])
+	}
+	if args["stability_days"] != 14.0 {
+		t.Fatalf("stability_days = %v", args["stability_days"])
+	}
+	if args["cancel_threshold"] != 0.99 {
+		t.Fatalf("cancel_threshold = %v", args["cancel_threshold"])
+	}
+}
+
+func TestMcpClient_Recall_OmitsADR145ParamsWhenUnset(t *testing.T) {
+	mcp, gotBody := mcpCapture(t)
+	if _, err := mcp.Recall(context.Background(), "hello", "x", nil); err != nil {
+		t.Fatal(err)
+	}
+	args := argsOf(t, gotBody)
+	for _, key := range []string{
+		"min_confidence", "recency_half_life_secs", "budget_tokens",
+		"stability_days", "cancel_threshold",
+	} {
+		if _, ok := args[key]; ok {
+			t.Fatalf("unexpected %s in args: %v", key, args)
+		}
+	}
+}
+
 func TestMcpClient_EpisodesIn_SendsSessionIDAndLimit(t *testing.T) {
 	mcp, gotBody := mcpCapture(t)
 	if _, err := mcp.EpisodesIn(context.Background(), "sess-1", &EpisodesInOptions{Limit: 5}); err != nil {

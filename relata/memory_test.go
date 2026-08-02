@@ -85,6 +85,87 @@ func TestMemory_Search(t *testing.T) {
 	}
 }
 
+func TestMemory_Search_SendsADR145RetrievalQualityParams(t *testing.T) {
+	// #2674: CONFIDENCE/RECENCY/BUDGET/FORGETTING_CURVE/CANCEL_WHEN must be
+	// reachable as MemoryOptions on Search, not just top_k/session_id/as_of.
+	var gotQuery string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotQuery = r.URL.RawQuery
+		inner := `{"rows":[]}`
+		fmt.Fprintf(w, `{"content":[{"type":"text","text":%s}],"isError":false}`, strconvQuote(inner))
+	}))
+	defer srv.Close()
+
+	m, _ := NewMemory(srv.URL, "agent-notes", nil)
+	_, err := m.Search(context.Background(), "ui prefs",
+		WithMinConfidence(0.6),
+		WithRecencyHalfLife(3600),
+		WithBudgetTokens(500),
+		WithStabilityDays(7),
+		WithCancelThreshold(0.95),
+	)
+	if err != nil {
+		t.Fatalf("Search: %v", err)
+	}
+	for _, want := range []string{
+		"min_confidence=0.6", "recency_half_life_secs=3600", "budget_tokens=500",
+		"stability_days=7", "cancel_threshold=0.95",
+	} {
+		if !contains(gotQuery, want) {
+			t.Fatalf("query = %q, want %q", gotQuery, want)
+		}
+	}
+}
+
+func TestMemory_Search_OmitsADR145ParamsWhenUnset(t *testing.T) {
+	var gotQuery string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotQuery = r.URL.RawQuery
+		inner := `{"rows":[]}`
+		fmt.Fprintf(w, `{"content":[{"type":"text","text":%s}],"isError":false}`, strconvQuote(inner))
+	}))
+	defer srv.Close()
+
+	m, _ := NewMemory(srv.URL, "agent-notes", nil)
+	if _, err := m.Search(context.Background(), "ui prefs"); err != nil {
+		t.Fatalf("Search: %v", err)
+	}
+	for _, unwanted := range []string{
+		"min_confidence", "recency_half_life_secs", "budget_tokens",
+		"stability_days", "cancel_threshold",
+	} {
+		if contains(gotQuery, unwanted) {
+			t.Fatalf("query = %q, unexpected %q", gotQuery, unwanted)
+		}
+	}
+}
+
+func TestMemory_SearchDetailed_SurfacesRecallCostTokensAndCancelled(t *testing.T) {
+	// #2674: the read-only BUDGET/CANCEL_WHEN response fields must be
+	// observable, not just settable.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		inner := `{"rows":[{"id":"mem-1"}],"recall_cost_tokens":42,"cancelled":true}`
+		fmt.Fprintf(w, `{"content":[{"type":"text","text":%s}],"isError":false}`, strconvQuote(inner))
+	}))
+	defer srv.Close()
+
+	m, _ := NewMemory(srv.URL, "agent-notes", nil)
+	result, err := m.SearchDetailed(context.Background(), "ui prefs",
+		WithBudgetTokens(50), WithCancelThreshold(0.9))
+	if err != nil {
+		t.Fatalf("SearchDetailed: %v", err)
+	}
+	if result.RecallCostTokens != 42 {
+		t.Fatalf("RecallCostTokens = %d", result.RecallCostTokens)
+	}
+	if !result.Cancelled {
+		t.Fatal("Cancelled = false, want true")
+	}
+	if len(result.Rows) != 1 || result.Rows[0]["id"] != "mem-1" {
+		t.Fatalf("Rows = %v", result.Rows)
+	}
+}
+
 func TestMemory_Forget(t *testing.T) {
 	var gotMethod, gotPath string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

@@ -107,9 +107,25 @@ type RememberOptions struct {
 }
 
 // RecallOptions configures the MCP Recall tool.
+//
+// The five pointer fields are the ADR-145 retrieval-quality operators
+// (MinConfidence = CONFIDENCE, RecencyHalfLifeSecs = RECENCY, BudgetTokens =
+// BUDGET, StabilityDays = FORGETTING_CURVE, CancelThreshold = CANCEL_WHEN).
+// Pointers so "unset" (let the server default) is distinguishable from a
+// meaningful zero value; nil is omitted from the tool call.
 type RecallOptions struct {
 	// TopK caps the response. Defaults to 5.
 	TopK int
+	// MinConfidence filters results to confidence >= *MinConfidence.
+	MinConfidence *float64
+	// RecencyHalfLifeSecs applies exponential score decay with this half-life.
+	RecencyHalfLifeSecs *float64
+	// BudgetTokens stops result emission once cumulative token cost exceeds it.
+	BudgetTokens *uint64
+	// StabilityDays is the Ebbinghaus forgetting-curve stability parameter.
+	StabilityDays *float64
+	// CancelThreshold short-circuits the scan once a hit exceeds it.
+	CancelThreshold *float64
 }
 
 // Initialize sends the MCP initialize handshake.
@@ -326,13 +342,34 @@ func (m *McpClient) Remember(ctx context.Context, content, purpose string, opts 
 	})
 }
 
-// Recall is the "recall" MCP tool.
+// Recall is the "recall" MCP tool. See RecallOptions for the ADR-145
+// retrieval-quality operators (#2674). The returned envelope carries the
+// read-only recall_cost_tokens/cancelled fields once unwrapped (unwrapMCP).
 func (m *McpClient) Recall(ctx context.Context, query, purpose string, opts *RecallOptions) (map[string]any, error) {
 	topK := 5
-	if opts != nil && opts.TopK > 0 {
-		topK = opts.TopK
+	args := map[string]any{"query": query, "purpose": purpose}
+	if opts != nil {
+		if opts.TopK > 0 {
+			topK = opts.TopK
+		}
+		if opts.MinConfidence != nil {
+			args["min_confidence"] = *opts.MinConfidence
+		}
+		if opts.RecencyHalfLifeSecs != nil {
+			args["recency_half_life_secs"] = *opts.RecencyHalfLifeSecs
+		}
+		if opts.BudgetTokens != nil {
+			args["budget_tokens"] = *opts.BudgetTokens
+		}
+		if opts.StabilityDays != nil {
+			args["stability_days"] = *opts.StabilityDays
+		}
+		if opts.CancelThreshold != nil {
+			args["cancel_threshold"] = *opts.CancelThreshold
+		}
 	}
-	return m.CallTool(ctx, "recall", map[string]any{"query": query, "purpose": purpose, "top_k": topK})
+	args["top_k"] = topK
+	return m.CallTool(ctx, "recall", args)
 }
 
 // ---------------------------------------------------------------------------

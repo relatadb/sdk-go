@@ -289,6 +289,7 @@ m, err := relata.NewMemory(url, "agent-notes", &relata.MemoryOptions{
 | `Add(ctx, content, opts...)` | `(string, error)` | Store a memory → id |
 | `AddBatch(ctx, items, opts...)` | `([]string, error)` | Batch store → ids in order |
 | `Search(ctx, query, opts...)` | `([]map[string]any, error)` | Recall (confidence × recency × relevance) |
+| `SearchDetailed(ctx, query, opts...)` | `(RecallResult, error)` | Like `Search` but returns the full envelope, incl. read-only `RecallCostTokens`/`Cancelled` |
 | `Get(ctx, id)` | `(map[string]any, error)` | Fetch one memory (nil if absent) |
 | `Update(ctx, id, content)` | `(string, error)` | Supersede → new id |
 | `Forget(ctx, id)` | `(map[string]any, error)` | Governed retention-policy retract |
@@ -302,6 +303,16 @@ Per-call options use functional setters: `WithTopK`, `WithConfidence`,
 `WithMemoryClass`, `WithSessionID`, `WithAsOf`, `WithSummaryContent`.
 `Forget` is a governed retention-policy retract, **not** a hard delete — it returns the
 policy decision (`memory_item_id`, `policy`, `forget_at_ns`).
+
+`Search`/`SearchDetailed` also take the ADR-145 retrieval-quality operators
+(#2674) as `MemoryOption`s: `WithMinConfidence`, `WithRecencyHalfLife`,
+`WithBudgetTokens`, `WithStabilityDays`, `WithCancelThreshold`. Example:
+
+```go
+result, err := m.SearchDetailed(ctx, "ui preferences",
+    relata.WithMinConfidence(0.5), relata.WithBudgetTokens(200))
+// result.RecallCostTokens / result.Cancelled surface BUDGET / CANCEL_WHEN effects.
+```
 
 ## v1.1 typed clients — `New<Type>FromClient`
 

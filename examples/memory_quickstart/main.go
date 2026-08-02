@@ -57,6 +57,16 @@ func main() {
 		}
 	}
 
+	// ── 2b. searchDetailed — ADR-145 BUDGET + CONFIDENCE ───────────────────
+	fmt.Println("\n=== 2b. searchDetailed — bounded by token budget + min confidence ===")
+	detailed, err := mem.SearchDetailed(ctx, "UI preferences",
+		relata.WithTopK(3), relata.WithMinConfidence(0.5), relata.WithBudgetTokens(200))
+	if err != nil {
+		fmt.Printf("  searchDetailed: %v\n", err)
+	} else {
+		fmt.Printf("  recall_cost_tokens=%d cancelled=%v\n", detailed.RecallCostTokens, detailed.Cancelled)
+	}
+
 	// ── 3. get — fetch a specific memory by id ────────────────────────────
 	fmt.Printf("\n=== 3. get('%s') ===\n", id1)
 	one, err := mem.Get(ctx, id1)

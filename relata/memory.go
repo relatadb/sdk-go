@@ -40,6 +40,15 @@ type memoryCall struct {
 	topK        int
 	asOf        string
 	summary     string
+
+	// ADR-145 retrieval-quality operators (#2674). Pointers so "unset" (send
+	// nothing, let the server default) is distinguishable from a meaningful
+	// zero value (e.g. budgetTokens=0 or minConfidence=0).
+	minConfidence       *float64
+	recencyHalfLifeSecs *float64
+	budgetTokens        *uint64
+	stabilityDays       *float64
+	cancelThreshold     *float64
 }
 
 // WithConfidence sets the confidence (clamped to [0,1]) on Add/Associate.
@@ -72,6 +81,39 @@ func WithAsOf(ts string) MemoryOption {
 // WithSummaryContent lets the caller supply the summary text on Summarise.
 func WithSummaryContent(s string) MemoryOption {
 	return func(cfg *memoryCall) { cfg.summary = s }
+}
+
+// WithMinConfidence is ADR-145's CONFIDENCE(f) operator: on Search/
+// SearchDetailed, filters results to rows with confidence >= f.
+func WithMinConfidence(f float64) MemoryOption {
+	return func(cfg *memoryCall) { cfg.minConfidence = &f }
+}
+
+// WithRecencyHalfLife is ADR-145's RECENCY(λ) operator: on Search/
+// SearchDetailed, applies exponential score decay by row age with the given
+// half-life in seconds.
+func WithRecencyHalfLife(secs float64) MemoryOption {
+	return func(cfg *memoryCall) { cfg.recencyHalfLifeSecs = &secs }
+}
+
+// WithBudgetTokens is ADR-145's BUDGET(t) operator: on Search/SearchDetailed,
+// stops result emission once cumulative recall_cost_tokens exceeds t.
+func WithBudgetTokens(t uint64) MemoryOption {
+	return func(cfg *memoryCall) { cfg.budgetTokens = &t }
+}
+
+// WithStabilityDays is ADR-145's FORGETTING_CURVE(d) operator: on Search/
+// SearchDetailed, weights retrieval score by the Ebbinghaus retention
+// fraction using the given stability parameter, in days.
+func WithStabilityDays(d float64) MemoryOption {
+	return func(cfg *memoryCall) { cfg.stabilityDays = &d }
+}
+
+// WithCancelThreshold is ADR-145's CANCEL_WHEN(threshold) operator: on
+// Search/SearchDetailed, short-circuits the scan once any result exceeds
+// threshold. SearchDetailed's Cancelled field reports whether this fired.
+func WithCancelThreshold(threshold float64) MemoryOption {
+	return func(cfg *memoryCall) { cfg.cancelThreshold = &threshold }
 }
 
 // NewMemory constructs a standalone Memory client. purpose must be non-empty
@@ -147,10 +189,23 @@ func (m *Memory) AddBatch(ctx context.Context, items []any, opts ...MemoryOption
 	return unwrapBatchIDs(unwrapMCP(resp)), nil
 }
 
-// Search recalls memories ranked by confidence × recency × relevance. Returns
-// the ranked rows (each with id, content, confidence, score, memory_class).
-func (m *Memory) Search(ctx context.Context, query string, opts ...MemoryOption) ([]map[string]any, error) {
-	cfg := applyMemoryOpts(opts, 1.0, "semantic")
+// RecallResult is the full ADR-145 recall envelope returned by
+// SearchDetailed: the ranked rows plus the read-only RecallCostTokens
+// (BUDGET's running token total) and Cancelled (CANCEL_WHEN short-circuit
+// flag) fields, so callers can observe the effect of the retrieval-quality
+// options, not just set them.
+type RecallResult struct {
+	Rows             []map[string]any
+	RecallCostTokens uint64
+	Cancelled        bool
+}
+
+// recallParams builds the GET /memory/recall query params shared by Search
+// and SearchDetailed, including the five ADR-145 retrieval-quality operators
+// (WithMinConfidence/WithRecencyHalfLife/WithBudgetTokens/WithStabilityDays/
+// WithCancelThreshold). Each is omitted when unset so the server applies its
+// own default.
+func (m *Memory) recallParams(query string, cfg memoryCall) url.Values {
 	topK := cfg.topK
 	if topK <= 0 {
 		topK = 5
@@ -165,11 +220,59 @@ func (m *Memory) Search(ctx context.Context, query string, opts ...MemoryOption)
 	if cfg.asOf != "" {
 		params.Set("as_of", cfg.asOf)
 	}
+	if cfg.minConfidence != nil {
+		params.Set("min_confidence", fmt.Sprintf("%g", *cfg.minConfidence))
+	}
+	if cfg.recencyHalfLifeSecs != nil {
+		params.Set("recency_half_life_secs", fmt.Sprintf("%g", *cfg.recencyHalfLifeSecs))
+	}
+	if cfg.budgetTokens != nil {
+		params.Set("budget_tokens", fmt.Sprintf("%d", *cfg.budgetTokens))
+	}
+	if cfg.stabilityDays != nil {
+		params.Set("stability_days", fmt.Sprintf("%g", *cfg.stabilityDays))
+	}
+	if cfg.cancelThreshold != nil {
+		params.Set("cancel_threshold", fmt.Sprintf("%g", *cfg.cancelThreshold))
+	}
+	return params
+}
+
+// Search recalls memories ranked by confidence × recency × relevance. Returns
+// the ranked rows (each with id, content, confidence, score, memory_class).
+//
+// The ADR-145 retrieval-quality operators (WithMinConfidence/
+// WithRecencyHalfLife/WithBudgetTokens/WithStabilityDays/
+// WithCancelThreshold) narrow or bound the recall; use SearchDetailed
+// instead of Search to also observe the read-only RecallCostTokens/
+// Cancelled fields these options produce.
+func (m *Memory) Search(ctx context.Context, query string, opts ...MemoryOption) ([]map[string]any, error) {
+	cfg := applyMemoryOpts(opts, 1.0, "semantic")
 	var resp map[string]any
-	if err := m.c.get(ctx, "/memory/recall?"+params.Encode(), &resp); err != nil {
+	if err := m.c.get(ctx, "/memory/recall?"+m.recallParams(query, cfg).Encode(), &resp); err != nil {
 		return nil, err
 	}
 	return unwrapRows(unwrapMCP(resp)), nil
+}
+
+// SearchDetailed is like Search but returns the full RecallResult, including
+// the read-only RecallCostTokens (BUDGET) and Cancelled (CANCEL_WHEN) fields
+// alongside Rows.
+func (m *Memory) SearchDetailed(ctx context.Context, query string, opts ...MemoryOption) (RecallResult, error) {
+	cfg := applyMemoryOpts(opts, 1.0, "semantic")
+	var resp map[string]any
+	if err := m.c.get(ctx, "/memory/recall?"+m.recallParams(query, cfg).Encode(), &resp); err != nil {
+		return RecallResult{}, err
+	}
+	inner := unwrapMCP(resp)
+	result := RecallResult{Rows: unwrapRows(inner)}
+	if v, ok := inner["recall_cost_tokens"].(float64); ok {
+		result.RecallCostTokens = uint64(v)
+	}
+	if v, ok := inner["cancelled"].(bool); ok {
+		result.Cancelled = v
+	}
+	return result, nil
 }
 
 // Get fetches a single memory by id. Returns nil when not found.
