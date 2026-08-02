@@ -23,10 +23,14 @@ func NewGovernanceClient(c *Client) *GovernanceClient {
 
 // PlaceLegalHoldOptions configures the optional fields of PlaceLegalHold.
 type PlaceLegalHoldOptions struct {
-	// ObjectID limits the hold to a specific row; omit for a type-wide hold.
-	ObjectID string
-	// Reason is an optional human-friendly reason.
-	Reason string
+	// Field scopes the hold to rows where Field equals Value; set both
+	// together, or leave both empty for a type-wide hold. The server's
+	// POST /retention/holds only reads case_id/object_type/field/value —
+	// any other key is silently ignored (#2465), so Field/Value is the
+	// only supported row-scoping mechanism.
+	Field string
+	// Value is the column value to match when Field is set.
+	Value string
 }
 
 // RequestBreakglassOptions configures the optional fields of RequestBreakglass.
@@ -230,19 +234,19 @@ func (g *GovernanceClient) ListLegalHolds(ctx context.Context) ([]map[string]any
 	return unwrapList(resp, "holds"), nil
 }
 
-// PlaceLegalHold places a legal hold on an object type (optionally on a
-// specific row).
+// PlaceLegalHold places a legal hold on an object type (optionally scoped to
+// rows where opts.Field equals opts.Value).
 func (g *GovernanceClient) PlaceLegalHold(ctx context.Context, caseID, objectType string, opts *PlaceLegalHoldOptions) (map[string]any, error) {
 	payload := map[string]any{
 		"case_id":     caseID,
 		"object_type": objectType,
 	}
 	if opts != nil {
-		if opts.ObjectID != "" {
-			payload["object_id"] = opts.ObjectID
+		if opts.Field != "" {
+			payload["field"] = opts.Field
 		}
-		if opts.Reason != "" {
-			payload["reason"] = opts.Reason
+		if opts.Value != "" {
+			payload["value"] = opts.Value
 		}
 	}
 	var resp map[string]any
