@@ -32,7 +32,10 @@ type VectorPurposeOptions struct {
 type KNNOptions struct {
 	// Purpose is the declared purpose token (see VectorPurposeOptions).
 	Purpose string
-	// EFSearch tunes the HNSW ef-search parameter.
+	// EFSearch is the HNSW beam width hint. There is no server-side wire
+	// knob for it today (see KNNSearch's doc comment, #2756); when > 0 it
+	// is appended to the outgoing SQL as a "/* EF_SEARCH n */" comment
+	// rather than silently discarded.
 	EFSearch int
 }
 
@@ -63,6 +66,21 @@ type SimilarToOptions struct {
 // KNNSearch performs a pure KNN search over a named embedding slot. Emits
 // "SELECT * FROM <Type> ORDER BY <slot> <=> '[...]' LIMIT k" — the pgvector
 // cosine form the server understands natively.
+//
+// opts.EFSearch (HNSW beam width): investigated for #2756 — there is no
+// client-controllable ef_search knob anywhere in today's wire contract.
+// relata_query::parser's ORDER BY clause only accepts "column [ASC|DESC]"
+// (no trailing-clause grammar like HYBRID_SEARCH's RERANK/METRIC/WEIGHTS),
+// and neither the HTTP nor gRPC QueryRequest carries an ef_search field.
+// ef_search is exclusively an internal, auto-tuned HNSW parameter
+// (relata-storage's HnswIndex::ef_search_default autotune loop) with no
+// per-query override path today. Rather than silently discarding a
+// caller-supplied value (the previous, dead-parameter behavior), it is
+// appended as a "/* EF_SEARCH n */" SQL comment: harmless (the tokenizer
+// strips comments before the "no trailing tokens" parse check ever runs, so
+// this can never change what executes), visible in the outgoing
+// request/query logs instead of vanishing, and ready to be wired to a real
+// per-query knob if the server ever exposes one.
 func (v *VectorClient) KNNSearch(ctx context.Context, objectType, embeddingSlot string, queryEmbedding []float64, k int, opts *KNNOptions) ([]map[string]any, error) {
 	if k <= 0 {
 		k = 10
@@ -78,6 +96,9 @@ func (v *VectorClient) KNNSearch(ctx context.Context, objectType, embeddingSlot 
 	purpose := ""
 	if opts != nil {
 		purpose = opts.Purpose
+		if opts.EFSearch > 0 {
+			sql += fmt.Sprintf(" /* EF_SEARCH %d */", opts.EFSearch)
+		}
 	}
 	result, err := v.query(ctx, sql, purpose)
 	if err != nil {
