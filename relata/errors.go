@@ -63,6 +63,16 @@ var (
 	// ErrConnection is returned when the SDK cannot reach the Relata server
 	// after exhausting retries, or when the request times out.
 	ErrConnection = errors.New("relata: cannot reach server")
+
+	// ErrRedirectRefused is returned when the server (or a compromised
+	// intermediary) responds with an HTTP 3xx redirect. The Go SDK never
+	// follows redirects — net/http's default of following up to 10 redirects
+	// only strips the Authorization header on a cross-host hop and forwards
+	// it unchanged on a same-host one, which would silently leak the bearer
+	// token to whatever the Location header points at. This is the Go-SDK
+	// analogue of the Rust SDK's `redirect::Policy::none()` (#1416) and the
+	// TS SDK's `redirect: "manual"` + assertNotRedirected (#2364). See #3046.
+	ErrRedirectRefused = errors.New("relata: refused to follow HTTP redirect (potential bearer-token leak)")
 )
 
 // RelataError wraps a server-side error response with HTTP metadata and the

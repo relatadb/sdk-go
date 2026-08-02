@@ -72,6 +72,11 @@ func (s *S3Client) HTTP(opts *HTTPOptions) *http.Client {
 			tnt:  s.Tenant,
 		},
 		Timeout: timeout,
+		// #3046: never follow a redirect — parity with Client's http.Client
+		// (client.go's refuseRedirects) so a 3xx response can't be used to
+		// exfiltrate the bearer token this transport injects on every
+		// request.
+		CheckRedirect: refuseRedirects,
 	}
 }
 
