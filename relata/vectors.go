@@ -196,3 +196,44 @@ func (v *VectorClient) EmbedBatch(ctx context.Context, texts []string, model str
 	}
 	return &out, nil
 }
+
+// ── #2444 (ADR-0276): per-modality data-plane media embed routes ───────────
+
+// embedMedia POSTs {"bytes_b64": ..., "model": ...} to /embed/{modality} and
+// decodes the shared {embedding, model, dim} response shape.
+func (v *VectorClient) embedMedia(ctx context.Context, modality, bytesB64, model string) (*EmbedResponse, error) {
+	body := map[string]any{"bytes_b64": bytesB64}
+	if model != "" {
+		body["model"] = model
+	}
+	var out EmbedResponse
+	if err := v.c.postJSON(ctx, "/embed/"+modality, body, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// EmbedImage embeds a single image via POST /embed/image (#2444, ADR-0276).
+// bytesB64 is the base64-encoded image. Uses the server's configured
+// embedder's sidecar (RELATA_ACCEL_ENDPOINT, ADR-177); returns an error (503)
+// when the active embedder does not support media. model is an optional
+// model hint; pass "" to omit it.
+func (v *VectorClient) EmbedImage(ctx context.Context, bytesB64, model string) (*EmbedResponse, error) {
+	return v.embedMedia(ctx, "image", bytesB64, model)
+}
+
+// EmbedFace embeds a single face crop via POST /embed/face (#2444, ADR-0276).
+func (v *VectorClient) EmbedFace(ctx context.Context, bytesB64, model string) (*EmbedResponse, error) {
+	return v.embedMedia(ctx, "face", bytesB64, model)
+}
+
+// EmbedAudio embeds a single audio clip via POST /embed/audio (#2444, ADR-0276).
+func (v *VectorClient) EmbedAudio(ctx context.Context, bytesB64, model string) (*EmbedResponse, error) {
+	return v.embedMedia(ctx, "audio", bytesB64, model)
+}
+
+// EmbedVideo embeds a single video clip/keyframe via POST /embed/video
+// (#2444, ADR-0276).
+func (v *VectorClient) EmbedVideo(ctx context.Context, bytesB64, model string) (*EmbedResponse, error) {
+	return v.embedMedia(ctx, "video", bytesB64, model)
+}
