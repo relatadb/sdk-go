@@ -556,6 +556,59 @@ func TestSearch_HappyPath(t *testing.T) {
 	}
 }
 
+func TestSearch_OmitsMetricAndWeightsByDefault(t *testing.T) {
+	// #2672: without WithMetric/WithWeights, the request body must not carry
+	// either key, since their mere presence is what the server uses to
+	// decide whether to route through HYBRID_SEARCH.
+	var captured map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&captured)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"hits": [], "total": 0, "facets": {}, "processing_time_ms": 1}`))
+	}))
+	defer srv.Close()
+
+	client := newTestClient(srv, nil)
+	if _, err := client.Search(t.Context(), "alice", "Person"); err != nil {
+		t.Fatalf("Search returned error: %v", err)
+	}
+	if _, ok := captured["metric"]; ok {
+		t.Errorf("captured body unexpectedly contains \"metric\": %v", captured)
+	}
+	if _, ok := captured["weights"]; ok {
+		t.Errorf("captured body unexpectedly contains \"weights\": %v", captured)
+	}
+}
+
+func TestSearch_PassesMetricAndWeightsForHybridFusion(t *testing.T) {
+	// #2672: WithMetric/WithWeights must reach the wire so Search() can
+	// actually trigger the server's HYBRID_SEARCH fusion path.
+	var captured map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&captured)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"hits": [], "total": 0, "facets": {}, "processing_time_ms": 1}`))
+	}))
+	defer srv.Close()
+
+	client := newTestClient(srv, nil)
+	_, err := client.Search(t.Context(), "alice", "Person",
+		WithMetric("cosine"), WithWeights(0, 0.5, 0.5))
+	if err != nil {
+		t.Fatalf("Search returned error: %v", err)
+	}
+	if captured["metric"] != "cosine" {
+		t.Errorf("metric = %v, want cosine", captured["metric"])
+	}
+	weights, ok := captured["weights"].([]any)
+	if !ok || len(weights) != 3 {
+		t.Fatalf("weights = %v, want a 3-element array", captured["weights"])
+	}
+	if weights[0] != 0.0 || weights[1] != 0.5 || weights[2] != 0.5 {
+		t.Errorf("weights = %v, want [0, 0.5, 0.5]", weights)
+	}
+}
+
 func TestQuery_ProcessingTimeMs(t *testing.T) {
 	// #1252: verify ProcessingTimeMs is populated from processing_time_ms when
 	// present, and falls back to elapsed_ms for backward compat.

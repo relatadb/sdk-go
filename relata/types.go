@@ -481,6 +481,8 @@ type searchParams struct {
 	filters           map[string]string
 	matchingStrategy  string
 	typoTolerance     map[string]any
+	metric            string
+	weights           *[3]float64
 }
 
 // WithSearchLimit sets the maximum number of hits to return.
@@ -519,4 +521,20 @@ func WithMatchingStrategy(strategy string) SearchOption {
 // "disable_on_attributes" ([]string).
 func WithTypoTolerance(config map[string]any) SearchOption {
 	return func(p *searchParams) { p.typoTolerance = config }
+}
+
+// WithMetric sets the vector distance metric for the HYBRID_SEARCH channel
+// (e.g. "cosine", "euclidean", "dot"). Search is BM25-only by default;
+// setting this (or WithWeights) is what actually routes the request through
+// the server's real HYBRID_SEARCH fusion instead of plain BM25 (#2672).
+func WithMetric(metric string) SearchOption {
+	return func(p *searchParams) { p.metric = metric }
+}
+
+// WithWeights sets the [graph, bm25, vector] fusion weights for HYBRID_SEARCH.
+// Search is BM25-only by default; setting this (or WithMetric) is what
+// actually routes the request through the server's real HYBRID_SEARCH fusion
+// instead of plain BM25 (#2672).
+func WithWeights(graph, bm25, vector float64) SearchOption {
+	return func(p *searchParams) { p.weights = &[3]float64{graph, bm25, vector} }
 }

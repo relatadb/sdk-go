@@ -188,8 +188,17 @@ func (c *Client) QueryWithParams(ctx context.Context, sql string, params []any, 
 // and object type (#670). Optional functional options control limit, facets,
 // highlight, and per-field filters.
 //
+// By default Search is BM25-only — it never touches the vector channel. Pass
+// WithMetric and/or WithWeights to route the request through the server's
+// real HYBRID_SEARCH fusion (BM25 + vector reciprocal-rank fusion) instead;
+// either one alone is enough to switch the request onto the hybrid path (#2672).
+//
 //	results, err := client.Search(ctx, "alice smith", "Person",
 //	    WithSearchLimit(10), WithHighlight(), WithSearchFacets("tenant_id"))
+//
+//	// Real hybrid fusion (BM25 + vector RRF) — set metric/weights.
+//	hybrid, err := client.Search(ctx, "alice smith", "Person",
+//	    WithMetric("cosine"), WithWeights(0, 0.5, 0.5))
 func (c *Client) Search(ctx context.Context, query, objectType string, opts ...SearchOption) (*SearchResponse, error) {
 	p := &searchParams{}
 	for _, o := range opts {
@@ -214,6 +223,12 @@ func (c *Client) Search(ctx context.Context, query, objectType string, opts ...S
 	}
 	if p.typoTolerance != nil {
 		body["typo_tolerance"] = p.typoTolerance
+	}
+	if p.metric != "" {
+		body["metric"] = p.metric
+	}
+	if p.weights != nil {
+		body["weights"] = []float64{p.weights[0], p.weights[1], p.weights[2]}
 	}
 	var resp SearchResponse
 	if err := c.postJSON(ctx, "/search", body, &resp); err != nil {
