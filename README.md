@@ -63,6 +63,34 @@ Supported: `MATCH` / `OPTIONAL MATCH`, `WHERE`, `RETURN`, `UNION` / `UNION ALL`
 writes route through the governed write door. See the
 [SQL reference](https://www.relatadb.dev/docs/reference/sql).
 
+## Hybrid search — `VectorClient.HybridSearch`
+
+`VectorClient` (below) wraps the server's `HYBRID_SEARCH` operator (ADR-175):
+supply `queryText` (BM25 leg), `queryEmbedding` + `embeddingSlot` (vector
+leg), or both — when both are present the server fuses the two rankings via
+reciprocal rank fusion. This is Relata's genuine edge over a plain vector DB
+or a plain full-text engine. (The `relata.HybridSearch(...)` convenience
+constructor shown above under "Convenience constructors" is BM25-only — use
+`VectorClient.HybridSearch` for the fused vector+text form.)
+
+```go
+vectors := relata.NewVectorClient(client)
+
+emb, err := vectors.Embed(ctx, "graph retrieval", "")
+if err != nil {
+    log.Fatal(err)
+}
+
+hits, err := vectors.HybridSearch(ctx, "Document", "graph retrieval", emb.Embedding, "_emb_text",
+    &relata.HybridSearchOptions{K: 10})
+for _, row := range hits {
+    fmt.Println(row["title"], row["_score"])
+}
+```
+
+See `examples/hybrid_search/main.go` for a full runnable walkthrough (embed →
+ingest → BM25-only vs. vector-only vs. fused search).
+
 ## Agent memory
 
 `Memory` is a Mem0-style surface over the governed `/memory/*` verbs — purpose + ACL
@@ -477,6 +505,7 @@ resp, err := hc.Do(req)
 | [`examples/basic/`](./examples/basic) | Health check + simple SELECT |
 | [`examples/investigation/`](./examples/investigation) | Full FIU investigation workflow (identity → transactions → CDR) |
 | [`examples/face_search/`](./examples/face_search) | Biometric `MATCH_FACE` + identity resolution |
+| [`examples/hybrid_search/`](./examples/hybrid_search) | `VectorClient.HybridSearch` — embed, ingest, BM25-only vs. vector-only vs. fused (RRF) search |
 | [`examples/graph_traversal/`](./examples/graph_traversal) | `PATHS_BETWEEN` Pregel BFS + edge distribution |
 | [`examples/audit/`](./examples/audit) | Daily audit-chain verification + compliance report |
 
