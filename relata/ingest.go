@@ -27,10 +27,27 @@ func NewIngestClient(c *Client) *IngestClient {
 type BulkOptions struct {
 	// Purpose overrides the parent client's default purpose.
 	Purpose string
+	// DetectPacks is a per-call SmartIngest detector-pack override (#2258 SI-3),
+	// sent as the X-Detect-Packs header. Use "none" to disable SmartIngest for
+	// this call, or a comma-separated list (e.g. "network,financial") to select
+	// packs. Requires the IngestDetectOverride ACL grant server-side.
+	DetectPacks string
+	// OnConflict sets the conflict-resolution strategy when set, routing the
+	// call to POST /ingest/bulk (mixed-type JSON) instead of /ingest. One of
+	// "upsert" | "skip" | "error". Empty = default server behaviour.
+	OnConflict string
+	// TenantID optionally scopes the write to a tenant (forwarded to the
+	// governance layer). Mirrors BulkIngestRequest.tenant_id.
+	TenantID string
 }
 
 // Bulk bulk-ingests rows as NDJSON. Returns the server receipt.
 func (i *IngestClient) Bulk(ctx context.Context, objectType string, rows []map[string]any, opts *BulkOptions) (map[string]any, error) {
+	if opts != nil && opts.OnConflict != "" {
+		// Route to /ingest/bulk so on_conflict + tenant_id take effect
+		// (the /ingest door doesn't accept them).
+		return i.postBulkTyped(ctx, objectType, rows, opts)
+	}
 	body := rowToNDJSON(rows)
 	return i.postIngest(ctx, objectType, body, "application/x-ndjson", opts)
 }
@@ -38,6 +55,57 @@ func (i *IngestClient) Bulk(ctx context.Context, objectType string, rows []map[s
 // BulkCSV bulk-ingests a CSV string. The server parses it server-side.
 func (i *IngestClient) BulkCSV(ctx context.Context, objectType, csvText string, opts *BulkOptions) (map[string]any, error) {
 	return i.postIngest(ctx, objectType, csvText, "text/csv", opts)
+}
+
+// AutoOptions configures schemaless ingest (POST /ingest/auto, T6 #1988).
+type AutoOptions struct {
+	// Purpose overrides the parent client's default purpose.
+	Purpose string
+	// Schema overrides field-type inference, keyed by field name.
+	Schema map[string]string
+	// TenantID scopes the write to a tenant.
+	TenantID string
+}
+
+// IngestAuto is a schemaless ingest — the type is auto-created on first write
+// with inferred fields (T6, #1988). Wraps POST /ingest/auto. The response
+// carries type_created + inferred_schema.
+func (i *IngestClient) IngestAuto(ctx context.Context, objectType string, rows []map[string]any, opts *AutoOptions) (map[string]any, error) {
+	purpose := i.purpose
+	if opts != nil && opts.Purpose != "" {
+		purpose = opts.Purpose
+	}
+	body := map[string]any{"object_type": objectType, "rows": rows}
+	if purpose != "" {
+		body["purpose"] = purpose
+	}
+	if opts != nil {
+		if len(opts.Schema) > 0 {
+			body["schema"] = opts.Schema
+		}
+		if opts.TenantID != "" {
+			body["tenant_id"] = opts.TenantID
+		}
+	}
+	encoded, err := json.Marshal(body)
+	if err != nil {
+		return nil, fmt.Errorf("relata: encode ingest/auto body: %w", err)
+	}
+	status, data, _, err := i.c.rawHTTPRequest(ctx, "POST", "/ingest/auto", encoded, "application/json")
+	if err != nil {
+		return nil, err
+	}
+	if status < 200 || status >= 300 {
+		return nil, errorFromStatus(status, data, "", 0, "", "")
+	}
+	var resp map[string]any
+	if len(data) == 0 {
+		return resp, nil
+	}
+	if err := json.Unmarshal(data, &resp); err != nil {
+		return nil, fmt.Errorf("relata: decode response: %w", err)
+	}
+	return resp, nil
 }
 
 // IngestIter streams rows from an iterator channel into batched POST /ingest
@@ -200,6 +268,7 @@ func rowsToCDRCSV(rows []map[string]any) string {
 }
 
 // postIngest sends a raw body to /ingest?object_type=… and decodes the receipt.
+// It honours BulkOptions.DetectPacks via the X-Detect-Packs header.
 func (i *IngestClient) postIngest(ctx context.Context, objectType, body, contentType string, opts *BulkOptions) (map[string]any, error) {
 	purpose := i.purpose
 	if opts != nil && opts.Purpose != "" {
@@ -209,7 +278,7 @@ func (i *IngestClient) postIngest(ctx context.Context, objectType, body, content
 	if purpose != "" {
 		params["purpose"] = purpose
 	}
-	status, data, _, err := i.c.rawHTTPRequest(ctx, "POST", encodeGetURL("/ingest", params), []byte(body), contentType)
+	status, data, _, err := i.c.rawHTTPRequest(ctx, "POST", encodeGetURL("/ingest", params), []byte(body), contentType, i.detectHeader(opts))
 	if err != nil {
 		return nil, err
 	}
@@ -224,4 +293,58 @@ func (i *IngestClient) postIngest(ctx context.Context, objectType, body, content
 		return nil, fmt.Errorf("relata: decode response: %w", err)
 	}
 	return resp, nil
+}
+
+// postBulkTyped sends rows to POST /ingest/bulk so that OnConflict + TenantID
+// (only honoured on the /ingest/bulk door) take effect. Each row is tagged with
+// `_type` = objectType as the server's BulkIngestRequest expects.
+func (i *IngestClient) postBulkTyped(ctx context.Context, objectType string, rows []map[string]any, opts *BulkOptions) (map[string]any, error) {
+	purpose := i.purpose
+	if opts != nil && opts.Purpose != "" {
+		purpose = opts.Purpose
+	}
+	objects := make([]map[string]any, 0, len(rows))
+	for _, r := range rows {
+		o := make(map[string]any, len(r)+1)
+		for k, v := range r {
+			o[k] = v
+		}
+		o["_type"] = objectType
+		objects = append(objects, o)
+	}
+	body := map[string]any{"objects": objects, "on_conflict": opts.OnConflict}
+	if purpose != "" {
+		body["purpose"] = purpose
+	}
+	if opts != nil && opts.TenantID != "" {
+		body["tenant_id"] = opts.TenantID
+	}
+	encoded, err := json.Marshal(body)
+	if err != nil {
+		return nil, fmt.Errorf("relata: encode bulk body: %w", err)
+	}
+	status, data, _, err := i.c.rawHTTPRequest(ctx, "POST", "/ingest/bulk", encoded, "application/json", i.detectHeader(opts))
+	if err != nil {
+		return nil, err
+	}
+	if status < 200 || status >= 300 {
+		return nil, errorFromStatus(status, data, "", 0, "", "")
+	}
+	var resp map[string]any
+	if len(data) == 0 {
+		return resp, nil
+	}
+	if err := json.Unmarshal(data, &resp); err != nil {
+		return nil, fmt.Errorf("relata: decode response: %w", err)
+	}
+	return resp, nil
+}
+
+// detectHeader returns a header map carrying X-Detect-Packs when DetectPacks is
+// set, else nil (no override).
+func (i *IngestClient) detectHeader(opts *BulkOptions) map[string]string {
+	if opts != nil && opts.DetectPacks != "" {
+		return map[string]string{"X-Detect-Packs": opts.DetectPacks}
+	}
+	return nil
 }

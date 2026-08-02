@@ -485,7 +485,7 @@ func encodeGetURL(base string, params map[string]string) string {
 // rawHTTPRequest dispatches a request using the shared http client without
 // JSON-decoding the response; returns the raw status code + body bytes + error.
 // Used by the audit PDF export path which returns binary content.
-func (c *Client) rawHTTPRequest(ctx context.Context, method, path string, body []byte, contentType string) (int, []byte, map[string]string, error) {
+func (c *Client) rawHTTPRequest(ctx context.Context, method, path string, body []byte, contentType string, extraHeaders ...map[string]string) (int, []byte, map[string]string, error) {
 	url := c.baseURL + path
 	var req *http.Request
 	var err error
@@ -501,6 +501,13 @@ func (c *Client) rawHTTPRequest(ctx context.Context, method, path string, body [
 		req.Header.Set(headerContentType, contentType)
 	}
 	c.setHeaders(req)
+	for _, hdrs := range extraHeaders {
+		for k, v := range hdrs {
+			if v != "" {
+				req.Header.Set(k, v)
+			}
+		}
+	}
 	resp, err := c.http.Do(req)
 	if err != nil {
 		return 0, nil, nil, c.classifyTransportError(ctx, err)
