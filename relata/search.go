@@ -13,7 +13,10 @@ type SearchFilter struct {
 // SearchRequest is the typed POST /search body (the governed JSON query door).
 // From is the object type; Text is BM25 shorthand (compiles to
 // rank_by=["bm25", MatchColumn, Text]); RankBy overrides Text with an explicit
-// directive (["bm25"|"text", column, query] or ["vector","ann", query]).
+// directive (["bm25"|"text", column, query], ["field_weight",
+// map[string]float64{"title": 3.0, ...}, query] — BM25F per-field weighting,
+// compiles to MATCH(*, ...) + RANK BY FIELD_WEIGHT(...), #2676 — or
+// ["vector","ann", query]).
 type SearchRequest struct {
 	From              string            `json:"from"`
 	RankBy            []any             `json:"rank_by,omitempty"`
