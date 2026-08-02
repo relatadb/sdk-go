@@ -81,9 +81,16 @@ type RelataError struct {
 	// when no sentinel maps to this status code.
 	Err error
 
-	// Code is the dotted problem+json code (e.g.
-	// "RELATA.QUERY.PURPOSE_REQUIRED") or empty when the server emits the
-	// legacy {"error": "..."} shape.
+	// Code is the server's RFC 7807 problem+json "code" extension field, or
+	// empty when the server emits the legacy {"error": "..."} shape. Two
+	// vocabularies exist in real responses (#2555): most HTTP errors
+	// (auth/ACL/ingest/admin/...) use kebab-case, e.g. "access-denied",
+	// "parse-error" (catalogue: docs/api/error-codes.md); /query's
+	// planner/execution errors use the QueryError-derived REL_* form, e.g.
+	// "REL_PARSE", "REL_ACL" (catalogue: docs/src/end-users/error-codes.md).
+	// Match on the literal string rather than assuming either form — do not
+	// rely on dotted-form codes like "RELATA.QUERY.PURPOSE_REQUIRED", which
+	// were never implemented server-side.
 	Code string
 
 	// TypeURL is the RFC 7807 "type" URL linking to the error docs.

@@ -417,7 +417,7 @@ case errors.Is(err, relata.ErrChainCorrupted):
 var re *relata.RelataError
 if errors.As(err, &re) {
     fmt.Println(re.StatusCode, re.Message)   // HTTP 403: Forbidden: policy deny
-    fmt.Println(re.Code)                      // RELATA.ACL.DENY
+    fmt.Println(re.Code)                      // access-denied
     fmt.Println(re.TypeURL)                   // https://relatadb.dev/errors/forbidden
     fmt.Println(re.RequestID)                 // rid-xyz
     fmt.Println(re.RetryAfter)                // 5s (from Retry-After header)

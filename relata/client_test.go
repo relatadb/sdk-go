@@ -260,7 +260,7 @@ func TestRFC7807ErrorFields(t *testing.T) {
 		w.Header().Set("Content-Type", "application/problem+json")
 		w.Header().Set("X-Request-ID", "rid-xyz")
 		w.WriteHeader(http.StatusForbidden)
-		fmt.Fprint(w, `{"type":"https://relata.io/errors/forbidden","title":"Forbidden","detail":"policy deny","code":"RELATA.ACL.DENY","retryable":false,"request_id":"rid-xyz"}`)
+		fmt.Fprint(w, `{"type":"https://relata.io/errors/forbidden","title":"Forbidden","detail":"policy deny","code":"access-denied","retryable":false,"request_id":"rid-xyz"}`)
 	}))
 	defer srv.Close()
 
@@ -279,7 +279,7 @@ func TestRFC7807ErrorFields(t *testing.T) {
 	if !errors.Is(err, ErrForbidden) {
 		t.Fatalf("err should wrap ErrForbidden, got %v", err)
 	}
-	if re.Code != "RELATA.ACL.DENY" {
+	if re.Code != "access-denied" {
 		t.Fatalf("Code = %q", re.Code)
 	}
 	if re.TypeURL != "https://relata.io/errors/forbidden" {
