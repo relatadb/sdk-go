@@ -332,7 +332,7 @@ Python `from_client` classmethod. Optional parameters use struct-pointer options
 | `relata.ingest` | `NewIngestClient` | Bulk NDJSON + CSV + media status |
 | `relata.vectors` | `NewVectorClient` | KNN + hybrid search + similar-to (SQL-backed) + `Embed`/`EmbedBatch` (`POST /embed[/batch]`) |
 | `relata.search` (`SearchClient`) | `NewSearchClient` | Typed `POST /search` JSON query door (`rank_by`/`filters`) — separate from the untyped `Client.Search` |
-| `relata.s3` | `NewS3Client` | Native `net/http` wrapper for the S3 protocol door (`HTTP()`) |
+| `relata.s3` | `NewS3Client` | Native `net/http` wrapper for the S3 protocol door: `HTTP()` escape hatch + `ListBuckets`/`CreateBucket`/`PutObject`/`GetObject`/`DeleteObject` helpers |
 | `relata.system` | `NewSystemClient` | LLM config + test + jobs status |
 | `relata.streaming` | `NewStreamingClient` | NDJSON `RowIterator` + SSE `SSEIterator` + Arrow `BytesIterator` |
 | `relata.tenants` | `NewTenantAdminClient` | Tenant CRUD + quota + sharing agreements + platform admin |
@@ -499,15 +499,38 @@ For ACL access in strict mode, grant via env var: `RELATA_ACL_GRANT=AgentTask:re
 
 The S3 door is reachable via a native `net/http` wrapper (no boto3, no external S3
 library). `NewS3Client(c).HTTP(nil)` returns a `*http.Client` pre-configured with bearer
-+ tenant headers; callers issue standard S3 REST verbs against `/<bucket>/<key>`:
++ tenant headers for arbitrary S3 REST verbs against `/<bucket>/<key>`; the high-level
+`ListBuckets`/`CreateBucket`/`PutObject`/`GetObject`/`DeleteObject` helpers cover the
+common cases without hand-building requests (mirrors the TypeScript SDK's `S3Client`):
 
 ```go
 s3 := relata.NewS3Client(client)
+
+_, err := s3.CreateBucket(ctx, "acme-intel")
+_, err = s3.PutObject(ctx, "acme-intel", "report.pdf", data,
+    &relata.PutObjectOptions{ContentType: "application/pdf"})
+obj, err := s3.GetObject(ctx, "acme-intel", "report.pdf")
+fmt.Println(obj.Status, obj.Headers["etag"], len(obj.Body))
+_, err = s3.DeleteObject(ctx, "acme-intel", "report.pdf")
+```
+
+Each helper returns `*relata.S3HttpResponse{ Status, Headers, Body }` and does not
+translate non-2xx statuses into Go errors (S3 semantics — e.g. a missing key is a
+valid 404 response, inspected via `Status`); only transport-level failures return
+`error`. For anything the helpers don't cover — multipart, custom headers, streaming
+bodies — use `s3.HTTP(nil)` directly:
+
+```go
 hc := s3.HTTP(nil)
 req, _ := http.NewRequestWithContext(ctx, "PUT",
     s3.BaseURL()+"/acme-intel/report.pdf", bytes.NewReader(data))
 resp, err := hc.Do(req)
 ```
+
+`ObjectClient.List`/`.Get` (present in the TypeScript SDK) are intentionally **not**
+ported — see the doc comment on `ObjectClient` in `relata/objects.go` for why (the
+server has no GET handler for `/objects/{type}(/{id})`, and the canonical Rust SDK and
+Python SDK both lack them too).
 
 ## Examples
 

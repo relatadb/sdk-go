@@ -30,7 +30,9 @@ const (
 	headerRateLimitRemaining = "X-RateLimit-Remaining"
 	headerRateLimitReset     = "X-RateLimit-Reset"
 
-	userAgent = "relata-go/0.2.0"
+	// userAgent tracks Version (version.go), which itself tracks Cargo.toml's
+	// [workspace.package].version — see scripts/check_versions.py (#2758).
+	userAgent = "relata-go/" + Version
 
 	// defaultRetryMaxAttempts caps the retry loop even when MaxRetries is large.
 	defaultRetryMaxAttempts = 5
