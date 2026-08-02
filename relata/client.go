@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -54,6 +55,17 @@ type Client struct {
 	retryBackoff   time.Duration
 }
 
+// refuseRedirects is a http.Client.CheckRedirect override that refuses to
+// follow any HTTP redirect, returning ErrRedirectRefused instead. net/http's
+// default policy (follow up to 10 redirects, stripping Authorization only on
+// a cross-host hop) would otherwise let a server misconfiguration, a
+// compromised reverse proxy, or a malicious same-host response silently
+// exfiltrate the bearer token to a redirect target — the exact class of leak
+// #1416/#2364 closed for the Rust/TypeScript SDKs. See #3046.
+func refuseRedirects(_ *http.Request, _ []*http.Request) error {
+	return ErrRedirectRefused
+}
+
 // New constructs a Client that targets baseURL. opts may be nil, in which case
 // all defaults apply (30 s timeout, no authentication, no default purpose, no
 // retry).
@@ -67,7 +79,7 @@ func New(baseURL string, opts *ClientOptions) *Client {
 		retryBackoff: defaultRetryBackoff,
 	}
 	if opts == nil {
-		c.http = &http.Client{Timeout: defaultTimeout}
+		c.http = &http.Client{Timeout: defaultTimeout, CheckRedirect: refuseRedirects}
 		return c
 	}
 
@@ -95,7 +107,7 @@ func New(baseURL string, opts *ClientOptions) *Client {
 		if timeout == 0 {
 			timeout = defaultTimeout
 		}
-		c.http = &http.Client{Timeout: timeout}
+		c.http = &http.Client{Timeout: timeout, CheckRedirect: refuseRedirects}
 	}
 
 	return c
@@ -1218,8 +1230,18 @@ func (c *Client) setHeaders(req *http.Request) {
 }
 
 // classifyTransportError maps a net/http / context error to a *RelataError
-// wrapping ErrConnection (for unreachable / timed-out requests).
+// wrapping ErrConnection (for unreachable / timed-out requests) — or
+// ErrRedirectRefused when the transport error is our own CheckRedirect
+// refusal (net/http wraps it in a *url.Error, so it is not itself equal to
+// ErrRedirectRefused; errors.Is unwraps through url.Error to find it) (#3046).
 func (c *Client) classifyTransportError(ctx context.Context, err error) *RelataError {
+	if errors.Is(err, ErrRedirectRefused) {
+		return &RelataError{
+			StatusCode: 0,
+			Message:    err.Error(),
+			Err:        ErrRedirectRefused,
+		}
+	}
 	if ctx.Err() != nil {
 		// Context cancellation / deadline — surface as the context error.
 		return &RelataError{
@@ -1283,9 +1305,13 @@ func isIdempotent(method string) bool {
 }
 
 // isRetryableTransport reports whether a transport-level error is worth
-// retrying. Context cancellation is never retried.
+// retrying. Context cancellation is never retried, nor is a redirect refusal
+// (#3046) — retrying would just hit the identical refused redirect again.
 func isRetryableTransport(ctx context.Context, err error) bool {
 	if ctx.Err() != nil {
+		return false
+	}
+	if errors.Is(err, ErrRedirectRefused) {
 		return false
 	}
 	return true
