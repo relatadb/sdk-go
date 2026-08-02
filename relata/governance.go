@@ -31,10 +31,12 @@ type PlaceLegalHoldOptions struct {
 
 // RequestBreakglassOptions configures the optional fields of RequestBreakglass.
 type RequestBreakglassOptions struct {
-	// Scope limits the emergency access scope.
-	Scope string
-	// DurationSecs is the requested access window. Defaults to 4h (14400).
-	DurationSecs int
+	// Purpose is the declared query purpose. The server defaults to
+	// "humint_unmask" when omitted.
+	Purpose string
+	// Justification is a free-text justification for the emergency access,
+	// captured for audit.
+	Justification string
 }
 
 // ApproveBreakglassOptions configures the optional fields of ApproveBreakglass.
@@ -278,20 +280,17 @@ func (g *GovernanceClient) SetWormPolicy(ctx context.Context, objectType string,
 	return resp, nil
 }
 
-// RequestBreakglass requests emergency HUMINT breakglass access (default 4h).
-// Approval requires two distinct officers (ApproveBreakglass).
-func (g *GovernanceClient) RequestBreakglass(ctx context.Context, reason string, opts *RequestBreakglassOptions) (map[string]any, error) {
-	duration := 4 * 60 * 60
-	payload := map[string]any{
-		"reason":        reason,
-		"duration_secs": duration,
-	}
+// RequestBreakglass requests emergency HUMINT breakglass access (fixed 4h
+// window). sourceID is the masked source ID being unmasked (e.g.
+// "SRC-0042"). Approval requires two distinct officers (ApproveBreakglass).
+func (g *GovernanceClient) RequestBreakglass(ctx context.Context, sourceID string, opts *RequestBreakglassOptions) (map[string]any, error) {
+	payload := map[string]any{"source_id": sourceID}
 	if opts != nil {
-		if opts.DurationSecs > 0 {
-			payload["duration_secs"] = opts.DurationSecs
+		if opts.Purpose != "" {
+			payload["purpose"] = opts.Purpose
 		}
-		if opts.Scope != "" {
-			payload["scope"] = opts.Scope
+		if opts.Justification != "" {
+			payload["justification"] = opts.Justification
 		}
 	}
 	var resp map[string]any
