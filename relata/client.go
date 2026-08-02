@@ -616,7 +616,7 @@ func (c *Client) SplitIdentities(ctx context.Context, purpose, idA, idB string) 
 
 // GraphDijkstra finds the shortest path between two entities.
 func (c *Client) GraphDijkstra(ctx context.Context, purpose, objectType, from, to string) (map[string]any, error) {
-	sql := fmt.Sprintf("GRAPH_DIJKSTRA('%s', FROM => '%s', TO => '%s')", objectType, from, to)
+	sql := fmt.Sprintf("GRAPH_DIJKSTRA(%s, FROM => %s, TO => %s)", sqlLiteral(objectType), sqlLiteral(from), sqlLiteral(to))
 	return c.query(ctx, purpose, sql)
 }
 
@@ -699,49 +699,49 @@ func (c *Client) GraphPageRank(ctx context.Context, purpose, objectType string, 
 			parts = append(parts, fmt.Sprintf("MAX_ITER => %d", opts.MaxIter))
 		}
 	}
-	sql := fmt.Sprintf("GRAPH_PAGERANK('%s')", objectType)
+	sql := fmt.Sprintf("GRAPH_PAGERANK(%s)", sqlLiteral(objectType))
 	if len(parts) > 0 {
-		sql = fmt.Sprintf("GRAPH_PAGERANK('%s', %s)", objectType, strings.Join(parts, ", "))
+		sql = fmt.Sprintf("GRAPH_PAGERANK(%s, %s)", sqlLiteral(objectType), strings.Join(parts, ", "))
 	}
 	return c.query(ctx, purpose, sql)
 }
 
 // GraphSCC finds strongly connected components (fraud-ring detection).
 func (c *Client) GraphSCC(ctx context.Context, purpose, objectType string) (map[string]any, error) {
-	return c.query(ctx, purpose, fmt.Sprintf("GRAPH_SCC('%s')", objectType))
+	return c.query(ctx, purpose, fmt.Sprintf("GRAPH_SCC(%s)", sqlLiteral(objectType)))
 }
 
 // GraphCycles detects cycles in the graph.
 func (c *Client) GraphCycles(ctx context.Context, purpose, objectType string) (map[string]any, error) {
-	return c.query(ctx, purpose, fmt.Sprintf("GRAPH_CYCLES('%s')", objectType))
+	return c.query(ctx, purpose, fmt.Sprintf("GRAPH_CYCLES(%s)", sqlLiteral(objectType)))
 }
 
 // GraphCommunity detects communities via label propagation.
 func (c *Client) GraphCommunity(ctx context.Context, purpose, objectType string) (map[string]any, error) {
-	return c.query(ctx, purpose, fmt.Sprintf("GRAPH_COMMUNITY('%s')", objectType))
+	return c.query(ctx, purpose, fmt.Sprintf("GRAPH_COMMUNITY(%s)", sqlLiteral(objectType)))
 }
 
 // GraphNodeSimilarity finds entities similar to a seed node.
 func (c *Client) GraphNodeSimilarity(ctx context.Context, purpose, objectType, node string) (map[string]any, error) {
-	sql := fmt.Sprintf("GRAPH_NODE_SIMILARITY('%s', NODE => '%s')", objectType, node)
+	sql := fmt.Sprintf("GRAPH_NODE_SIMILARITY(%s, NODE => %s)", sqlLiteral(objectType), sqlLiteral(node))
 	return c.query(ctx, purpose, sql)
 }
 
 // GraphLinkPredict predicts missing relationships.
 func (c *Client) GraphLinkPredict(ctx context.Context, purpose, objectType string) (map[string]any, error) {
-	return c.query(ctx, purpose, fmt.Sprintf("GRAPH_LINK_PREDICT('%s')", objectType))
+	return c.query(ctx, purpose, fmt.Sprintf("GRAPH_LINK_PREDICT(%s)", sqlLiteral(objectType)))
 }
 
 // GraphTriangleCount counts triangles (graph density / cohesion).
 func (c *Client) GraphTriangleCount(ctx context.Context, purpose, objectType string) (map[string]any, error) {
-	return c.query(ctx, purpose, fmt.Sprintf("TRIANGLE_COUNT('%s')", objectType))
+	return c.query(ctx, purpose, fmt.Sprintf("TRIANGLE_COUNT(%s)", sqlLiteral(objectType)))
 }
 
 // ── Intelligence operators (#967) ────────────────────────────────────────────
 
 // BeneficialOwnershipChain traces ownership to ultimate beneficial owner.
 func (c *Client) BeneficialOwnershipChain(ctx context.Context, purpose, party string, maxDepth int) (map[string]any, error) {
-	sql := fmt.Sprintf("BENEFICIAL_OWNERSHIP_CHAIN('%s', MAX_DEPTH => %d)", party, maxDepth)
+	sql := fmt.Sprintf("BENEFICIAL_OWNERSHIP_CHAIN(%s, MAX_DEPTH => %d)", sqlLiteral(party), maxDepth)
 	return c.query(ctx, purpose, sql)
 }
 
@@ -759,9 +759,9 @@ type SanctionsScreenOptions struct {
 // SanctionsScreen screens against sanctions lists with fuzzy threshold. opts
 // may be nil to use the server default threshold.
 func (c *Client) SanctionsScreen(ctx context.Context, purpose, party string, opts *SanctionsScreenOptions) (map[string]any, error) {
-	sql := fmt.Sprintf("SANCTIONS_SCREEN('%s')", party)
+	sql := fmt.Sprintf("SANCTIONS_SCREEN(%s)", sqlLiteral(party))
 	if opts != nil && opts.Threshold > 0 {
-		sql = fmt.Sprintf("SANCTIONS_SCREEN('%s', THRESHOLD => %f)", party, opts.Threshold)
+		sql = fmt.Sprintf("SANCTIONS_SCREEN(%s, THRESHOLD => %f)", sqlLiteral(party), opts.Threshold)
 	}
 	return c.query(ctx, purpose, sql)
 }
@@ -836,12 +836,12 @@ func (c *Client) BurnerDetect(ctx context.Context, purpose string, opts *BurnerD
 
 // CryptoTrace follows cryptocurrency fund flow.
 func (c *Client) CryptoTrace(ctx context.Context, purpose, entity string) (map[string]any, error) {
-	return c.query(ctx, purpose, fmt.Sprintf("CRYPTO_TRACE('%s')", entity))
+	return c.query(ctx, purpose, fmt.Sprintf("CRYPTO_TRACE(%s)", sqlLiteral(entity)))
 }
 
 // WireReconstruction reconstructs a wire-transfer chain (FinINT, #2249).
 func (c *Client) WireReconstruction(ctx context.Context, purpose, account string, tolerancePct float64) (map[string]any, error) {
-	sql := fmt.Sprintf("WIRE_RECONSTRUCTION('%s', TOLERANCE_PCT => %f)", account, tolerancePct)
+	sql := fmt.Sprintf("WIRE_RECONSTRUCTION(%s, TOLERANCE_PCT => %f)", sqlLiteral(account), tolerancePct)
 	return c.query(ctx, purpose, sql)
 }
 
@@ -856,26 +856,26 @@ type HawalaTraceOptions struct {
 // HawalaTrace traces an informal hawala value-transfer network (FinINT, #2249).
 // opts may be nil to use the server default MAX_HOPS.
 func (c *Client) HawalaTrace(ctx context.Context, purpose, seed string, opts *HawalaTraceOptions) (map[string]any, error) {
-	sql := fmt.Sprintf("HAWALA_TRACE('%s')", seed)
+	sql := fmt.Sprintf("HAWALA_TRACE(%s)", sqlLiteral(seed))
 	if opts != nil && opts.MaxHops > 0 {
-		sql = fmt.Sprintf("HAWALA_TRACE('%s', MAX_HOPS => %d)", seed, opts.MaxHops)
+		sql = fmt.Sprintf("HAWALA_TRACE(%s, MAX_HOPS => %d)", sqlLiteral(seed), opts.MaxHops)
 	}
 	return c.query(ctx, purpose, sql)
 }
 
 // DnsTunnelDetect detects DNS tunneling.
 func (c *Client) DnsTunnelDetect(ctx context.Context, purpose, entity string) (map[string]any, error) {
-	return c.query(ctx, purpose, fmt.Sprintf("DNS_TUNNEL_DETECT('%s')", entity))
+	return c.query(ctx, purpose, fmt.Sprintf("DNS_TUNNEL_DETECT(%s)", sqlLiteral(entity)))
 }
 
 // CrimePatternCluster performs spatial crime pattern analysis.
 func (c *Client) CrimePatternCluster(ctx context.Context, purpose, area string) (map[string]any, error) {
-	return c.query(ctx, purpose, fmt.Sprintf("CRIME_PATTERN_CLUSTER('%s')", area))
+	return c.query(ctx, purpose, fmt.Sprintf("CRIME_PATTERN_CLUSTER(%s)", sqlLiteral(area)))
 }
 
 // Geofence finds entities within a geographic fence.
 func (c *Client) Geofence(ctx context.Context, purpose, fence, targetType string) (map[string]any, error) {
-	sql := fmt.Sprintf("GEOFENCE('%s', TARGET_TYPE => '%s')", fence, targetType)
+	sql := fmt.Sprintf("GEOFENCE(%s, TARGET_TYPE => %s)", sqlLiteral(fence), sqlLiteral(targetType))
 	return c.query(ctx, purpose, sql)
 }
 
