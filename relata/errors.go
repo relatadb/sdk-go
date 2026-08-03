@@ -73,6 +73,12 @@ var (
 	// analogue of the Rust SDK's `redirect::Policy::none()` (#1416) and the
 	// TS SDK's `redirect: "manual"` + assertNotRedirected (#2364). See #3046.
 	ErrRedirectRefused = errors.New("relata: refused to follow HTTP redirect (potential bearer-token leak)")
+
+	// ErrCleartextBearerDisallowed is returned when a request would send the
+	// bearer token over a plaintext transport (http:// base URL to a
+	// non-loopback host, or a grpc:// Flight endpoint) without an explicit
+	// opt-in. Set ClientOptions.AllowCleartextBearer to override — see #3217.
+	ErrCleartextBearerDisallowed = errors.New("relata: refusing to send bearer token over cleartext transport (set AllowCleartextBearer to opt in)")
 )
 
 // RelataError wraps a server-side error response with HTTP metadata and the

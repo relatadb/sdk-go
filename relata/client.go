@@ -8,7 +8,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -53,6 +55,10 @@ type Client struct {
 	http           *http.Client
 	maxRetries     int
 	retryBackoff   time.Duration
+	// allowCleartextBearer opts in to sending the bearer over a plaintext
+	// http:// transport to a non-loopback host (#3217). Default false: such
+	// requests fail closed with ErrCleartextBearerDisallowed.
+	allowCleartextBearer bool
 }
 
 // refuseRedirects is a http.Client.CheckRedirect override that refuses to
@@ -90,6 +96,7 @@ func New(baseURL string, opts *ClientOptions) *Client {
 	c.actingAs = opts.ActingAs
 	c.delegatedBy = opts.DelegatedBy
 	c.maxRetries = opts.MaxRetries
+	c.allowCleartextBearer = opts.AllowCleartextBearer
 	if opts.RetryBackoff > 0 {
 		c.retryBackoff = opts.RetryBackoff
 	}
@@ -1074,6 +1081,35 @@ func (c *Client) sharedHeaders() map[string]string {
 	return out
 }
 
+// cleartextBearerGuard returns ErrCleartextBearerDisallowed when a request
+// targeting urlStr would carry the bearer token over a plaintext http://
+// transport to a non-loopback host without an explicit opt-in (#3217).
+// Loopback targets (localhost / 127.0.0.1 / ::1) and non-http schemes pass.
+func (c *Client) cleartextBearerGuard(urlStr string) error {
+	if c.bearerToken == "" || c.allowCleartextBearer {
+		return nil
+	}
+	parsed, err := url.Parse(urlStr)
+	if err != nil || parsed.Scheme != "http" {
+		return nil
+	}
+	if isLoopbackHost(parsed.Hostname()) {
+		return nil
+	}
+	return ErrCleartextBearerDisallowed
+}
+
+// isLoopbackHost reports whether host is a loopback name or address.
+func isLoopbackHost(host string) bool {
+	if host == "localhost" {
+		return true
+	}
+	if ip := net.ParseIP(host); ip != nil {
+		return ip.IsLoopback()
+	}
+	return false
+}
+
 // get performs a GET request to path and JSON-decodes the response into out.
 func (c *Client) get(ctx context.Context, path string, out any) error {
 	return c.doRequest(ctx, http.MethodGet, path, nil, "", out)
@@ -1124,6 +1160,9 @@ func (c *Client) postRaw(ctx context.Context, path, contentType string, body []b
 // RFC 7807 problem+json, and decodes successful responses into out.
 func (c *Client) doRequest(ctx context.Context, method, path string, body []byte, contentType string, out any) error {
 	url := c.effectiveBaseURL(path) + path
+	if err := c.cleartextBearerGuard(url); err != nil {
+		return err
+	}
 
 	maxAttempts := c.maxRetries
 	if maxAttempts > defaultRetryMaxAttempts {

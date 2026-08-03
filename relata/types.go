@@ -394,6 +394,14 @@ type ClientOptions struct {
 	// data plane (e.g. local/free-profile dev) — every request then goes to
 	// BaseURL exactly as before this option existed.
 	AdminBaseURL string
+
+	// AllowCleartextBearer explicitly opts in to sending the bearer token
+	// over cleartext transports (#3217): an http:// base URL targeting a
+	// non-loopback host, or a plaintext grpc:// Arrow Flight endpoint. By
+	// default both are refused with ErrCleartextBearerDisallowed so the token
+	// can never leak on the wire by accident. Loopback http:// targets and
+	// https:// / grpcs:// / tls:// transports are always allowed.
+	AllowCleartextBearer bool
 }
 
 // MemoryOptions configures the standalone Memory client.

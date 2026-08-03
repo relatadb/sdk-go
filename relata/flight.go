@@ -40,16 +40,25 @@ func FlightTicket(sql, purpose string) string {
 }
 
 // ResolveFlightEndpoint derives the Arrow Flight gRPC endpoint from baseURL
-// (grpc://<host>:8815 by default) unless flightEndpoint overrides it. Pass an
-// explicit grpcs://host:port (or tls://host:port) endpoint to request a
-// TLS-protected Flight connection — see isSecureFlightEndpoint (#2362).
+// unless flightEndpoint overrides it. The scheme tracks the HTTP base: an
+// https:// base defaults to a TLS-protected grpcs://<host>:8815 endpoint, and
+// anything else defaults to grpc://<host>:8815 (#3217 — the old unconditional
+// grpc:// default shipped the bearer in cleartext even for TLS deployments).
+// Pass an explicit grpcs://host:port (or tls://host:port) endpoint to request
+// a TLS-protected Flight connection regardless — see isSecureFlightEndpoint
+// (#2362).
 func ResolveFlightEndpoint(baseURL, flightEndpoint string) string {
 	if flightEndpoint != "" {
 		return flightEndpoint
 	}
 	host := "localhost"
+	scheme := ""
 	if parsed, err := url.Parse(baseURL); err == nil && parsed.Hostname() != "" {
 		host = parsed.Hostname()
+		scheme = parsed.Scheme
+	}
+	if scheme == "https" {
+		return "grpcs://" + host + ":" + DefaultFlightPort
 	}
 	return "grpc://" + host + ":" + DefaultFlightPort
 }
@@ -94,11 +103,16 @@ func flightTransportCredentials(endpoint string) credentials.TransportCredential
 // #958). This mirrors relata-sdk-rust's query_flight.
 //
 // The Flight door is enabled server-side with RELATA_FLIGHT_ENABLE=true.
-// flightEndpoint defaults to grpc://<Client.baseURL host>:8815; pass an explicit
-// grpc://host:port to override. The SQL ticket may include a leading
-// /* PURPOSE '<id>' */ comment; pass a non-empty purpose to inject one.
-// Bearer auth is sent as gRPC "authorization" metadata, using the Client's
-// token unless bearer overrides it.
+// flightEndpoint defaults to grpc://<Client.baseURL host>:8815 (grpcs:// when
+// the base URL is https, #3217); pass an explicit grpc://host:port to
+// override. The SQL ticket may include a leading /* PURPOSE '<id>' */ comment;
+// pass a non-empty purpose to inject one. Bearer auth is sent as gRPC
+// "authorization" metadata, using the Client's token unless bearer overrides
+// it.
+//
+// #3217: the bearer is never attached on a plaintext (grpc:// / http://)
+// endpoint unless ClientOptions.AllowCleartextBearer is set — otherwise the
+// call fails closed with ErrCleartextBearerDisallowed before any dial.
 //
 // Requires github.com/apache/arrow/go/v15 + google.golang.org/grpc (see go.mod).
 // Run `go mod tidy && go build ./...` after adding this file to fetch deps.
@@ -113,6 +127,9 @@ func (c *Client) QueryFlight(
 	ticketSQL := FlightTicket(sql, purpose)
 	if bearer == "" {
 		bearer = c.bearerToken
+	}
+	if bearer != "" && !isSecureFlightEndpoint(endpoint) && !c.allowCleartextBearer {
+		return nil, ErrCleartextBearerDisallowed
 	}
 	return queryFlightDoGet(ctx, endpoint, ticketSQL, bearer)
 }

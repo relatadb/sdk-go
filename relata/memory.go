@@ -577,6 +577,9 @@ func encodeGetURL(base string, params map[string]string) string {
 // Used by the audit PDF export path which returns binary content.
 func (c *Client) rawHTTPRequest(ctx context.Context, method, path string, body []byte, contentType string, extraHeaders ...map[string]string) (int, []byte, map[string]string, error) {
 	url := c.baseURL + path
+	if err := c.cleartextBearerGuard(url); err != nil {
+		return 0, nil, nil, err
+	}
 	var req *http.Request
 	var err error
 	if body != nil {

@@ -382,11 +382,15 @@ func (s *StreamingClient) resolvePurpose(opts *StreamingQueryOptions) (string, e
 // must Close it. Retry is intentionally NOT applied to streaming requests — the
 // body is the response.
 func (c *Client) openStream(ctx context.Context, method, path string, body []byte, contentType string) (io.ReadCloser, error) {
+	url := c.effectiveBaseURL(path) + path
+	if err := c.cleartextBearerGuard(url); err != nil {
+		return nil, err
+	}
 	var bodyReader io.Reader
 	if body != nil {
 		bodyReader = bytes.NewReader(body)
 	}
-	req, err := http.NewRequestWithContext(ctx, method, c.effectiveBaseURL(path)+path, bodyReader)
+	req, err := http.NewRequestWithContext(ctx, method, url, bodyReader)
 	if err != nil {
 		return nil, fmt.Errorf("relata: build request: %w", err)
 	}

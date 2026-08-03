@@ -874,3 +874,63 @@ func TestResolveIdentity_SupportsCanonicalAndFuseModes(t *testing.T) {
 		t.Fatalf("sql = %v", got["sql"])
 	}
 }
+
+// #3217: a bearer sent to a non-loopback http:// target must fail closed with
+// ErrCleartextBearerDisallowed before any dial, unless the caller opts in.
+func TestCleartextBearerGuard_NonLoopbackRefused(t *testing.T) {
+	c := New("http://192.0.2.10:9090", &ClientOptions{BearerToken: "tok", Timeout: time.Second})
+	_, err := c.Health(context.Background())
+	if !errors.Is(err, ErrCleartextBearerDisallowed) {
+		t.Fatalf("err = %v, want ErrCleartextBearerDisallowed", err)
+	}
+}
+
+// #3217: the opt-in opens the gate (the request then fails on the dial — the
+// TEST-NET address is unroutable — but not on the cleartext guard).
+func TestCleartextBearerGuard_OptIn(t *testing.T) {
+	c := New("http://192.0.2.10:9090", &ClientOptions{
+		BearerToken:          "tok",
+		AllowCleartextBearer: true,
+		Timeout:              200 * time.Millisecond,
+	})
+	_, err := c.Health(context.Background())
+	if errors.Is(err, ErrCleartextBearerDisallowed) {
+		t.Fatalf("opt-in must bypass the cleartext guard, got %v", err)
+	}
+}
+
+// #3217: a loopback http:// target is always allowed (dev default), matching
+// the httptest servers every other test in this file uses.
+func TestCleartextBearerGuard_LoopbackAllowed(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"status":"ok"}`))
+	}))
+	defer srv.Close()
+	c := newTestClient(srv, &ClientOptions{BearerToken: "tok"})
+	if _, err := c.Health(context.Background()); err != nil {
+		t.Fatalf("loopback bearer must be allowed, got %v", err)
+	}
+}
+
+// #3217: no bearer means nothing leaks, so a non-loopback http:// target is fine.
+func TestCleartextBearerGuard_NoBearerAllowed(t *testing.T) {
+	if err := (&Client{baseURL: "http://192.0.2.10:9090"}).cleartextBearerGuard("http://192.0.2.10:9090/health"); err != nil {
+		t.Fatalf("no bearer must pass the guard, got %v", err)
+	}
+}
+
+func TestIsLoopbackHost(t *testing.T) {
+	cases := map[string]bool{
+		"localhost": true,
+		"127.0.0.1": true,
+		"::1":       true,
+		"example.c": false,
+		"192.0.2.1": false,
+	}
+	for in, want := range cases {
+		if got := isLoopbackHost(in); got != want {
+			t.Errorf("isLoopbackHost(%q) = %v, want %v", in, got, want)
+		}
+	}
+}
