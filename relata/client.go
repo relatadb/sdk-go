@@ -450,24 +450,24 @@ func (c *Client) UpsertTyped(ctx context.Context, objectType, pk string, obj any
 // mode selects the resolution strategy ("canonical", "cluster", or "fuse");
 // pass "" to use the server default (cluster) — same as IdentityCluster.
 func (c *Client) ResolveIdentity(ctx context.Context, purpose, value, mode string) (map[string]any, error) {
-	escaped := strings.ReplaceAll(value, "'", "''")
+	escaped := escapeSQLString(value)
 	sql := fmt.Sprintf("RESOLVE_IDENTITY('%s')", escaped)
 	if mode != "" {
-		sql = fmt.Sprintf("RESOLVE_IDENTITY('%s', MODE => '%s')", escaped, mode)
+		sql = fmt.Sprintf("RESOLVE_IDENTITY('%s', MODE => '%s')", escaped, escapeSQLString(mode))
 	}
 	return c.query(ctx, purpose, sql)
 }
 
 // DetectIdentities detects identities in free text via SmartIngest.
 func (c *Client) DetectIdentities(ctx context.Context, purpose, text string) (map[string]any, error) {
-	sql := fmt.Sprintf("DETECT_IDENTITIES('%s')", strings.ReplaceAll(text, "'", "''"))
+	sql := fmt.Sprintf("DETECT_IDENTITIES('%s')", escapeSQLString(text))
 	return c.query(ctx, purpose, sql)
 }
 
 // EraseSubject performs GDPR Art. 17 erasure — irreversible.
 func (c *Client) EraseSubject(ctx context.Context, purpose, subject, reason string) (map[string]any, error) {
-	s := strings.ReplaceAll(subject, "'", "''")
-	r := strings.ReplaceAll(reason, "'", "''")
+	s := escapeSQLString(subject)
+	r := escapeSQLString(reason)
 	if reason == "" {
 		r = "gdpr-art17-request"
 	}
@@ -583,7 +583,7 @@ func (c *Client) SessionDiscard(ctx context.Context, sessionID string) (map[stri
 
 // IdentityCluster resolves an identity to its full cluster of linked identifiers.
 func (c *Client) IdentityCluster(ctx context.Context, purpose, value string) (map[string]any, error) {
-	sql := fmt.Sprintf("RESOLVE_IDENTITY('%s', MODE => 'cluster')", strings.ReplaceAll(value, "'", "''"))
+	sql := fmt.Sprintf("RESOLVE_IDENTITY('%s', MODE => 'cluster')", escapeSQLString(value))
 	return c.query(ctx, purpose, sql)
 }
 
@@ -591,7 +591,7 @@ func (c *Client) IdentityCluster(ctx context.Context, purpose, value string) (ma
 // It executes `SAME_IDENTITY('<a>', '<b>')` via `POST /query` and decodes the
 // `match` verdict as a boolean (#2246).
 func (c *Client) SameIdentity(ctx context.Context, purpose, idA, idB string) (bool, error) {
-	sql := fmt.Sprintf("SAME_IDENTITY('%s', '%s')", strings.ReplaceAll(idA, "'", "''"), strings.ReplaceAll(idB, "'", "''"))
+	sql := fmt.Sprintf("SAME_IDENTITY('%s', '%s')", escapeSQLString(idA), escapeSQLString(idB))
 	resp, err := c.query(ctx, purpose, sql)
 	if err != nil {
 		return false, err
@@ -609,13 +609,13 @@ func (c *Client) SameIdentity(ctx context.Context, purpose, idA, idB string) (bo
 // FuseIdentities merges two identities — writes an IdentityLink with
 // link_type='fused' and returns the merged cluster (#967).
 func (c *Client) FuseIdentities(ctx context.Context, purpose, idA, idB string) (map[string]any, error) {
-	sql := fmt.Sprintf("FUSE_IDENTITIES('%s', '%s')", strings.ReplaceAll(idA, "'", "''"), strings.ReplaceAll(idB, "'", "''"))
+	sql := fmt.Sprintf("FUSE_IDENTITIES('%s', '%s')", escapeSQLString(idA), escapeSQLString(idB))
 	return c.query(ctx, purpose, sql)
 }
 
 // SplitIdentities unmerges two identities — inverse of FuseIdentities (#967).
 func (c *Client) SplitIdentities(ctx context.Context, purpose, idA, idB string) (map[string]any, error) {
-	sql := fmt.Sprintf("SPLIT_IDENTITIES('%s', '%s')", strings.ReplaceAll(idA, "'", "''"), strings.ReplaceAll(idB, "'", "''"))
+	sql := fmt.Sprintf("SPLIT_IDENTITIES('%s', '%s')", escapeSQLString(idA), escapeSQLString(idB))
 	return c.query(ctx, purpose, sql)
 }
 

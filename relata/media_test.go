@@ -2,14 +2,17 @@ package relata
 
 import "testing"
 
-// TestSQLLiteral verifies quote doubling — the injection guard for the
-// multimedia operators (#2251).
+// TestSQLLiteral verifies backslash escaping of `\` and `'` — the injection
+// guard for the multimedia operators (#2251, #3211). The server lexer
+// terminates a literal at the first unescaped quote and honours backslash
+// escapes, so both characters must be backslash-escaped.
 func TestSQLLiteral(t *testing.T) {
 	cases := map[string]string{
-		"abc":           "'abc'",
-		"a'b":           "'a''b'",
-		"0.1,0.2,0.3":   "'0.1,0.2,0.3'",
-		`has"quote`:     `'has"quote'`,
+		"abc":         "'abc'",
+		"a'b":         `'a\'b'`,
+		`a\b`:         `'a\\b'`,
+		"0.1,0.2,0.3": "'0.1,0.2,0.3'",
+		`has"quote`:   `'has"quote'`,
 	}
 	for in, want := range cases {
 		if got := sqlLiteral(in); got != want {
@@ -43,10 +46,11 @@ func TestBuildFaceSearchSQL(t *testing.T) {
 }
 
 // TestBuildFaceSearchSQL_QuoteInjection ensures a malicious gallery id can't
-// break out of the SQL literal.
+// break out of the SQL literal (#3211): the quote is backslash-escaped so the
+// payload stays contained in a single string literal.
 func TestBuildFaceSearchSQL_QuoteInjection(t *testing.T) {
 	got := buildFaceSearchSQL("x'); DROP TABLE y;--", "1", 1, 0.5)
-	want := "SELECT * FROM FACE_SEARCH('1', 'x''); DROP TABLE y;--', K => 1, THRESHOLD => 0.5)"
+	want := `SELECT * FROM FACE_SEARCH('1', 'x\'); DROP TABLE y;--', K => 1, THRESHOLD => 0.5)`
 	if got != want {
 		t.Errorf("quote injection not neutralised:\n got %q\nwant %q", got, want)
 	}

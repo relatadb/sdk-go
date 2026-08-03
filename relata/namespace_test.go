@@ -118,11 +118,15 @@ func TestNamespace_Write_SchemaOverrides(t *testing.T) {
 
 func TestNamespace_Get_PointLookup(t *testing.T) {
 	var gotSQL string
+	var gotParams []any
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var body map[string]any
 		b, _ := io.ReadAll(r.Body)
 		_ = json.Unmarshal(b, &body)
 		gotSQL, _ = body["sql"].(string)
+		if p, ok := body["params"].([]any); ok {
+			gotParams = p
+		}
 		fmt.Fprint(w, `{"rows":[{"id":"d42","title":"Found"}],"columns":["id","title"]}`)
 	}))
 	defer srv.Close()
@@ -132,8 +136,12 @@ func TestNamespace_Get_PointLookup(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(gotSQL, "SELECT * FROM Document WHERE id = 'd42'") {
+	// #3211: the id is bound as a server-side $1 parameter, never interpolated.
+	if !strings.Contains(gotSQL, "SELECT * FROM Document WHERE id = $1") {
 		t.Fatalf("sql = %q", gotSQL)
+	}
+	if len(gotParams) != 1 || gotParams[0] != "d42" {
+		t.Fatalf("params = %v, want [d42]", gotParams)
 	}
 	if row == nil || row["id"] != "d42" {
 		t.Fatalf("row = %v", row)

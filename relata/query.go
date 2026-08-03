@@ -144,9 +144,10 @@ func (b *QueryBuilder) SQL() string {
 		sb.WriteString(strings.Join(b.whereClauses, " AND "))
 	}
 
-	// AS OF — must precede WITH PROVENANCE per the Relata grammar
+	// AS OF — must precede WITH PROVENANCE per the Relata grammar. The
+	// timestamp is escaped into a contained literal (#3211).
 	if b.asOf != "" {
-		sb.WriteString(fmt.Sprintf(" AS OF '%s'", b.asOf))
+		sb.WriteString(fmt.Sprintf(" AS OF '%s'", escapeSQLString(b.asOf)))
 	}
 
 	// WITH PROVENANCE
@@ -187,7 +188,7 @@ func (b *QueryBuilder) Execute(ctx context.Context, client *Client) (*QueryResul
 func PathsBetween(fromID, toID string, maxHops int) *QueryBuilder {
 	sql := fmt.Sprintf(
 		"SELECT * FROM PATHS_BETWEEN('%s', '%s', max_hops => %d)",
-		fromID, toID, maxHops,
+		escapeSQLString(fromID), escapeSQLString(toID), maxHops,
 	)
 	return NewQuery(sql)
 }
@@ -204,7 +205,7 @@ func PathsBetween(fromID, toID string, maxHops int) *QueryBuilder {
 func MatchFace(imageRef string, topK int) *QueryBuilder {
 	sql := fmt.Sprintf(
 		"SELECT * FROM MATCH_FACE('%s', top_k => %d)",
-		imageRef, topK,
+		escapeSQLString(imageRef), topK,
 	)
 	return NewQuery(sql)
 }
@@ -217,7 +218,7 @@ func MatchFace(imageRef string, topK int) *QueryBuilder {
 //	    Purpose("investigation").
 //	    Execute(ctx, client)
 func LookupIdentity(identifier string) *QueryBuilder {
-	sql := fmt.Sprintf("SELECT * FROM LOOKUP_IDENTITY('%s')", identifier)
+	sql := fmt.Sprintf("SELECT * FROM LOOKUP_IDENTITY('%s')", escapeSQLString(identifier))
 	return NewQuery(sql)
 }
 
@@ -225,13 +226,21 @@ func LookupIdentity(identifier string) *QueryBuilder {
 // the given object type. query is the natural-language search string;
 // topK limits results.
 //
+// #3211: objectType is validated against the identifier allowlist (it lands in
+// a FROM clause, so escaping cannot protect it) and query is escaped into a
+// contained literal. The error return is a deliberate breaking change — the
+// previous signature pasted both raw.
+//
 //	result, err := relata.HybridSearch("Person", "Ahmed Khalil Karachi", 25).
 //	    Purpose("analysis").
 //	    Execute(ctx, client)
-func HybridSearch(objectType, query string, topK int) *QueryBuilder {
+func HybridSearch(objectType, query string, topK int) (*QueryBuilder, error) {
+	if err := validateIdentifier(objectType, "object_type"); err != nil {
+		return nil, err
+	}
 	sql := fmt.Sprintf(
 		"SELECT *, HYBRID_SCORE('%s') AS score FROM %s WHERE score > 0 ORDER BY score DESC LIMIT %d",
-		query, objectType, topK,
+		escapeSQLString(query), objectType, topK,
 	)
-	return NewQuery(sql)
+	return NewQuery(sql), nil
 }

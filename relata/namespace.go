@@ -3,22 +3,14 @@ package relata
 import (
 	"context"
 	"fmt"
-	"regexp"
-	"strings"
 )
 
-// namespaceNameRE is the safe-identifier gate before embedding the namespace
-// name into SQL / paths. Mirrors sdks/python/relata/namespace.py:_TYPE_RE and
-// the server's validate rule (^[A-Za-z_][A-Za-z0-9_]{0,127}$).
-var namespaceNameRE = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
-
 // validateNamespaceName panics-free reports whether name is a safe namespace /
-// object-type identifier. Returns an error suitable for surfacing to callers.
+// object-type identifier. Delegates to the shared identifier allowlist (#3211),
+// mirroring sdks/python/relata/namespace.py:_TYPE_RE and the server's validate
+// rule (^[A-Za-z_][A-Za-z0-9_]{0,127}$).
 func validateNamespaceName(name string) error {
-	if !namespaceNameRE.MatchString(name) {
-		return fmt.Errorf("relata: invalid namespace/type name %q: must match ^[A-Za-z_][A-Za-z0-9_]*$", name)
-	}
-	return nil
+	return validateIdentifier(name, "namespace/type name")
 }
 
 // Namespace is a handle bound to a single object type — the T9 flagship
@@ -136,9 +128,9 @@ func (n *Namespace) Get(ctx context.Context, objectID string, opts *NamespaceOpt
 	if purpose == "" {
 		return nil, ErrPurposeRequired
 	}
-	escaped := strings.ReplaceAll(objectID, "'", "''")
-	sql := fmt.Sprintf("SELECT * FROM %s WHERE id = '%s' LIMIT 1", n.Name, escaped)
-	result, err := n.c.Query(ctx, sql, WithPurpose(purpose))
+	// #3211: the id is bound as a server-side $1 parameter, never interpolated.
+	sql := fmt.Sprintf("SELECT * FROM %s WHERE id = $1 LIMIT 1", n.Name)
+	result, err := n.c.QueryWithParams(ctx, sql, []any{objectID}, WithPurpose(purpose))
 	if err != nil {
 		return nil, err
 	}

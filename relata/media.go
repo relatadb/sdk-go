@@ -16,19 +16,10 @@ import (
 //   - SIMILAR_IMAGE('<media_ref>', THRESHOLD => f, INDEX => '<corpus>')
 // ---------------------------------------------------------------------------
 
-// sqlLiteral quotes a string as a SQL literal, doubling internal quotes.
+// sqlLiteral quotes a string as a SQL literal, backslash-escaping `\` and `'`
+// so the value cannot break out of the literal (#3211). See escapeSQLString.
 func sqlLiteral(s string) string {
-	out := make([]byte, 0, len(s)+2)
-	out = append(out, '\'')
-	for i := 0; i < len(s); i++ {
-		if s[i] == '\'' {
-			out = append(out, '\'', '\'')
-			continue
-		}
-		out = append(out, s[i])
-	}
-	out = append(out, '\'')
-	return string(out)
+	return "'" + escapeSQLString(s) + "'"
 }
 
 // floatsToCSV renders a numeric slice ([]float32 / []float64) as a

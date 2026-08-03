@@ -793,7 +793,7 @@ func TestVectorClient_HybridSearch_TuningClauses(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := "HYBRID_SEARCH FROM Document QUERY 'o''reilly' LIMIT 5 RERANK METRIC cosine WEIGHTS 0.3 0.5 0.2"
+	want := `HYBRID_SEARCH FROM Document QUERY 'o\'reilly' LIMIT 5 RERANK METRIC cosine WEIGHTS 0.3 0.5 0.2`
 	if gotSQL != want {
 		t.Fatalf("sql = %q, want %q", gotSQL, want)
 	}
@@ -813,11 +813,15 @@ func TestVectorClient_HybridSearch_RequiresTextOrEmbedding(t *testing.T) {
 
 func TestVectorClient_SimilarTo(t *testing.T) {
 	var gotSQL string
+	var gotParams []any
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var body map[string]any
 		b, _ := io.ReadAll(r.Body)
 		_ = json.Unmarshal(b, &body)
 		gotSQL, _ = body["sql"].(string)
+		if p, ok := body["params"].([]any); ok {
+			gotParams = p
+		}
 		fmt.Fprint(w, `{"rows":[],"query_id":"q1","elapsed_ms":1}`)
 	}))
 	defer srv.Close()
@@ -828,9 +832,13 @@ func TestVectorClient_SimilarTo(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := "SELECT * FROM SIMILAR TO Document WHERE id = 'd-1' LIMIT 3"
+	// #3211: the reference id is bound as a server-side $1 parameter.
+	want := "SELECT * FROM SIMILAR TO Document WHERE id = $1 LIMIT 3"
 	if gotSQL != want {
 		t.Fatalf("sql = %q, want %q", gotSQL, want)
+	}
+	if len(gotParams) != 1 || gotParams[0] != "d-1" {
+		t.Fatalf("params = %v, want [d-1]", gotParams)
 	}
 }
 

@@ -82,6 +82,12 @@ type SimilarToOptions struct {
 // request/query logs instead of vanishing, and ready to be wired to a real
 // per-query knob if the server ever exposes one.
 func (v *VectorClient) KNNSearch(ctx context.Context, objectType, embeddingSlot string, queryEmbedding []float64, k int, opts *KNNOptions) ([]map[string]any, error) {
+	if err := validateIdentifier(objectType, "object_type"); err != nil {
+		return nil, err
+	}
+	if err := validateIdentifier(embeddingSlot, "embedding_slot"); err != nil {
+		return nil, err
+	}
 	if k <= 0 {
 		k = 10
 	}
@@ -91,7 +97,7 @@ func (v *VectorClient) KNNSearch(ctx context.Context, objectType, embeddingSlot 
 	}
 	sql := fmt.Sprintf(
 		"SELECT * FROM %s ORDER BY %s <=> '%s' LIMIT %d",
-		objectType, embeddingSlot, string(embStr), k,
+		objectType, embeddingSlot, escapeSQLString(string(embStr)), k,
 	)
 	purpose := ""
 	if opts != nil {
@@ -113,12 +119,24 @@ func (v *VectorClient) KNNSearch(ctx context.Context, objectType, embeddingSlot 
 // "SELECT * FROM HYBRID_SEARCH(from => …)" TVF shape was never accepted by the
 // server (named args aren't a real grammar). Mirrors the TypeScript
 // buildHybridSearchSql / Python _hybrid_search_sql helpers.
-func buildHybridSearchSQL(objectType, queryText string, k int, rerank bool, metric string, weights *[3]float64) string {
+//
+// #3211: objectType is validated against the identifier allowlist, metric is
+// confined to the server's known set, and queryText is escaped into a single
+// contained string literal — none of them are pasted raw.
+func buildHybridSearchSQL(objectType, queryText string, k int, rerank bool, metric string, weights *[3]float64) (string, error) {
+	if err := validateIdentifier(objectType, "object_type"); err != nil {
+		return "", err
+	}
+	if metric != "" {
+		if err := validateMetric(metric); err != nil {
+			return "", err
+		}
+	}
 	if k <= 0 {
 		k = 10
 	}
 	sql := fmt.Sprintf("HYBRID_SEARCH FROM %s QUERY '%s' LIMIT %d",
-		objectType, escapeSingleQuotes(queryText), k)
+		objectType, escapeSQLString(queryText), k)
 	if rerank {
 		sql += " RERANK"
 	}
@@ -128,7 +146,24 @@ func buildHybridSearchSQL(objectType, queryText string, k int, rerank bool, metr
 	if weights != nil {
 		sql += fmt.Sprintf(" WEIGHTS %v %v %v", weights[0], weights[1], weights[2])
 	}
-	return sql
+	return sql, nil
+}
+
+// metricAllowlist is the closed set of distance metrics the server's vector
+// channel accepts (#3211). Anything else is rejected client-side rather than
+// interpolated into the METRIC clause.
+var metricAllowlist = map[string]struct{}{
+	"cosine":     {},
+	"l2":         {},
+	"dotproduct": {},
+}
+
+// validateMetric confines metric to the server's known distance-metric set.
+func validateMetric(metric string) error {
+	if _, ok := metricAllowlist[metric]; !ok {
+		return fmt.Errorf("relata: invalid metric %q: must be one of cosine, l2, dotproduct", metric)
+	}
+	return nil
 }
 
 // HybridSearch performs a hybrid BM25 + vector search via the HYBRID_SEARCH
@@ -153,7 +188,10 @@ func (v *VectorClient) HybridSearch(ctx context.Context, objectType, queryText s
 		metric = opts.Metric
 		weights = opts.Weights
 	}
-	sql := buildHybridSearchSQL(objectType, queryText, k, rerank, metric, weights)
+	sql, err := buildHybridSearchSQL(objectType, queryText, k, rerank, metric, weights)
+	if err != nil {
+		return nil, err
+	}
 	result, err := v.query(ctx, sql, purpose)
 	if err != nil {
 		return nil, err
@@ -163,7 +201,13 @@ func (v *VectorClient) HybridSearch(ctx context.Context, objectType, queryText s
 
 // SimilarTo performs multi-vector similarity ("SIMILAR TO") — ranks by max-pool
 // cosine over every _emb_* slot on the reference row.
+//
+// #3211: objectType is validated against the identifier allowlist and
+// referenceID is bound as a server-side $1 parameter rather than interpolated.
 func (v *VectorClient) SimilarTo(ctx context.Context, objectType, referenceID string, opts *SimilarToOptions) ([]map[string]any, error) {
+	if err := validateIdentifier(objectType, "object_type"); err != nil {
+		return nil, err
+	}
 	k := 10
 	purpose := ""
 	if opts != nil {
@@ -172,11 +216,8 @@ func (v *VectorClient) SimilarTo(ctx context.Context, objectType, referenceID st
 		}
 		purpose = opts.Purpose
 	}
-	sql := fmt.Sprintf(
-		"SELECT * FROM SIMILAR TO %s WHERE id = '%s' LIMIT %d",
-		objectType, escapeSingleQuotes(referenceID), k,
-	)
-	result, err := v.query(ctx, sql, purpose)
+	sql := fmt.Sprintf("SELECT * FROM SIMILAR TO %s WHERE id = $1 LIMIT %d", objectType, k)
+	result, err := v.queryWithParams(ctx, sql, []any{referenceID}, purpose)
 	if err != nil {
 		return nil, err
 	}
@@ -193,6 +234,19 @@ func (v *VectorClient) query(ctx context.Context, sql, purpose string) (*QueryRe
 		return nil, ErrPurposeRequired
 	}
 	return v.c.Query(ctx, sql, WithPurpose(eff))
+}
+
+// queryWithParams is query's parameterized variant (#3211): positional $N
+// placeholders in sql are bound server-side from params.
+func (v *VectorClient) queryWithParams(ctx context.Context, sql string, params []any, purpose string) (*QueryResult, error) {
+	eff := purpose
+	if eff == "" {
+		eff = v.c.defaultPurpose
+	}
+	if eff == "" {
+		return nil, ErrPurposeRequired
+	}
+	return v.c.QueryWithParams(ctx, sql, params, WithPurpose(eff))
 }
 
 // EmbedResponse is the body of POST /embed (#1172).

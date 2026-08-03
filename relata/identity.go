@@ -3,6 +3,7 @@ package relata
 import (
 	"context"
 	"fmt"
+	"regexp"
 )
 
 // IdentityClient is the synchronous identity + lookup client. It wraps identity
@@ -147,8 +148,8 @@ func (i *IdentityClient) EraseSubject(ctx context.Context, subjectIdentity, reas
 	}
 	sql := fmt.Sprintf(
 		"ERASE SUBJECT '%s' REASON '%s'%s",
-		escapeSingleQuotes(subjectIdentity),
-		escapeSingleQuotes(reason),
+		escapeSQLString(subjectIdentity),
+		escapeSQLString(reason),
 		certifyKW,
 	)
 	var resp map[string]any
@@ -158,16 +159,34 @@ func (i *IdentityClient) EraseSubject(ctx context.Context, subjectIdentity, reas
 	return resp, nil
 }
 
-// escapeSingleQuotes doubles single quotes for safe interpolation into a SQL
-// string literal.
-func escapeSingleQuotes(s string) string {
+// identifierRE is the allowlist for object-type / column / slot identifiers
+// that the SDK interpolates into SQL. Anything that is not a bare identifier is
+// rejected client-side (#3211) instead of being pasted into the statement.
+var identifierRE = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
+
+// validateIdentifier reports whether name is a safe SQL identifier (#3211).
+// what labels the offending argument in the returned error (e.g. "object_type").
+func validateIdentifier(name, what string) error {
+	if !identifierRE.MatchString(name) {
+		return fmt.Errorf("relata: invalid %s %q: must match ^[A-Za-z_][A-Za-z0-9_]*$", what, name)
+	}
+	return nil
+}
+
+// escapeSQLString escapes a caller-supplied value for interpolation into a SQL
+// string literal (#3211). The server lexer (relata_query::parser) terminates a
+// literal at the first unescaped quote and honours backslash escapes, so both
+// `\` and `'` must be backslash-escaped — the old `'`→`''` doubling neither
+// contained a quote correctly nor blocked a `\'` breakout.
+func escapeSQLString(s string) string {
 	out := make([]byte, 0, len(s)+4)
 	for i := 0; i < len(s); i++ {
-		if s[i] == '\'' {
-			out = append(out, '\'', '\'')
-			continue
+		switch s[i] {
+		case '\\', '\'':
+			out = append(out, '\\', s[i])
+		default:
+			out = append(out, s[i])
 		}
-		out = append(out, s[i])
 	}
 	return string(out)
 }
