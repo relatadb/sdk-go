@@ -21,14 +21,14 @@ const (
 	defaultContentType  = "application/json"
 	defaultRetryBackoff = 500 * time.Millisecond
 
-	headerAuthorization = "Authorization"
-	headerContentType   = "Content-Type"
-	headerAccept        = "Accept"
-	headerRequestID     = "X-Request-ID"
-	headerTenant = "X-Relata-Tenant-Id" // #1228 canonical tenant header
-	headerActingAs      = "X-Acting-As"
-	headerDelegatedBy   = "X-Delegated-By"
-	headerRetryAfter    = "Retry-After"
+	headerAuthorization      = "Authorization"
+	headerContentType        = "Content-Type"
+	headerAccept             = "Accept"
+	headerRequestID          = "X-Request-ID"
+	headerTenant             = "X-Relata-Tenant-Id" // #1228 canonical tenant header
+	headerActingAs           = "X-Acting-As"
+	headerDelegatedBy        = "X-Delegated-By"
+	headerRetryAfter         = "Retry-After"
 	headerRateLimitLimit     = "X-RateLimit-Limit"
 	headerRateLimitRemaining = "X-RateLimit-Remaining"
 	headerRateLimitReset     = "X-RateLimit-Reset"
@@ -326,7 +326,7 @@ func (c *Client) RegisterType(ctx context.Context, name string, spec map[string]
 // DeregisterType deregisters a custom type. Admin token required.
 func (c *Client) DeregisterType(ctx context.Context, name string) (map[string]any, error) {
 	var resp map[string]any
-	if err := c.delete(ctx, "/types/"+name, &resp); err != nil {
+	if err := c.delete(ctx, "/types/"+pathSegment(name), &resp); err != nil {
 		return nil, err
 	}
 	return resp, nil
@@ -335,7 +335,7 @@ func (c *Client) DeregisterType(ctx context.Context, name string) (map[string]an
 // TypeDetail gets type detail (properties, owner, row count).
 func (c *Client) TypeDetail(ctx context.Context, name string) (map[string]any, error) {
 	var resp map[string]any
-	if err := c.get(ctx, "/types/"+name, &resp); err != nil {
+	if err := c.get(ctx, "/types/"+pathSegment(name), &resp); err != nil {
 		return nil, err
 	}
 	return resp, nil
@@ -364,7 +364,7 @@ func (c *Client) SchemaAlter(ctx context.Context, name, action, column string, o
 		}
 	}
 	var resp map[string]any
-	if err := c.patchJSON(ctx, "/types/"+name+"/schema", body, &resp); err != nil {
+	if err := c.patchJSON(ctx, "/types/"+pathSegment(name)+"/schema", body, &resp); err != nil {
 		return nil, err
 	}
 	return resp, nil
@@ -477,13 +477,16 @@ func (c *Client) EraseSubject(ctx context.Context, purpose, subject, reason stri
 
 // ── SPARQL, sessions & cluster (#967 Tier 2d) ───────────────────────────────
 
-// ExportData bulk-exports all rows of a type (#967 Tier 5c).
+// ExportData bulk-exports all rows of a type (#967 Tier 5c). The type and
+// format are routed through url.Values so a caller-supplied '&', '?', or '#'
+// cannot smuggle extra query params (#3212).
 func (c *Client) ExportData(ctx context.Context, objectType, format string) (map[string]any, error) {
 	if format == "" {
 		format = "json"
 	}
 	var resp map[string]any
-	if err := c.get(ctx, fmt.Sprintf("/export?type=%s&format=%s&purpose=export", objectType, format), &resp); err != nil {
+	path := encodeGetURL("/export", map[string]string{"type": objectType, "format": format, "purpose": "export"})
+	if err := c.get(ctx, path, &resp); err != nil {
 		return nil, err
 	}
 	return resp, nil
@@ -510,7 +513,7 @@ func (c *Client) ListWebhooks(ctx context.Context) (map[string]any, error) {
 // DeleteWebhook deletes a webhook.
 func (c *Client) DeleteWebhook(ctx context.Context, id string) (map[string]any, error) {
 	var resp map[string]any
-	if err := c.delete(ctx, "/webhooks/"+id, &resp); err != nil {
+	if err := c.delete(ctx, "/webhooks/"+pathSegment(id), &resp); err != nil {
 		return nil, err
 	}
 	return resp, nil
@@ -546,7 +549,7 @@ func (c *Client) ClusterRebalance(ctx context.Context) (map[string]any, error) {
 // ClusterDrain drains a node for maintenance.
 func (c *Client) ClusterDrain(ctx context.Context, nodeID string) (map[string]any, error) {
 	var resp map[string]any
-	if err := c.postJSON(ctx, "/cluster/drain/"+nodeID, map[string]any{}, &resp); err != nil {
+	if err := c.postJSON(ctx, "/cluster/drain/"+pathSegment(nodeID), map[string]any{}, &resp); err != nil {
 		return nil, err
 	}
 	return resp, nil
@@ -555,7 +558,7 @@ func (c *Client) ClusterDrain(ctx context.Context, nodeID string) (map[string]an
 // SessionDiff views uncommitted session changes.
 func (c *Client) SessionDiff(ctx context.Context, sessionID string) (map[string]any, error) {
 	var resp map[string]any
-	if err := c.get(ctx, "/session/"+sessionID+"/diff", &resp); err != nil {
+	if err := c.get(ctx, "/session/"+pathSegment(sessionID)+"/diff", &resp); err != nil {
 		return nil, err
 	}
 	return resp, nil
@@ -564,7 +567,7 @@ func (c *Client) SessionDiff(ctx context.Context, sessionID string) (map[string]
 // SessionCommit commits a session's draft writes.
 func (c *Client) SessionCommit(ctx context.Context, sessionID string) (map[string]any, error) {
 	var resp map[string]any
-	if err := c.postJSON(ctx, "/session/"+sessionID+"/commit", map[string]any{}, &resp); err != nil {
+	if err := c.postJSON(ctx, "/session/"+pathSegment(sessionID)+"/commit", map[string]any{}, &resp); err != nil {
 		return nil, err
 	}
 	return resp, nil
@@ -573,7 +576,7 @@ func (c *Client) SessionCommit(ctx context.Context, sessionID string) (map[strin
 // SessionDiscard discards uncommitted session changes.
 func (c *Client) SessionDiscard(ctx context.Context, sessionID string) (map[string]any, error) {
 	var resp map[string]any
-	if err := c.delete(ctx, "/session/"+sessionID+"/draft", &resp); err != nil {
+	if err := c.delete(ctx, "/session/"+pathSegment(sessionID)+"/draft", &resp); err != nil {
 		return nil, err
 	}
 	return resp, nil
@@ -677,7 +680,6 @@ func (c *Client) GraphTraverse(ctx context.Context, from string, opts *GraphTrav
 	}
 	return resp, nil
 }
-
 
 // GraphPageRankOptions configures the optional GraphPageRank tunables. The
 // server (`parse_graph_pagerank`) treats both as optional, defaulting DAMPING
@@ -1108,6 +1110,15 @@ func isLoopbackHost(host string) bool {
 		return ip.IsLoopback()
 	}
 	return false
+}
+
+// pathSegment percent-encodes s for safe interpolation into a single URL path
+// segment (#3212). url.PathEscape escapes '/', '?', '#', and every other
+// reserved/unsafe byte; the extra '&' pass guarantees a caller-supplied '&' can
+// never survive verbatim either, so "../", "?", "#", "&" payloads can neither
+// traverse the path nor smuggle a query parameter.
+func pathSegment(s string) string {
+	return strings.ReplaceAll(url.PathEscape(s), "&", "%26")
 }
 
 // get performs a GET request to path and JSON-decodes the response into out.

@@ -42,7 +42,7 @@ func (c *Client) RegisterEdgeType(ctx context.Context, fromType, toType, label s
 func (c *Client) CreateSchemaBranch(ctx context.Context, name, fromBranch string) (map[string]any, error) {
 	body := map[string]any{"from": fromBranch}
 	var out map[string]any
-	if err := c.postJSON(ctx, "/schema/branches/"+name, body, &out); err != nil {
+	if err := c.postJSON(ctx, "/schema/branches/"+pathSegment(name), body, &out); err != nil {
 		return nil, err
 	}
 	return out, nil
@@ -52,7 +52,7 @@ func (c *Client) CreateSchemaBranch(ctx context.Context, name, fromBranch string
 // DELETE /schema/branches/:name.
 func (c *Client) DeleteSchemaBranch(ctx context.Context, name string) (map[string]any, error) {
 	var out map[string]any
-	if err := c.delete(ctx, "/schema/branches/"+name, &out); err != nil {
+	if err := c.delete(ctx, "/schema/branches/"+pathSegment(name), &out); err != nil {
 		return nil, err
 	}
 	return out, nil

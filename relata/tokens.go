@@ -2,7 +2,6 @@ package relata
 
 import (
 	"context"
-	"fmt"
 )
 
 // TokenStats holds dedup-token-set statistics.
@@ -53,7 +52,7 @@ func (t *TokenClient) Remember(ctx context.Context, tokenID string, opts *TokenR
 // (present, inserted_at_ns, ttl_secs).
 func (t *TokenClient) Check(ctx context.Context, tokenID string) (map[string]any, error) {
 	var resp map[string]any
-	if err := t.c.get(ctx, fmt.Sprintf("/tokens/%s", tokenID), &resp); err != nil {
+	if err := t.c.get(ctx, "/tokens/"+pathSegment(tokenID), &resp); err != nil {
 		return nil, err
 	}
 	return resp, nil
@@ -63,7 +62,7 @@ func (t *TokenClient) Check(ctx context.Context, tokenID string) (map[string]any
 // actually removed.
 func (t *TokenClient) Revoke(ctx context.Context, tokenID string) (bool, error) {
 	var resp map[string]any
-	if err := t.c.delete(ctx, fmt.Sprintf("/tokens/%s", tokenID), &resp); err != nil {
+	if err := t.c.delete(ctx, "/tokens/"+pathSegment(tokenID), &resp); err != nil {
 		return false, err
 	}
 	return boolField(resp, "revoked"), nil

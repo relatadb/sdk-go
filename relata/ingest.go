@@ -144,7 +144,7 @@ func (i *IngestClient) IngestIter(ctx context.Context, objectType string, rows <
 // MediaStatus polls the status of a multipart media upload.
 func (i *IngestClient) MediaStatus(ctx context.Context, taskID string) (map[string]any, error) {
 	var resp map[string]any
-	if err := i.c.get(ctx, fmt.Sprintf("/ingest/media/%s", taskID), &resp); err != nil {
+	if err := i.c.get(ctx, "/ingest/media/"+pathSegment(taskID), &resp); err != nil {
 		return nil, err
 	}
 	return resp, nil

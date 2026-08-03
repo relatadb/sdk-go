@@ -18,12 +18,12 @@ type SearchFilter struct {
 // compiles to MATCH(*, ...) + RANK BY FIELD_WEIGHT(...), #2676 — or
 // ["vector","ann", query]).
 type SearchRequest struct {
-	From              string            `json:"from"`
-	RankBy            []any             `json:"rank_by,omitempty"`
-	Filters           []SearchFilter    `json:"filters,omitempty"`
-	IncludeAttributes []string          `json:"include_attributes,omitempty"`
-	Consistency       string            `json:"consistency,omitempty"`
-	Limit             int               `json:"limit,omitempty"`
+	From              string         `json:"from"`
+	RankBy            []any          `json:"rank_by,omitempty"`
+	Filters           []SearchFilter `json:"filters,omitempty"`
+	IncludeAttributes []string       `json:"include_attributes,omitempty"`
+	Consistency       string         `json:"consistency,omitempty"`
+	Limit             int            `json:"limit,omitempty"`
 	// ComputeAttributes carries side-output ranking signals per hit,
 	// label -> expr (e.g. {"bm25_score": "BM25()"}) — compiles to a trailing
 	// COMPUTE clause (#1985 T3, #2465). Purely additive: never affects which

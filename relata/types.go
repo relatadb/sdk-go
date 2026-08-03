@@ -483,14 +483,14 @@ type SearchResponse struct {
 type SearchOption func(*searchParams)
 
 type searchParams struct {
-	limit             int
-	facets            []string
-	highlight         bool
-	filters           map[string]string
-	matchingStrategy  string
-	typoTolerance     map[string]any
-	metric            string
-	weights           *[3]float64
+	limit            int
+	facets           []string
+	highlight        bool
+	filters          map[string]string
+	matchingStrategy string
+	typoTolerance    map[string]any
+	metric           string
+	weights          *[3]float64
 }
 
 // WithSearchLimit sets the maximum number of hits to return.

@@ -162,7 +162,7 @@ func (b *BackupClient) Restore(ctx context.Context, snapshotID string, opts *Res
 // RestoreStatus polls a restore job's status.
 func (b *BackupClient) RestoreStatus(ctx context.Context, restoreID string) (RestoreStatus, error) {
 	var resp map[string]any
-	if err := b.c.get(ctx, fmt.Sprintf("/admin/restore/%s", restoreID), &resp); err != nil {
+	if err := b.c.get(ctx, "/admin/restore/"+pathSegment(restoreID), &resp); err != nil {
 		return RestoreStatus{}, err
 	}
 	return newRestoreStatus(resp), nil

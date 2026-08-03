@@ -133,7 +133,7 @@ func (g *GovernanceClient) CreateRule(ctx context.Context, rule map[string]any, 
 // DisableRule disables (logically deletes) a rule by id.
 func (g *GovernanceClient) DisableRule(ctx context.Context, ruleID string) (map[string]any, error) {
 	var resp map[string]any
-	if err := g.c.delete(ctx, fmt.Sprintf("/rules/%s", ruleID), &resp); err != nil {
+	if err := g.c.delete(ctx, "/rules/"+pathSegment(ruleID), &resp); err != nil {
 		return nil, err
 	}
 	return resp, nil
@@ -171,7 +171,7 @@ func (g *GovernanceClient) ImportSigma(ctx context.Context, sigmaYAML string, op
 // SnoozeRule temporarily disables a rule for durationSecs (#967).
 func (g *GovernanceClient) SnoozeRule(ctx context.Context, ruleID string, durationSecs int) (map[string]any, error) {
 	var resp map[string]any
-	if err := g.c.postJSON(ctx, "/rules/"+ruleID+"/snooze", map[string]any{"duration_secs": durationSecs}, &resp); err != nil {
+	if err := g.c.postJSON(ctx, "/rules/"+pathSegment(ruleID)+"/snooze", map[string]any{"duration_secs": durationSecs}, &resp); err != nil {
 		return nil, err
 	}
 	return resp, nil
@@ -192,7 +192,7 @@ func (g *GovernanceClient) SuppressRule(ctx context.Context, ruleID, entityID st
 		body["condition"] = opts.Condition
 	}
 	var resp map[string]any
-	if err := g.c.postJSON(ctx, "/rules/"+ruleID+"/suppress", body, &resp); err != nil {
+	if err := g.c.postJSON(ctx, "/rules/"+pathSegment(ruleID)+"/suppress", body, &resp); err != nil {
 		return nil, err
 	}
 	return resp, nil
@@ -201,7 +201,7 @@ func (g *GovernanceClient) SuppressRule(ctx context.Context, ruleID, entityID st
 // AddRuleException adds an exception so specific matches are ignored (#967).
 func (g *GovernanceClient) AddRuleException(ctx context.Context, ruleID string, exception map[string]any) (map[string]any, error) {
 	var resp map[string]any
-	if err := g.c.postJSON(ctx, "/rules/"+ruleID+"/exceptions", exception, &resp); err != nil {
+	if err := g.c.postJSON(ctx, "/rules/"+pathSegment(ruleID)+"/exceptions", exception, &resp); err != nil {
 		return nil, err
 	}
 	return resp, nil
@@ -210,7 +210,7 @@ func (g *GovernanceClient) AddRuleException(ctx context.Context, ruleID string, 
 // GetRuleTuning retrieves the tuning state (snoozes, suppressions, exceptions) (#967).
 func (g *GovernanceClient) GetRuleTuning(ctx context.Context, ruleID string) (map[string]any, error) {
 	var resp map[string]any
-	if err := g.c.get(ctx, "/rules/"+ruleID+"/tuning", &resp); err != nil {
+	if err := g.c.get(ctx, "/rules/"+pathSegment(ruleID)+"/tuning", &resp); err != nil {
 		return nil, err
 	}
 	return resp, nil
@@ -259,7 +259,7 @@ func (g *GovernanceClient) PlaceLegalHold(ctx context.Context, caseID, objectTyp
 // LiftLegalHold lifts (removes) a legal hold by case id.
 func (g *GovernanceClient) LiftLegalHold(ctx context.Context, caseID string) (map[string]any, error) {
 	var resp map[string]any
-	if err := g.c.delete(ctx, fmt.Sprintf("/retention/holds/%s", caseID), &resp); err != nil {
+	if err := g.c.delete(ctx, "/retention/holds/"+pathSegment(caseID), &resp); err != nil {
 		return nil, err
 	}
 	return resp, nil
@@ -278,7 +278,7 @@ func (g *GovernanceClient) ListWormPolicies(ctx context.Context) ([]map[string]a
 // or purged until retentionSecs elapses from their system_from.
 func (g *GovernanceClient) SetWormPolicy(ctx context.Context, objectType string, retentionSecs int) (map[string]any, error) {
 	var resp map[string]any
-	if err := g.c.postJSON(ctx, fmt.Sprintf("/retention/worm/%s", objectType), map[string]any{"retention_secs": retentionSecs}, &resp); err != nil {
+	if err := g.c.postJSON(ctx, "/retention/worm/"+pathSegment(objectType), map[string]any{"retention_secs": retentionSecs}, &resp); err != nil {
 		return nil, err
 	}
 	return resp, nil
@@ -322,7 +322,7 @@ func (g *GovernanceClient) ApproveBreakglass(ctx context.Context, requestID stri
 // BreakglassStatus looks up the status of a breakglass request.
 func (g *GovernanceClient) BreakglassStatus(ctx context.Context, requestID string) (map[string]any, error) {
 	var resp map[string]any
-	if err := g.c.get(ctx, fmt.Sprintf("/humint/breakglass/status/%s", requestID), &resp); err != nil {
+	if err := g.c.get(ctx, "/humint/breakglass/status/"+pathSegment(requestID), &resp); err != nil {
 		return nil, err
 	}
 	return resp, nil
@@ -365,7 +365,7 @@ func (g *GovernanceClient) UpdateAlert(ctx context.Context, alertID string, opts
 		}
 	}
 	var resp map[string]any
-	if err := g.c.patchJSON(ctx, fmt.Sprintf("/alerts/update/%s", alertID), payload, &resp); err != nil {
+	if err := g.c.patchJSON(ctx, "/alerts/update/"+pathSegment(alertID), payload, &resp); err != nil {
 		return nil, err
 	}
 	return resp, nil

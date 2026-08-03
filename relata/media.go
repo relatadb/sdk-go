@@ -49,7 +49,7 @@ func floatsToCSV(v any) string {
 	}
 }
 
-func itoa(n int) string   { return strconv.Itoa(n) }
+func itoa(n int) string     { return strconv.Itoa(n) }
 func ftoa(f float64) string { return strconv.FormatFloat(f, 'f', -1, 64) }
 
 // FaceSearchOption configures a FaceSearch call.

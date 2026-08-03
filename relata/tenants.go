@@ -2,7 +2,6 @@ package relata
 
 import (
 	"context"
-	"fmt"
 )
 
 // TenantAdminClient is the synchronous tenant-admin client — CRUD + quota +
@@ -74,7 +73,7 @@ func (t *TenantAdminClient) Create(ctx context.Context, tenantID string, opts *C
 // Get returns a tenant's details.
 func (t *TenantAdminClient) Get(ctx context.Context, tenantID string) (map[string]any, error) {
 	var resp map[string]any
-	if err := t.c.get(ctx, fmt.Sprintf("/platform/tenants/%s", tenantID), &resp); err != nil {
+	if err := t.c.get(ctx, "/platform/tenants/"+pathSegment(tenantID), &resp); err != nil {
 		return nil, err
 	}
 	return resp, nil
@@ -83,7 +82,7 @@ func (t *TenantAdminClient) Get(ctx context.Context, tenantID string) (map[strin
 // Delete deletes a tenant.
 func (t *TenantAdminClient) Delete(ctx context.Context, tenantID string) (map[string]any, error) {
 	var resp map[string]any
-	if err := t.c.delete(ctx, fmt.Sprintf("/platform/tenants/%s", tenantID), &resp); err != nil {
+	if err := t.c.delete(ctx, "/platform/tenants/"+pathSegment(tenantID), &resp); err != nil {
 		return nil, err
 	}
 	return resp, nil
@@ -92,7 +91,7 @@ func (t *TenantAdminClient) Delete(ctx context.Context, tenantID string) (map[st
 // SetTier changes a tenant's tier.
 func (t *TenantAdminClient) SetTier(ctx context.Context, tenantID, tier string) (map[string]any, error) {
 	var resp map[string]any
-	if err := t.c.patchJSON(ctx, fmt.Sprintf("/platform/tenants/%s/tier", tenantID), map[string]any{"tier": tier}, &resp); err != nil {
+	if err := t.c.patchJSON(ctx, "/platform/tenants/"+pathSegment(tenantID)+"/tier", map[string]any{"tier": tier}, &resp); err != nil {
 		return nil, err
 	}
 	return resp, nil
@@ -101,7 +100,7 @@ func (t *TenantAdminClient) SetTier(ctx context.Context, tenantID, tier string) 
 // Suspend suspends a tenant.
 func (t *TenantAdminClient) Suspend(ctx context.Context, tenantID string) (map[string]any, error) {
 	var resp map[string]any
-	if err := t.c.postJSON(ctx, fmt.Sprintf("/platform/tenants/%s/suspend", tenantID), map[string]any{}, &resp); err != nil {
+	if err := t.c.postJSON(ctx, "/platform/tenants/"+pathSegment(tenantID)+"/suspend", map[string]any{}, &resp); err != nil {
 		return nil, err
 	}
 	return resp, nil
@@ -110,7 +109,7 @@ func (t *TenantAdminClient) Suspend(ctx context.Context, tenantID string) (map[s
 // Reactivate reactivates a suspended tenant.
 func (t *TenantAdminClient) Reactivate(ctx context.Context, tenantID string) (map[string]any, error) {
 	var resp map[string]any
-	if err := t.c.postJSON(ctx, fmt.Sprintf("/platform/tenants/%s/reactivate", tenantID), map[string]any{}, &resp); err != nil {
+	if err := t.c.postJSON(ctx, "/platform/tenants/"+pathSegment(tenantID)+"/reactivate", map[string]any{}, &resp); err != nil {
 		return nil, err
 	}
 	return resp, nil
@@ -119,7 +118,7 @@ func (t *TenantAdminClient) Reactivate(ctx context.Context, tenantID string) (ma
 // SetQuota sets the cost-unit quota for a tenant.
 func (t *TenantAdminClient) SetQuota(ctx context.Context, tenantID string, quota int) (map[string]any, error) {
 	var resp map[string]any
-	if err := t.c.putJSON(ctx, fmt.Sprintf("/tenants/%s/quota", tenantID), map[string]any{"quota": quota}, &resp); err != nil {
+	if err := t.c.putJSON(ctx, "/tenants/"+pathSegment(tenantID)+"/quota", map[string]any{"quota": quota}, &resp); err != nil {
 		return nil, err
 	}
 	return resp, nil
@@ -128,7 +127,7 @@ func (t *TenantAdminClient) SetQuota(ctx context.Context, tenantID string, quota
 // TenantUsage returns a specific tenant's usage.
 func (t *TenantAdminClient) TenantUsage(ctx context.Context, tenantID string) (map[string]any, error) {
 	var resp map[string]any
-	if err := t.c.get(ctx, fmt.Sprintf("/tenants/%s/usage", tenantID), &resp); err != nil {
+	if err := t.c.get(ctx, "/tenants/"+pathSegment(tenantID)+"/usage", &resp); err != nil {
 		return nil, err
 	}
 	return resp, nil
@@ -137,7 +136,7 @@ func (t *TenantAdminClient) TenantUsage(ctx context.Context, tenantID string) (m
 // ListSharing lists the sharing agreements for a tenant.
 func (t *TenantAdminClient) ListSharing(ctx context.Context, tenantID string) ([]map[string]any, error) {
 	var resp map[string]any
-	if err := t.c.get(ctx, fmt.Sprintf("/tenants/%s/sharing", tenantID), &resp); err != nil {
+	if err := t.c.get(ctx, "/tenants/"+pathSegment(tenantID)+"/sharing", &resp); err != nil {
 		return nil, err
 	}
 	return unwrapList(resp, "agreements"), nil
@@ -161,7 +160,7 @@ func (t *TenantAdminClient) CreateSharing(ctx context.Context, tenantID, partner
 		}
 	}
 	var resp map[string]any
-	if err := t.c.postJSON(ctx, fmt.Sprintf("/tenants/%s/sharing", tenantID), payload, &resp); err != nil {
+	if err := t.c.postJSON(ctx, "/tenants/"+pathSegment(tenantID)+"/sharing", payload, &resp); err != nil {
 		return nil, err
 	}
 	return resp, nil

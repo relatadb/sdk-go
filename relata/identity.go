@@ -176,7 +176,7 @@ func validateIdentifier(name, what string) error {
 // escapeSQLString escapes a caller-supplied value for interpolation into a SQL
 // string literal (#3211). The server lexer (relata_query::parser) terminates a
 // literal at the first unescaped quote and honours backslash escapes, so both
-// `\` and `'` must be backslash-escaped — the old `'`→`''` doubling neither
+// `\` and `'` must be backslash-escaped — the old `'`→`”` doubling neither
 // contained a quote correctly nor blocked a `\'` breakout.
 func escapeSQLString(s string) string {
 	out := make([]byte, 0, len(s)+4)
