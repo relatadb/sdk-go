@@ -33,12 +33,12 @@ import (
 type bufconnFlightServer struct {
 	flight.BaseFlightServer
 
-	gotTicket     string
-	gotAuth       string
-	gotTenant     string
-	gotActingAs   string
-	gotDelegated  string
-	gotRequestID  string
+	gotTicket    string
+	gotAuth      string
+	gotTenant    string
+	gotActingAs  string
+	gotDelegated string
+	gotRequestID string
 }
 
 func (s *bufconnFlightServer) DoGet(tkt *flight.Ticket, fs flight.FlightService_DoGetServer) error {

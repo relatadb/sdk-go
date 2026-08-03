@@ -123,6 +123,9 @@ func (c *Client) QueryFlight(
 	purpose string,
 	bearer string,
 ) (arrow.Table, error) {
+	if c.destroyed {
+		return nil, ErrClientClosed
+	}
 	endpoint := ResolveFlightEndpoint(c.baseURL, flightEndpoint)
 	ticketSQL := FlightTicket(sql, purpose)
 	if bearer == "" {

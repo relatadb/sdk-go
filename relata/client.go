@@ -59,7 +59,15 @@ type Client struct {
 	// http:// transport to a non-loopback host (#3217). Default false: such
 	// requests fail closed with ErrCleartextBearerDisallowed.
 	allowCleartextBearer bool
+	// maxResponseBytes caps buffered (non-streaming) response bodies (#3214).
+	maxResponseBytes int64
+	// destroyed marks the client closed via Close(); the bearer token is
+	// zeroized and further requests fail closed (#3214).
+	destroyed bool
 }
+
+// defaultMaxResponseBytes is the built-in response-body cap (#3214): 64 MiB.
+const defaultMaxResponseBytes int64 = 64 << 20
 
 // refuseRedirects is a http.Client.CheckRedirect override that refuses to
 // follow any HTTP redirect, returning ErrRedirectRefused instead. net/http's
@@ -81,8 +89,9 @@ func New(baseURL string, opts *ClientOptions) *Client {
 	baseURL = strings.TrimRight(baseURL, "/")
 
 	c := &Client{
-		baseURL:      baseURL,
-		retryBackoff: defaultRetryBackoff,
+		baseURL:          baseURL,
+		retryBackoff:     defaultRetryBackoff,
+		maxResponseBytes: defaultMaxResponseBytes,
 	}
 	if opts == nil {
 		c.http = &http.Client{Timeout: defaultTimeout, CheckRedirect: refuseRedirects}
@@ -97,6 +106,10 @@ func New(baseURL string, opts *ClientOptions) *Client {
 	c.delegatedBy = opts.DelegatedBy
 	c.maxRetries = opts.MaxRetries
 	c.allowCleartextBearer = opts.AllowCleartextBearer
+	c.maxResponseBytes = opts.MaxResponseBytes
+	if c.maxResponseBytes <= 0 {
+		c.maxResponseBytes = defaultMaxResponseBytes
+	}
 	if opts.RetryBackoff > 0 {
 		c.retryBackoff = opts.RetryBackoff
 	}
@@ -1121,6 +1134,52 @@ func pathSegment(s string) string {
 	return strings.ReplaceAll(url.PathEscape(s), "&", "%26")
 }
 
+// Close zeroizes the client's bearer token and marks the client destroyed —
+// every subsequent request fails closed with ErrClientClosed (#3214). Call it
+// when the client is no longer needed so the credential does not linger in
+// memory (heap dumps, copies made before Close, …). Safe to call more than
+// once; not safe to call concurrently with in-flight requests.
+func (c *Client) Close() error {
+	c.bearerToken = ""
+	c.destroyed = true
+	return nil
+}
+
+// redactedToken renders a credential for diagnostic output without revealing
+// it (#3214).
+func redactedToken(tok string) string {
+	if tok == "" {
+		return "<none>"
+	}
+	return "<redacted>"
+}
+
+// Format implements fmt.Formatter so no fmt verb (%v, %+v, %#v, %s, …) ever
+// emits the bearer token (#3214). Go's default struct printing reflects into
+// unexported fields, so the redaction must be explicit.
+func (c *Client) Format(f fmt.State, verb rune) {
+	fmt.Fprintf(f, "&relata.Client{baseURL:%q tenant:%q actingAs:%q delegatedBy:%q bearer:%s}",
+		c.baseURL, c.tenant, c.actingAs, c.delegatedBy, redactedToken(c.bearerToken))
+}
+
+// readCapped reads r up to the client's response cap. A body larger than the
+// cap returns ErrResponseTooLarge instead of being buffered into memory
+// (#3214), so a malicious or buggy server cannot OOM the client.
+func (c *Client) readCapped(r io.Reader) ([]byte, error) {
+	capLimit := c.maxResponseBytes
+	if capLimit <= 0 {
+		capLimit = defaultMaxResponseBytes
+	}
+	data, err := io.ReadAll(io.LimitReader(r, capLimit+1))
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(data)) > capLimit {
+		return nil, ErrResponseTooLarge
+	}
+	return data, nil
+}
+
 // get performs a GET request to path and JSON-decodes the response into out.
 func (c *Client) get(ctx context.Context, path string, out any) error {
 	return c.doRequest(ctx, http.MethodGet, path, nil, "", out)
@@ -1171,6 +1230,9 @@ func (c *Client) postRaw(ctx context.Context, path, contentType string, body []b
 // RFC 7807 problem+json, and decodes successful responses into out.
 func (c *Client) doRequest(ctx context.Context, method, path string, body []byte, contentType string, out any) error {
 	url := c.effectiveBaseURL(path) + path
+	if c.destroyed {
+		return ErrClientClosed
+	}
 	if err := c.cleartextBearerGuard(url); err != nil {
 		return err
 	}
@@ -1209,9 +1271,12 @@ func (c *Client) doRequest(ctx context.Context, method, path string, body []byte
 			return lastErr
 		}
 
-		respBody, readErr := io.ReadAll(resp.Body)
+		respBody, readErr := c.readCapped(resp.Body)
 		resp.Body.Close()
 		if readErr != nil {
+			if errors.Is(readErr, ErrResponseTooLarge) {
+				return readErr
+			}
 			lastErr = fmt.Errorf("relata: read body: %w", readErr)
 			if attempt < maxAttempts && isIdempotent(method) {
 				c.sleepBackoff(ctx, attempt)

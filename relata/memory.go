@@ -3,8 +3,8 @@ package relata
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"net/url"
 	"strings"
@@ -576,6 +576,9 @@ func encodeGetURL(base string, params map[string]string) string {
 // JSON-decoding the response; returns the raw status code + body bytes + error.
 // Used by the audit PDF export path which returns binary content.
 func (c *Client) rawHTTPRequest(ctx context.Context, method, path string, body []byte, contentType string, extraHeaders ...map[string]string) (int, []byte, map[string]string, error) {
+	if c.destroyed {
+		return 0, nil, nil, ErrClientClosed
+	}
 	url := c.baseURL + path
 	if err := c.cleartextBearerGuard(url); err != nil {
 		return 0, nil, nil, err
@@ -606,8 +609,11 @@ func (c *Client) rawHTTPRequest(ctx context.Context, method, path string, body [
 		return 0, nil, nil, c.classifyTransportError(ctx, err)
 	}
 	defer resp.Body.Close()
-	data, readErr := io.ReadAll(resp.Body)
+	data, readErr := c.readCapped(resp.Body)
 	if readErr != nil {
+		if errors.Is(readErr, ErrResponseTooLarge) {
+			return resp.StatusCode, nil, nil, readErr
+		}
 		return resp.StatusCode, nil, nil, fmt.Errorf("relata: read body: %w", readErr)
 	}
 	hdrs := make(map[string]string)

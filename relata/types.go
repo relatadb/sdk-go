@@ -402,6 +402,14 @@ type ClientOptions struct {
 	// can never leak on the wire by accident. Loopback http:// targets and
 	// https:// / grpcs:// / tls:// transports are always allowed.
 	AllowCleartextBearer bool
+
+	// MaxResponseBytes caps how much of a (non-streaming) response body the
+	// client will buffer (#3214). A body larger than this returns
+	// ErrResponseTooLarge instead of being read into memory, so a malicious or
+	// buggy server cannot OOM the client. Zero (the default) applies the
+	// built-in 64 MiB cap. Streaming surfaces (QueryRows / QueryArrowRaw /
+	// GetObjectStream) are not capped — they hand the caller an io.ReadCloser.
+	MaxResponseBytes int64
 }
 
 // MemoryOptions configures the standalone Memory client.

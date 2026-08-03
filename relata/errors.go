@@ -79,6 +79,15 @@ var (
 	// non-loopback host, or a grpc:// Flight endpoint) without an explicit
 	// opt-in. Set ClientOptions.AllowCleartextBearer to override — see #3217.
 	ErrCleartextBearerDisallowed = errors.New("relata: refusing to send bearer token over cleartext transport (set AllowCleartextBearer to opt in)")
+
+	// ErrClientClosed is returned for every request issued after Close() —
+	// the bearer token has been zeroized and the client is unusable (#3214).
+	ErrClientClosed = errors.New("relata: client is closed (credentials zeroized)")
+
+	// ErrResponseTooLarge is returned when a response body exceeds the
+	// client's MaxResponseBytes cap, so a malicious or buggy server cannot OOM
+	// the client by streaming an unbounded body (#3214).
+	ErrResponseTooLarge = errors.New("relata: response body exceeds MaxResponseBytes cap")
 )
 
 // RelataError wraps a server-side error response with HTTP metadata and the

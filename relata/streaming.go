@@ -382,6 +382,9 @@ func (s *StreamingClient) resolvePurpose(opts *StreamingQueryOptions) (string, e
 // must Close it. Retry is intentionally NOT applied to streaming requests — the
 // body is the response.
 func (c *Client) openStream(ctx context.Context, method, path string, body []byte, contentType string) (io.ReadCloser, error) {
+	if c.destroyed {
+		return nil, ErrClientClosed
+	}
 	url := c.effectiveBaseURL(path) + path
 	if err := c.cleartextBearerGuard(url); err != nil {
 		return nil, err
@@ -404,7 +407,8 @@ func (c *Client) openStream(ctx context.Context, method, path string, body []byt
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		defer resp.Body.Close()
-		data, _ := io.ReadAll(resp.Body)
+		// Cap the error body so a huge error payload can't OOM the client (#3214).
+		data, _ := io.ReadAll(io.LimitReader(resp.Body, c.maxResponseBytes+1))
 		rid := resp.Header.Get(headerRequestID)
 		retryAfter := parseRetryAfter(resp.Header.Get(headerRetryAfter))
 		rerr := errorFromStatus(resp.StatusCode, data, rid, retryAfter, path, resp.Header.Get(headerContentType))

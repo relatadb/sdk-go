@@ -20,11 +20,12 @@ import (
 //
 // The bearer token is sent as "Authorization: Bearer <token>"; the tenant, if
 // set, is sent as "X-Relata-Tenant-Id". Path-style addressing is used.
+//
+// #3214: the bearer token is held in an unexported field so it is not
+// reachable via a public accessor nor printed by %+v; Close() zeroizes it.
 type S3Client struct {
 	// EndpointURL is the base URL of the S3 door (no trailing slash).
 	EndpointURL string
-	// BearerToken is sent as Authorization: Bearer.
-	BearerToken string
 	// Tenant is sent as X-Relata-Tenant-Id when non-empty.
 	Tenant string
 	// ActingAs is sent as X-Acting-As when non-empty (#3213).
@@ -36,21 +37,46 @@ type S3Client struct {
 	Headers map[string]string
 	// Region is the (cosmetic) AWS region; the door does not validate it.
 	Region string
+
+	// bearerToken is sent as Authorization: Bearer (#3214: unexported so it is
+	// not reachable via a public accessor nor printed by %+v).
+	bearerToken string
+	// maxResponseBytes caps buffered response bodies (#3214).
+	maxResponseBytes int64
 }
 
 // NewS3Client constructs an S3Client that inherits the parent client's base
 // URL, bearer token, tenant, and delegation scope. Mirrors the Python
 // reference's S3Client.from_client. The region defaults to "us-east-1".
 func NewS3Client(c *Client) *S3Client {
-	return &S3Client{
-		EndpointURL: strings.TrimRight(c.baseURL, "/"),
-		BearerToken: c.bearerToken,
-		Tenant:      c.tenant,
-		ActingAs:    c.actingAs,
-		DelegatedBy: c.delegatedBy,
-		Headers:     c.sharedHeaders(),
-		Region:      "us-east-1",
+	cap := c.maxResponseBytes
+	if cap <= 0 {
+		cap = defaultMaxResponseBytes
 	}
+	return &S3Client{
+		EndpointURL:      strings.TrimRight(c.baseURL, "/"),
+		bearerToken:      c.bearerToken,
+		Tenant:           c.tenant,
+		ActingAs:         c.actingAs,
+		DelegatedBy:      c.delegatedBy,
+		Headers:          c.sharedHeaders(),
+		Region:           "us-east-1",
+		maxResponseBytes: cap,
+	}
+}
+
+// Close zeroizes the S3 client's bearer token (#3214). Safe to call more than
+// once; the client is unusable for authenticated calls afterwards.
+func (s *S3Client) Close() error {
+	s.bearerToken = ""
+	return nil
+}
+
+// Format implements fmt.Formatter so no fmt verb (%v, %+v, %#v, %s, …) ever
+// emits the bearer token (#3214).
+func (s *S3Client) Format(f fmt.State, verb rune) {
+	fmt.Fprintf(f, "&relata.S3Client{EndpointURL:%q Tenant:%q Region:%q bearer:%s}",
+		s.EndpointURL, s.Tenant, s.Region, redactedToken(s.bearerToken))
 }
 
 // HTTPOptions configures the *http.Client returned by HTTP.
@@ -78,7 +104,7 @@ func (s *S3Client) HTTP(opts *HTTPOptions) *http.Client {
 	return &http.Client{
 		Transport: &s3BearerTransport{
 			base:        base,
-			tok:         s.BearerToken,
+			tok:         s.bearerToken,
 			tnt:         s.Tenant,
 			actingAs:    s.ActingAs,
 			delegatedBy: s.DelegatedBy,
@@ -137,9 +163,16 @@ func (s *S3Client) doRequest(ctx context.Context, method, path string, body []by
 		return nil, fmt.Errorf("relata: S3 request: %w", err)
 	}
 	defer resp.Body.Close()
-	data, err := io.ReadAll(resp.Body)
+	capLimit := s.maxResponseBytes
+	if capLimit <= 0 {
+		capLimit = defaultMaxResponseBytes
+	}
+	data, err := io.ReadAll(io.LimitReader(resp.Body, capLimit+1))
 	if err != nil {
 		return nil, fmt.Errorf("relata: read S3 response: %w", err)
+	}
+	if int64(len(data)) > capLimit {
+		return nil, ErrResponseTooLarge
 	}
 	respHeaders := make(map[string]string, len(resp.Header))
 	for k, v := range resp.Header {
@@ -172,9 +205,42 @@ func (s *S3Client) PutObject(ctx context.Context, bucket, key string, body []byt
 }
 
 // GetObject issues GET /<bucket>/<key> — download an object. The body is on
-// the returned S3HttpResponse.Body.
+// the returned S3HttpResponse.Body. The body is buffered subject to the
+// client's response cap (#3214); use GetObjectStream for large objects.
 func (s *S3Client) GetObject(ctx context.Context, bucket, key string) (*S3HttpResponse, error) {
 	return s.doRequest(ctx, http.MethodGet, "/"+bucket+"/"+key, nil, nil)
+}
+
+// S3ObjectStream is a streaming GetObject response (#3214). The caller owns
+// Body and must Close it.
+type S3ObjectStream struct {
+	// Status is the HTTP status code returned by the door.
+	Status int
+	// Headers holds every response header, lower-cased keys.
+	Headers map[string]string
+	// Body is the object body as an open stream. Close it when done.
+	Body io.ReadCloser
+}
+
+// GetObjectStream issues GET /<bucket>/<key> and returns the object body as a
+// stream (#3214) — memory is O(chunk), not O(object size), so multi-gigabyte
+// objects are not buffered whole. The caller must Close the returned Body.
+func (s *S3Client) GetObjectStream(ctx context.Context, bucket, key string) (*S3ObjectStream, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, s.EndpointURL+"/"+bucket+"/"+key, nil)
+	if err != nil {
+		return nil, fmt.Errorf("relata: build S3 request: %w", err)
+	}
+	resp, err := s.HTTP(nil).Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("relata: S3 request: %w", err)
+	}
+	respHeaders := make(map[string]string, len(resp.Header))
+	for k, v := range resp.Header {
+		if len(v) > 0 {
+			respHeaders[strings.ToLower(k)] = v[0]
+		}
+	}
+	return &S3ObjectStream{Status: resp.StatusCode, Headers: respHeaders, Body: resp.Body}, nil
 }
 
 // DeleteObject issues DELETE /<bucket>/<key> — delete an object.
