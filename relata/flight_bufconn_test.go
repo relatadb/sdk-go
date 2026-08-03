@@ -33,8 +33,12 @@ import (
 type bufconnFlightServer struct {
 	flight.BaseFlightServer
 
-	gotTicket string
-	gotAuth   string
+	gotTicket     string
+	gotAuth       string
+	gotTenant     string
+	gotActingAs   string
+	gotDelegated  string
+	gotRequestID  string
 }
 
 func (s *bufconnFlightServer) DoGet(tkt *flight.Ticket, fs flight.FlightService_DoGetServer) error {
@@ -42,6 +46,18 @@ func (s *bufconnFlightServer) DoGet(tkt *flight.Ticket, fs flight.FlightService_
 	if md, ok := metadata.FromIncomingContext(fs.Context()); ok {
 		if vals := md.Get("authorization"); len(vals) > 0 {
 			s.gotAuth = vals[0]
+		}
+		if vals := md.Get("x-relata-tenant-id"); len(vals) > 0 {
+			s.gotTenant = vals[0]
+		}
+		if vals := md.Get("x-acting-as"); len(vals) > 0 {
+			s.gotActingAs = vals[0]
+		}
+		if vals := md.Get("x-delegated-by"); len(vals) > 0 {
+			s.gotDelegated = vals[0]
+		}
+		if vals := md.Get("x-request-id"); len(vals) > 0 {
+			s.gotRequestID = vals[0]
 		}
 	}
 
@@ -96,6 +112,7 @@ func TestQueryFlightDoGetOverBufconn(t *testing.T) {
 		"passthrough:///bufnet",
 		ticketSQL,
 		"test-bearer-token",
+		nil,
 		grpc.WithContextDialer(dialer),
 	)
 	if err != nil {
@@ -146,6 +163,7 @@ func TestQueryFlightDoGetOverBufconnDialOptsAdditive(t *testing.T) {
 		"grpc://passthrough:///bufnet",
 		FlightTicket("SELECT 1", ""),
 		"",
+		nil,
 		grpc.WithContextDialer(dialer),
 	)
 	if err != nil {
@@ -158,5 +176,68 @@ func TestQueryFlightDoGetOverBufconnDialOptsAdditive(t *testing.T) {
 	}
 	if got, want := table.NumRows(), int64(3); got != want {
 		t.Fatalf("table.NumRows() = %d, want %d", got, want)
+	}
+}
+
+// TestQueryFlightDoGetForwardsTenantMetadata verifies the tenant / acting-as /
+// delegated-by / request-id headers travel as gRPC metadata on the Flight door
+// (#3213) — without them the server falls back to default-tenant resolution.
+func TestQueryFlightDoGetForwardsTenantMetadata(t *testing.T) {
+	srv := &bufconnFlightServer{}
+	dialer := startBufconnFlightServer(t, srv)
+
+	meta := map[string]string{
+		"x-relata-tenant-id": "org-acme",
+		"x-acting-as":        "alice",
+		"x-delegated-by":     "root-admin",
+		"x-request-id":       "req-123",
+	}
+	table, err := queryFlightDoGetWithDialOpts(
+		context.Background(),
+		"passthrough:///bufnet",
+		FlightTicket("SELECT 1", ""),
+		"",
+		meta,
+		grpc.WithContextDialer(dialer),
+	)
+	if err != nil {
+		t.Fatalf("queryFlightDoGetWithDialOpts: %v", err)
+	}
+	defer table.Release()
+
+	if srv.gotTenant != "org-acme" {
+		t.Fatalf("x-relata-tenant-id = %q, want org-acme", srv.gotTenant)
+	}
+	if srv.gotActingAs != "alice" {
+		t.Fatalf("x-acting-as = %q, want alice", srv.gotActingAs)
+	}
+	if srv.gotDelegated != "root-admin" {
+		t.Fatalf("x-delegated-by = %q, want root-admin", srv.gotDelegated)
+	}
+	if srv.gotRequestID != "req-123" {
+		t.Fatalf("x-request-id = %q, want req-123", srv.gotRequestID)
+	}
+}
+
+// TestFlightMetadataBuilder checks Client.flightMetadata emits the tenant /
+// delegation headers plus a per-request X-Request-ID (#3213).
+func TestFlightMetadataBuilder(t *testing.T) {
+	c := New("http://localhost:9090", &ClientOptions{
+		Tenant:      "org-acme",
+		ActingAs:    "alice",
+		DelegatedBy: "root-admin",
+	})
+	meta := c.flightMetadata()
+	if meta["x-relata-tenant-id"] != "org-acme" {
+		t.Fatalf("tenant = %q", meta["x-relata-tenant-id"])
+	}
+	if meta["x-acting-as"] != "alice" {
+		t.Fatalf("acting-as = %q", meta["x-acting-as"])
+	}
+	if meta["x-delegated-by"] != "root-admin" {
+		t.Fatalf("delegated-by = %q", meta["x-delegated-by"])
+	}
+	if meta["x-request-id"] == "" {
+		t.Fatal("expected a per-request X-Request-ID")
 	}
 }

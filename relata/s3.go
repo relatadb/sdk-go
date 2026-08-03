@@ -27,18 +27,28 @@ type S3Client struct {
 	BearerToken string
 	// Tenant is sent as X-Relata-Tenant-Id when non-empty.
 	Tenant string
+	// ActingAs is sent as X-Acting-As when non-empty (#3213).
+	ActingAs string
+	// DelegatedBy is sent as X-Delegated-By when non-empty (#3213).
+	DelegatedBy string
+	// Headers is an optional caller header bag overlaid on every request; a
+	// pinned X-Request-ID wins over the auto-generated per-request one (#3213).
+	Headers map[string]string
 	// Region is the (cosmetic) AWS region; the door does not validate it.
 	Region string
 }
 
 // NewS3Client constructs an S3Client that inherits the parent client's base
-// URL, bearer token, and tenant. Mirrors the Python reference's
-// S3Client.from_client. The region defaults to "us-east-1".
+// URL, bearer token, tenant, and delegation scope. Mirrors the Python
+// reference's S3Client.from_client. The region defaults to "us-east-1".
 func NewS3Client(c *Client) *S3Client {
 	return &S3Client{
 		EndpointURL: strings.TrimRight(c.baseURL, "/"),
 		BearerToken: c.bearerToken,
 		Tenant:      c.tenant,
+		ActingAs:    c.actingAs,
+		DelegatedBy: c.delegatedBy,
+		Headers:     c.sharedHeaders(),
 		Region:      "us-east-1",
 	}
 }
@@ -67,9 +77,12 @@ func (s *S3Client) HTTP(opts *HTTPOptions) *http.Client {
 	}
 	return &http.Client{
 		Transport: &s3BearerTransport{
-			base: base,
-			tok:  s.BearerToken,
-			tnt:  s.Tenant,
+			base:        base,
+			tok:         s.BearerToken,
+			tnt:         s.Tenant,
+			actingAs:    s.ActingAs,
+			delegatedBy: s.DelegatedBy,
+			headers:     s.Headers,
 		},
 		Timeout: timeout,
 		// #3046: never follow a redirect — parity with Client's http.Client
@@ -169,13 +182,19 @@ func (s *S3Client) DeleteObject(ctx context.Context, bucket, key string) (*S3Htt
 	return s.doRequest(ctx, http.MethodDelete, "/"+bucket+"/"+key, nil, nil)
 }
 
-// s3BearerTransport wraps an http.RoundTripper to inject the bearer + tenant
-// headers on every S3 request, so callers can use a plain *http.Client without
-// re-stating auth per call.
+// s3BearerTransport wraps an http.RoundTripper to inject the bearer + tenant +
+// delegation headers on every S3 request, so callers can use a plain
+// *http.Client without re-stating auth per call. #3213: it threads the full
+// tenant / acting-as / delegated-by scope plus a per-request X-Request-ID, so
+// the S3 door resolves the caller's tenant instead of falling back to the
+// default tenant.
 type s3BearerTransport struct {
-	base http.RoundTripper
-	tok  string
-	tnt  string
+	base        http.RoundTripper
+	tok         string
+	tnt         string
+	actingAs    string
+	delegatedBy string
+	headers     map[string]string
 }
 
 // RoundTrip implements http.RoundTripper.
@@ -187,6 +206,22 @@ func (t *s3BearerTransport) RoundTrip(req *http.Request) (*http.Response, error)
 	}
 	if t.tnt != "" {
 		clone.Header.Set("X-Relata-Tenant-Id", t.tnt)
+	}
+	if t.actingAs != "" {
+		clone.Header.Set("X-Acting-As", t.actingAs)
+	}
+	if t.delegatedBy != "" {
+		clone.Header.Set("X-Delegated-By", t.delegatedBy)
+	}
+	// Caller-supplied headers win over the SDK defaults (including a pinned
+	// X-Request-ID, which we then do not override).
+	for k, v := range t.headers {
+		clone.Header.Set(k, v)
+	}
+	if clone.Header.Get("X-Request-ID") == "" {
+		if id, err := newRequestID(); err == nil {
+			clone.Header.Set("X-Request-ID", id)
+		}
 	}
 	base := t.base
 	if base == nil {

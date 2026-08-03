@@ -131,7 +131,28 @@ func (c *Client) QueryFlight(
 	if bearer != "" && !isSecureFlightEndpoint(endpoint) && !c.allowCleartextBearer {
 		return nil, ErrCleartextBearerDisallowed
 	}
-	return queryFlightDoGet(ctx, endpoint, ticketSQL, bearer)
+	return queryFlightDoGet(ctx, endpoint, ticketSQL, bearer, c.flightMetadata())
+}
+
+// flightMetadata builds the tenant / delegation / correlation gRPC metadata a
+// Flight do_get must carry so the server resolves the caller's tenant instead
+// of falling back to the default tenant (#3213). Keys are lower-case per the
+// gRPC metadata contract. A fresh X-Request-ID is generated per call.
+func (c *Client) flightMetadata() map[string]string {
+	meta := map[string]string{}
+	if c.tenant != "" {
+		meta["x-relata-tenant-id"] = c.tenant
+	}
+	if c.actingAs != "" {
+		meta["x-acting-as"] = c.actingAs
+	}
+	if c.delegatedBy != "" {
+		meta["x-delegated-by"] = c.delegatedBy
+	}
+	if id, err := newRequestID(); err == nil {
+		meta["x-request-id"] = id
+	}
+	return meta
 }
 
 // queryFlightDoGet opens a gRPC Flight client, sends DoGet with the ticket, and
@@ -142,8 +163,11 @@ func (c *Client) QueryFlight(
 // `grpcs://`/`tls://` scheme (see flightTransportCredentials) — required
 // because the bearer token below travels as cleartext gRPC metadata over
 // whatever transport is selected here.
-func queryFlightDoGet(ctx context.Context, endpoint, ticketSQL, bearer string) (arrow.Table, error) {
-	return queryFlightDoGetWithDialOpts(ctx, endpoint, ticketSQL, bearer)
+//
+// #3213: meta carries the tenant / delegation / correlation headers as gRPC
+// metadata so the Flight door resolves the caller's tenant.
+func queryFlightDoGet(ctx context.Context, endpoint, ticketSQL, bearer string, meta map[string]string) (arrow.Table, error) {
+	return queryFlightDoGetWithDialOpts(ctx, endpoint, ticketSQL, bearer, meta)
 }
 
 // queryFlightDoGetWithDialOpts is queryFlightDoGet's testable seam (#2758):
@@ -154,7 +178,7 @@ func queryFlightDoGet(ctx context.Context, endpoint, ticketSQL, bearer string) (
 // live server required. Production callers (queryFlightDoGet, and therefore
 // Client.QueryFlight) never pass extraDialOpts, so this is purely additive —
 // the real dial path is unaffected.
-func queryFlightDoGetWithDialOpts(ctx context.Context, endpoint, ticketSQL, bearer string, extraDialOpts ...grpc.DialOption) (arrow.Table, error) {
+func queryFlightDoGetWithDialOpts(ctx context.Context, endpoint, ticketSQL, bearer string, meta map[string]string, extraDialOpts ...grpc.DialOption) (arrow.Table, error) {
 	target := stripFlightScheme(endpoint)
 	dialOpts := append(
 		[]grpc.DialOption{grpc.WithTransportCredentials(flightTransportCredentials(endpoint))},
@@ -169,6 +193,13 @@ func queryFlightDoGetWithDialOpts(ctx context.Context, endpoint, ticketSQL, bear
 	fc := flight.NewFlightServiceClient(conn)
 	if bearer != "" {
 		ctx = metadata.AppendToOutgoingContext(ctx, "authorization", "Bearer "+bearer)
+	}
+	if len(meta) > 0 {
+		kv := make([]string, 0, len(meta)*2)
+		for k, v := range meta {
+			kv = append(kv, k, v)
+		}
+		ctx = metadata.AppendToOutgoingContext(ctx, kv...)
 	}
 
 	stream, err := fc.DoGet(ctx, &flight.Ticket{Ticket: []byte(ticketSQL)})

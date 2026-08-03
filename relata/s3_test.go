@@ -174,3 +174,45 @@ func TestS3Client_UserAgentTracksVersion(t *testing.T) {
 		t.Fatalf("User-Agent = %q, want %q", gotUA, want)
 	}
 }
+
+// TestS3Client_ThreadsTenantScope verifies PutObject carries the tenant /
+// acting-as / delegated-by headers plus a per-request X-Request-ID (#3213) —
+// without them the S3 door falls back to default-tenant resolution.
+func TestS3Client_ThreadsTenantScope(t *testing.T) {
+	var gotTenant, gotActingAs, gotDelegatedBy, gotRequestID, gotAuth string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotAuth = r.Header.Get("Authorization")
+		gotTenant = r.Header.Get("X-Relata-Tenant-Id")
+		gotActingAs = r.Header.Get("X-Acting-As")
+		gotDelegatedBy = r.Header.Get("X-Delegated-By")
+		gotRequestID = r.Header.Get("X-Request-ID")
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	c := newTestClient(srv, &ClientOptions{
+		BearerToken: "tok",
+		Tenant:      "org-acme",
+		ActingAs:    "alice",
+		DelegatedBy: "root-admin",
+	})
+	s3 := NewS3Client(c)
+	if _, err := s3.PutObject(context.Background(), "b", "k", []byte("x"), nil); err != nil {
+		t.Fatal(err)
+	}
+	if gotAuth != "Bearer tok" {
+		t.Fatalf("Authorization = %q", gotAuth)
+	}
+	if gotTenant != "org-acme" {
+		t.Fatalf("X-Relata-Tenant-Id = %q", gotTenant)
+	}
+	if gotActingAs != "alice" {
+		t.Fatalf("X-Acting-As = %q", gotActingAs)
+	}
+	if gotDelegatedBy != "root-admin" {
+		t.Fatalf("X-Delegated-By = %q", gotDelegatedBy)
+	}
+	if gotRequestID == "" {
+		t.Fatal("expected a per-request X-Request-ID")
+	}
+}
