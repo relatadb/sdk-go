@@ -596,9 +596,19 @@ type NlQueryOptions struct {
 	Purpose string
 	// Interpret pipes the result through the LLM interpretation layer.
 	Interpret bool
+	// MaxSubQuestions decomposes a multi-part question (e.g. "find X, and who X is
+	// linked to") into up to this many independently-routed and independently-executed
+	// sub-questions (#3267); zero (default) disables decomposition. Capped at 5
+	// server-side regardless of the value given.
+	MaxSubQuestions int
 }
 
 // NlQuery executes a natural-language query translated to SQL and executed ("nl_query").
+//
+// A dialect router (#3267) classifies the question as SQL, Cypher, or a governed graph
+// operator and prompts accordingly; the response carries a "dialect" field. When
+// MaxSubQuestions > 1 and the question decomposes, the response instead carries
+// "decomposed": true and a "sub_results" array.
 func (m *McpClient) NlQuery(ctx context.Context, query string, opts *NlQueryOptions) (map[string]any, error) {
 	args := map[string]any{"query": query, "interpret": false}
 	if opts != nil {
@@ -606,6 +616,9 @@ func (m *McpClient) NlQuery(ctx context.Context, query string, opts *NlQueryOpti
 			args["purpose"] = opts.Purpose
 		}
 		args["interpret"] = opts.Interpret
+		if opts.MaxSubQuestions > 0 {
+			args["max_sub_questions"] = opts.MaxSubQuestions
+		}
 	}
 	return m.CallTool(ctx, "nl_query", args)
 }

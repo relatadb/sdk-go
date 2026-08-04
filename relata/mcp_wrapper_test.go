@@ -238,6 +238,28 @@ func TestMcpClient_NlQuery_SendsQuery(t *testing.T) {
 	}
 }
 
+func TestMcpClient_NlQuery_SendsMaxSubQuestionsWhenProvided(t *testing.T) {
+	mcp, gotBody := mcpCapture(t)
+	if _, err := mcp.NlQuery(context.Background(), "find alice, and who alice is linked to", &NlQueryOptions{MaxSubQuestions: 3}); err != nil {
+		t.Fatal(err)
+	}
+	args := argsOf(t, gotBody)
+	if args["max_sub_questions"] != float64(3) {
+		t.Fatalf("args = %v", args)
+	}
+}
+
+func TestMcpClient_NlQuery_OmitsMaxSubQuestionsByDefault(t *testing.T) {
+	mcp, gotBody := mcpCapture(t)
+	if _, err := mcp.NlQuery(context.Background(), "find all persons in Dublin", nil); err != nil {
+		t.Fatal(err)
+	}
+	args := argsOf(t, gotBody)
+	if _, present := args["max_sub_questions"]; present {
+		t.Fatalf("max_sub_questions should be omitted by default, args = %v", args)
+	}
+}
+
 func TestMcpClient_EraseSubject_SendsSubjectAndReason(t *testing.T) {
 	mcp, gotBody := mcpCapture(t)
 	if _, err := mcp.EraseSubject(context.Background(), "alice@example.com", &McpEraseSubjectOptions{Reason: "user-request"}); err != nil {
