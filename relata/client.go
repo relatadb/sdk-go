@@ -284,6 +284,10 @@ func (c *Client) MultiSearch(ctx context.Context, queries []map[string]any) (map
 // GraphQL executes a GraphQL query against the governed query path (ADR-220).
 //
 // gqlQuery is the GraphQL query string; variables and operationName are optional.
+// $var references in limit and where are bound server-side (#3260). A referenced
+// variable that is missing, null, or wrong-typed is a hard server error (returned
+// as an error) — never silently dropped. String values are bound as quoted
+// literals, so variable content cannot inject SQL.
 // Returns the "data" field on success (a []map[string]any of row objects for a
 // query, or a map[string]any for an introspection __schema request). Returns an
 // error if the server returns a non-empty "errors" array.
