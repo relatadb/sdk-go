@@ -15,6 +15,7 @@ type QueryOption func(*queryConfig)
 type queryConfig struct {
 	purpose string
 	timeout time.Duration
+	dialect string
 }
 
 // WithPurpose sets the purpose token for a single query call. This overrides
@@ -25,6 +26,24 @@ type queryConfig struct {
 func WithPurpose(purpose string) QueryOption {
 	return func(cfg *queryConfig) {
 		cfg.purpose = purpose
+	}
+}
+
+// WithDialect sets the query-language override sent as the x-query-dialect
+// header (#3265). Accepted values: "sql", "cypher", "gql". An empty string
+// (the default) omits the header and lets the server auto-detect (a
+// MATCH-prefixed body is treated as Cypher).
+//
+// GQL (ISO/IEC 39075) is header-selected only — never auto-detected. GQL
+// errors surface as *RelataError carrying the GQL-status code in the message
+// (42G04 syntax → HTTP 400, 0A501 unsupported feature → HTTP 501).
+//
+//	client.Query(ctx,
+//	    "MATCH (n:Person) WHERE n.age > 35 RETURN n.name ORDER BY n.age DESC LIMIT 5",
+//	    relata.WithPurpose("analytics"), relata.WithDialect("gql"))
+func WithDialect(dialect string) QueryOption {
+	return func(cfg *queryConfig) {
+		cfg.dialect = dialect
 	}
 }
 

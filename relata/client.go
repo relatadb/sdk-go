@@ -168,8 +168,18 @@ func (c *Client) Query(ctx context.Context, sql string, opts ...QueryOption) (*Q
 		defer cancel()
 	}
 
+	var extraHeaders map[string]string
+	if cfg.dialect != "" {
+		switch strings.ToLower(cfg.dialect) {
+		case "sql", "cypher", "gql":
+			extraHeaders = map[string]string{"x-query-dialect": strings.ToLower(cfg.dialect)}
+		default:
+			return nil, fmt.Errorf("relata: unknown query dialect %q; expected sql, cypher, or gql", cfg.dialect)
+		}
+	}
+
 	var result QueryResult
-	if err := c.postJSON(ctx, "/query", payload, &result); err != nil {
+	if err := c.postJSONHeaders(ctx, "/query", payload, &result, extraHeaders); err != nil {
 		return nil, err
 	}
 	return &result, nil
@@ -1192,11 +1202,18 @@ func (c *Client) get(ctx context.Context, path string, out any) error {
 // postJSON performs a POST request to path with body JSON-encoded from in, and
 // JSON-decodes the response into out.
 func (c *Client) postJSON(ctx context.Context, path string, in any, out any) error {
+	return c.postJSONHeaders(ctx, path, in, out, nil)
+}
+
+// postJSONHeaders is postJSON with per-call extra headers (e.g.
+// x-query-dialect for #3265). Extra headers are applied after the client's
+// static header bag so a per-call value wins.
+func (c *Client) postJSONHeaders(ctx context.Context, path string, in any, out any, extraHeaders map[string]string) error {
 	data, err := json.Marshal(in)
 	if err != nil {
 		return fmt.Errorf("relata: marshal request: %w", err)
 	}
-	return c.doRequest(ctx, http.MethodPost, path, data, defaultContentType, out)
+	return c.doRequestWithHeaders(ctx, http.MethodPost, path, data, defaultContentType, out, extraHeaders)
 }
 
 // delete performs a DELETE request to path and JSON-decodes the response.
@@ -1233,6 +1250,13 @@ func (c *Client) postRaw(ctx context.Context, path, contentType string, body []b
 // retry on 502/503/504 + network errors, reads the body, classifies errors via
 // RFC 7807 problem+json, and decodes successful responses into out.
 func (c *Client) doRequest(ctx context.Context, method, path string, body []byte, contentType string, out any) error {
+	return c.doRequestWithHeaders(ctx, method, path, body, contentType, out, nil)
+}
+
+// doRequestWithHeaders is doRequest with optional per-call extra headers
+// (#3265). Extra headers are applied after the client's static header bag so
+// a per-call value wins over the default for the same header name.
+func (c *Client) doRequestWithHeaders(ctx context.Context, method, path string, body []byte, contentType string, out any, extraHeaders map[string]string) error {
 	url := c.effectiveBaseURL(path) + path
 	if c.destroyed {
 		return ErrClientClosed
@@ -1262,6 +1286,9 @@ func (c *Client) doRequest(ctx context.Context, method, path string, body []byte
 			req.Header.Set(headerContentType, contentType)
 		}
 		c.setHeaders(req)
+		for k, v := range extraHeaders {
+			req.Header.Set(k, v)
+		}
 
 		resp, err := c.http.Do(req)
 		if err != nil {
