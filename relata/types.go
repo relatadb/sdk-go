@@ -527,7 +527,9 @@ func WithSearchFilter(field, value string) SearchOption {
 }
 
 // WithMatchingStrategy sets the query matching strategy: "all" (AND), "last",
-// "frequency", or "any" (OR, default) (#967).
+// "frequency", "boolean", or "any" (OR, default) (#967). "boolean" (#3263)
+// interprets uppercase AND/OR/NOT operators in the query text as posting-list
+// set operations (left-associative; a bare space means OR).
 func WithMatchingStrategy(strategy string) SearchOption {
 	return func(p *searchParams) { p.matchingStrategy = strategy }
 }
