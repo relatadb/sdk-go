@@ -157,9 +157,14 @@ func (c *Client) Query(ctx context.Context, sql string, opts ...QueryOption) (*Q
 		return nil, ErrPurposeRequired
 	}
 
+	hinted, err := injectMatcherHint(sql, cfg.matcher)
+	if err != nil {
+		return nil, err
+	}
+
 	payload := QueryRequest{
 		Purpose: cfg.purpose,
-		SQL:     sql,
+		SQL:     hinted,
 	}
 
 	if cfg.timeout > 0 {
@@ -209,9 +214,14 @@ func (c *Client) QueryWithParams(ctx context.Context, sql string, params []any, 
 		return nil, ErrPurposeRequired
 	}
 
+	hinted, err := injectMatcherHint(sql, cfg.matcher)
+	if err != nil {
+		return nil, err
+	}
+
 	payload := QueryRequest{
 		Purpose: cfg.purpose,
-		SQL:     sql,
+		SQL:     hinted,
 		Params:  params,
 	}
 

@@ -7,6 +7,23 @@ import (
 	"time"
 )
 
+// Matcher selects the subgraph matcher used for multi-hop Cypher patterns
+// (#1189). The server executes such patterns with the VF3
+// subgraph-isomorphism engine, falling back to chained BFS when a pattern is
+// outside VF3's supported subset (e.g. unbounded * variable-length paths).
+// The server-wide kill-switch is RELATA_VF3_ENABLED.
+type Matcher string
+
+// Matcher selection values (#1189).
+const (
+	// MatcherAuto lets the server choose the matcher (no hint injected).
+	MatcherAuto Matcher = "auto"
+	// MatcherVf3 forces the VF3 subgraph-isomorphism matcher.
+	MatcherVf3 Matcher = "vf3"
+	// MatcherBfs forces the chained-BFS matcher.
+	MatcherBfs Matcher = "bfs"
+)
+
 // QueryOption is a functional option applied to a single Query call.
 // Options override the defaults set on ClientOptions.
 type QueryOption func(*queryConfig)
@@ -16,6 +33,34 @@ type queryConfig struct {
 	purpose string
 	timeout time.Duration
 	dialect string
+	matcher Matcher
+}
+
+// WithMatcher sets the subgraph-matcher hint for a single query call (#1189).
+// MatcherVf3 / MatcherBfs prefix the outgoing query text with a
+// /*+ matcher=… hint comment the Cypher translator understands;
+// MatcherAuto (the default) sends the query unchanged.
+//
+//	client.Query(ctx, cypher, relata.WithMatcher(relata.MatcherVf3))
+func WithMatcher(m Matcher) QueryOption {
+	return func(cfg *queryConfig) {
+		cfg.matcher = m
+	}
+}
+
+// injectMatcherHint prefixes sql with the matcher hint comment (#1189).
+// An empty matcher or MatcherAuto returns sql unchanged.
+func injectMatcherHint(sql string, m Matcher) (string, error) {
+	switch m {
+	case "", MatcherAuto:
+		return sql, nil
+	case MatcherVf3:
+		return "/*+ matcher=vf3 */ " + sql, nil
+	case MatcherBfs:
+		return "/*+ matcher=bfs */ " + sql, nil
+	default:
+		return "", fmt.Errorf("relata: invalid matcher %q: must be auto, vf3, or bfs", string(m))
+	}
 }
 
 // WithPurpose sets the purpose token for a single query call. This overrides
