@@ -271,6 +271,55 @@ result, err := relata.HybridSearch("Person", "Ahmed Khalil Karachi", 25).
     Purpose("analysis").Execute(ctx, client)
 ```
 
+## Plain gRPC query with Arrow-IPC opt-in (#4090)
+
+`Client.QueryGrpc` runs a SQL query over the server's plain gRPC
+`RelataQuery/Execute` RPC (default port 50051, `RELATA_GRPC_PORT`) and opts
+into the negotiated Arrow-IPC row encoding (`QueryRequest.wants_arrow_ipc_rows`
+— server side landed in PR #4086). The server answers with whichever
+encoding it supports (`arrow_ipc_rows` or a `rows_json` fallback); `QueryGrpc`
+decodes either wire shape into the same `*QueryResult` shape `Query` and
+`QueryFlight` return, so callers never need to know which one came back.
+
+```go
+result, err := client.QueryGrpc(ctx,
+    "SELECT * FROM Person LIMIT 1000",
+    "",                // grpcEndpoint: "" derives grpc://<host>:50051 from baseURL
+    "analytics",       // purpose
+    "",                // bearer: "" uses the Client's BearerToken
+)
+fmt.Println(result.RowCount, result.Rows[0]["name"])
+```
+
+Uses the same `google.golang.org/grpc` + `github.com/apache/arrow/go/v15`
+dependencies `QueryFlight` already requires (see go.mod) — no additional
+module needed, no generated `.proto` stubs. TLS is selected automatically for
+`grpcs://`/`tls://` endpoints, and the same cleartext-bearer fail-closed gate
+as `QueryFlight` applies (`ErrCleartextBearerDisallowed` unless
+`AllowCleartextBearer` is set).
+
+`Client.QueryGrpcStream` is the same opt-in over the server-streaming
+`RelataQuery/ExecuteStream` RPC: the server answers with a stream of
+`RowBatch` frames instead of one buffered `QueryResponse`, and **each frame
+independently** negotiates `arrow_ipc_rows` vs `rows_json` (same
+empty-means-fall-back contract, applied per frame). Every frame is collected
+into the same `*QueryResult`, so a large result set needs no different
+consumption model than a small one.
+
+```go
+result, err := client.QueryGrpcStream(ctx,
+    "SELECT * FROM Person",
+    "",                // grpcEndpoint: "" derives grpc://<host>:50051 from baseURL
+    "analytics",       // purpose
+    "",                // bearer: "" uses the Client's BearerToken
+)
+fmt.Println(result.RowCount)
+```
+
+Because `RowBatch` carries no `row_count` field, the returned `RowCount` is
+the number of rows actually received (whereas `QueryGrpc` reports the
+server's own `QueryResponse.row_count`).
+
 ## `Memory` — governed agent memory
 
 `NewMemory(baseURL, purpose, opts)` constructs a standalone Memory client (it owns its
