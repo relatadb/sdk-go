@@ -309,7 +309,8 @@ func (r *ReadyReport) isReadySet(b []byte) bool {
 	return ok
 }
 
-// IngestDocumentRequest is the body sent to POST /ingest/document.
+// IngestDocumentRequest is the body sent to POST /rag/ingest (renamed from
+// /ingest/document by #4499).
 type IngestDocumentRequest struct {
 	// ChunksJSONL is newline-delimited JSON — one chunk per line.
 	ChunksJSONL string `json:"chunks_jsonl"`
@@ -318,7 +319,8 @@ type IngestDocumentRequest struct {
 	ManifestJSON string `json:"manifest_json"`
 }
 
-// IngestDocumentResponse is the response from POST /ingest/document.
+// IngestDocumentResponse is the response from POST /rag/ingest (renamed from
+// /ingest/document by #4499).
 type IngestDocumentResponse struct {
 	// ReportID is the server-assigned manifest ID for the ingested document.
 	ReportID string `json:"report_id"`

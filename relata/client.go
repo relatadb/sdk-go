@@ -1053,15 +1053,17 @@ func (c *Client) Ready(ctx context.Context) (*ReadyReport, error) {
 }
 
 // IngestDocument submits a datagrep-extractor document (the _chunks.jsonl and
-// _manifest.json outputs) to POST /ingest/document. The server parses and
-// version-checks the protocol envelope, then queues the chunks for storage.
+// _manifest.json outputs) to POST /rag/ingest (renamed from /ingest/document
+// by #4499). The server parses and version-checks the protocol envelope, then
+// queues the chunks for storage. See GET /rag/specs for the protocol
+// version/field-contract handshake.
 func (c *Client) IngestDocument(ctx context.Context, chunksJSONL, manifestJSON string) (*IngestDocumentResponse, error) {
 	payload := IngestDocumentRequest{
 		ChunksJSONL:  chunksJSONL,
 		ManifestJSON: manifestJSON,
 	}
 	var resp IngestDocumentResponse
-	if err := c.postJSON(ctx, "/ingest/document", payload, &resp); err != nil {
+	if err := c.postJSON(ctx, "/rag/ingest", payload, &resp); err != nil {
 		return nil, err
 	}
 	return &resp, nil

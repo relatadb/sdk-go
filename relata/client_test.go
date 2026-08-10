@@ -475,7 +475,7 @@ func TestReady(t *testing.T) {
 func TestIngestDocument(t *testing.T) {
 	var gotBody map[string]any
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/ingest/document" {
+		if r.URL.Path != "/rag/ingest" {
 			t.Fatalf("path = %s", r.URL.Path)
 		}
 		b, _ := io.ReadAll(r.Body)

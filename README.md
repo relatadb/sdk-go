@@ -147,7 +147,7 @@ one `*http.Client`, like `*sql.DB`).
 | `Ready(ctx)` | `(*ReadyReport, error)` | `GET /health/ready` — 9-condition readiness |
 | `AuditCount(ctx)` | `(*AuditCountResponse, error)` | `GET /audit/count` — returns `ErrChainCorrupted` if `ChainValid == false` |
 | `ClusterNodes(ctx)` | `([]ClusterNode, error)` | `GET /cluster/nodes` |
-| `IngestDocument(ctx, chunksJSONL, manifestJSON)` | `(*IngestDocumentResponse, error)` | `POST /ingest/document` — datagrep-envelope document ingest |
+| `IngestDocument(ctx, chunksJSONL, manifestJSON)` | `(*IngestDocumentResponse, error)` | `POST /rag/ingest` (renamed from `/ingest/document` by #4499) — datagrep-envelope document ingest |
 
 ### `ClientOptions`
 
