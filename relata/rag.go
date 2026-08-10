@@ -40,7 +40,11 @@ type RagQueryRequest struct {
 	TopK int `json:"top_k,omitempty"`
 	// Rerank dispatches to the sidecar cross-encoder.
 	Rerank bool `json:"rerank,omitempty"`
-	// SearchMode is "lexical" | "dense" | "hybrid" (default "hybrid").
+	// SearchMode is "lexical" | "dense" | "hybrid" | "structural" (default
+	// "hybrid"). "structural" (#4542) retrieves via the persisted
+	// DocumentStructureNode table-of-contents index; the SDK-side multi-hop
+	// agentic descent loop over that tree is Python-only (ADR-0298) — this
+	// field is a thin pass-through string here, same as every other mode.
 	SearchMode string `json:"search_mode,omitempty"`
 	// EmbeddingSlot is "text" | "summary" | "keyword" | "question"
 	// (default "text").
