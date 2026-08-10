@@ -338,6 +338,48 @@ type IngestDocumentResponse struct {
 	QueueDepth int `json:"queue_depth"`
 }
 
+// DocumentUsageRequest is the body sent to POST
+// /rag/documents/{reportID}/usage (#4498). At least one field must be set.
+type DocumentUsageRequest struct {
+	// Cited records that the caller's generated answer cited a chunk from
+	// this document: increments CitationCount by 1 and sets LastCitedAt to
+	// now.
+	Cited bool `json:"cited,omitempty"`
+
+	// Retrieved records that this document was touched by a retrieval,
+	// regardless of whether it was ultimately cited: increments
+	// RetrievalCount by 1.
+	Retrieved bool `json:"retrieved,omitempty"`
+
+	// FeedbackScore is a relevance/usefulness signal (recommended range
+	// [0.0, 1.0], not enforced server-side) — folded into FeedbackAvg as a
+	// running mean. Nil means "no feedback signal in this call".
+	FeedbackScore *float64 `json:"feedback_score,omitempty"`
+}
+
+// DocumentUsageResponse is the response from POST
+// /rag/documents/{reportID}/usage (#4498). CitationCount / RetrievalCount /
+// LastCitedAt / FeedbackAvg are write-BACK signals maintained by repeated
+// calls to this endpoint, not ingest-time constants.
+type DocumentUsageResponse struct {
+	// ReportID is the DocumentSource this usage event targeted.
+	ReportID string `json:"report_id"`
+
+	// CitationCount is the total citations recorded so far.
+	CitationCount *int64 `json:"citation_count"`
+
+	// RetrievalCount is the total retrievals recorded so far.
+	RetrievalCount *int64 `json:"retrieval_count"`
+
+	// LastCitedAt is nanoseconds since epoch of the most recent citation, or
+	// nil if the document has never been cited.
+	LastCitedAt *int64 `json:"last_cited_at"`
+
+	// FeedbackAvg is the running mean of every FeedbackScore recorded so
+	// far, or nil if none has been recorded yet.
+	FeedbackAvg *float64 `json:"feedback_avg"`
+}
+
 // ClientOptions configures the Relata HTTP client.
 // All fields are optional; zero values use safe defaults.
 type ClientOptions struct {

@@ -1069,6 +1069,29 @@ func (c *Client) IngestDocument(ctx context.Context, chunksJSONL, manifestJSON s
 	return &resp, nil
 }
 
+// DocumentUsage records a post-ingest usage signal against a DocumentSource
+// (#4498) via POST /rag/documents/{reportID}/usage.
+//
+// CitationCount/RetrievalCount/LastCitedAt are write-BACK signals, not
+// ingest-time constants — an agentic RAG loop calls this once per
+// retrieval/citation/feedback event, e.g. right after generating an answer
+// that cites a chunk from reportID:
+//
+//	client.DocumentUsage(ctx, reportID, relata.DocumentUsageRequest{Cited: true})
+//
+// Returns an ErrNotFound-wrapping error when reportID has no live
+// DocumentSource for the caller's tenant (HTTP 404), and a *RelataError with
+// StatusCode 400 when req supplies no signal at all (Cited/Retrieved both
+// false and FeedbackScore nil).
+func (c *Client) DocumentUsage(ctx context.Context, reportID string, req DocumentUsageRequest) (*DocumentUsageResponse, error) {
+	var resp DocumentUsageResponse
+	path := "/rag/documents/" + pathSegment(reportID) + "/usage"
+	if err := c.postJSON(ctx, path, req, &resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
 // ---- internal helpers -------------------------------------------------------
 //
 // These accessors are unexported but shared with the typed client modules
