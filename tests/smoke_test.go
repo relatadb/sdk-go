@@ -11,6 +11,7 @@ package tests
  */
 
 import (
+	"context"
 	"os"
 	"testing"
 	"time"
@@ -26,9 +27,9 @@ func getEnv(key, fallback string) string {
 }
 
 func TestClientConstructs(t *testing.T) {
-	client := relata.NewClient(
+	client := relata.New(
 		getEnv("RELATA_HOST", "http://localhost:9090"),
-		relata.WithBearerToken(getEnv("RELATA_TOKEN", "perftoken")),
+		&relata.ClientOptions{BearerToken: getEnv("RELATA_TOKEN", "perftoken")},
 	)
 	if client == nil {
 		t.Fatal("client should not be nil")
@@ -36,12 +37,14 @@ func TestClientConstructs(t *testing.T) {
 }
 
 func TestHealthAndQuery(t *testing.T) {
-	client := relata.NewClient(
+	client := relata.New(
 		getEnv("RELATA_HOST", "http://localhost:9090"),
-		relata.WithBearerToken(getEnv("RELATA_TOKEN", "perftoken")),
-		relata.WithTimeout(10*time.Second),
+		&relata.ClientOptions{
+			BearerToken: getEnv("RELATA_TOKEN", "perftoken"),
+			Timeout:     10 * time.Second,
+		},
 	)
-	result, err := client.Query("SELECT 1", "analytics")
+	result, err := client.Query(context.Background(), "SELECT 1", relata.WithPurpose("analytics"))
 	if err != nil {
 		t.Skipf("server not reachable: %v", err)
 	}
