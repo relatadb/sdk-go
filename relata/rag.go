@@ -82,6 +82,12 @@ type RagHit struct {
 	PrevChunkID *string  `json:"prev_chunk_id"`
 	NextChunkID *string  `json:"next_chunk_id"`
 	EntityIDs   []string `json:"entity_ids"`
+	// RelevanceConfidence is the non-LLM per-hit confidence signal (#4520):
+	// a pure function of BM25Score/VectorScore channel agreement and
+	// entity-overlap fraction — no network or LLM call. nil for a server
+	// that predates #4520; rag_rank.go's DefaultRelevance falls back to the
+	// BM25Score/VectorScore average in that case.
+	RelevanceConfidence *float64 `json:"relevance_confidence"`
 }
 
 // RagQueryResponse is the response from POST /rag/query.
