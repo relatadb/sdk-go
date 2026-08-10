@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -384,10 +385,14 @@ func TestRrfMerge_DedupesAndOrders(t *testing.T) {
 }
 
 func TestSmartRagQuery_DecompositionMergesWithAutoScaledK(t *testing.T) {
-	callCount := 0
+	// atomic.Int64, not a plain int: SmartRagQuery fans decomposed sub-queries
+	// out to /rag/query concurrently, and net/http serves each request on its
+	// own goroutine, so a plain `callCount++` here is a real data race
+	// (caught by `go test -race`, not by a plain `go test` run).
+	var callCount atomic.Int64
 	srv := routedServer(t, map[string]func(http.ResponseWriter, *http.Request){
 		"/rag/query": func(w http.ResponseWriter, r *http.Request) {
-			callCount++
+			callCount.Add(1)
 			body := decodeBody(t, r)
 			q, _ := body["query"].(string)
 			if strings.Contains(q, "incident response policy") {
@@ -404,8 +409,8 @@ func TestSmartRagQuery_DecompositionMergesWithAutoScaledK(t *testing.T) {
 	if err != nil {
 		t.Fatalf("SmartRagQuery: %v", err)
 	}
-	if callCount != 2 {
-		t.Fatalf("callCount = %d, want 2", callCount)
+	if got := callCount.Load(); got != 2 {
+		t.Fatalf("callCount = %d, want 2", got)
 	}
 	if len(result.Hits) != 3 {
 		t.Fatalf("len(hits) = %d, want 3: %v", len(result.Hits), result.Hits)
