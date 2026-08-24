@@ -69,10 +69,8 @@ type LookupIdentityOptions struct {
 
 // GetTimelineOptions configures GetTimeline.
 type GetTimelineOptions struct {
-	// SinceNS filters to events at/after the given nanosecond timestamp.
-	SinceNS int64
-	// UntilNS filters to events at/before the given nanosecond timestamp.
-	UntilNS int64
+	// Limit caps the response (server default 100, capped at 1000).
+	Limit int
 }
 
 // FindConnectionsOptions configures FindConnections.
@@ -83,22 +81,37 @@ type FindConnectionsOptions struct {
 
 // GetRelationshipsOptions configures GetRelationships.
 type GetRelationshipsOptions struct {
-	// Depth is the graph traversal depth (default 1).
-	Depth int
+	// Predicate filters KnowledgeTriple rows by predicate (lowercase-matched).
+	Predicate string
+	// Object filters KnowledgeTriple rows by object (lowercase-matched).
+	Object string
+	// Source filters KnowledgeTriple rows by source/source_filename (lowercase-matched).
+	Source string
+	// Limit caps the response. Defaults to 50.
+	Limit int
 }
 
 // AddCaseNoteOptions configures AddCaseNote.
 type AddCaseNoteOptions struct {
-	// Author is the optional note author.
+	// Author is accepted for API stability but currently has no server-side
+	// effect: mcp_tool_add_case_note_with_gate (crates/relata-cli/src/serve/mcp/doc_writes.rs)
+	// never reads an "author" field (#4667, same class as the already-fixed TS #4657).
 	Author string
+	// Category labels the note (e.g. "finding"). Defaults to "finding" server-side.
+	Category string
+	// EntitiesMentioned attaches a list of entity ids the note references.
+	EntitiesMentioned []string
 }
 
 // GetAuditTrailOptions configures GetAuditTrail.
 type GetAuditTrailOptions struct {
-	// CaseID filters to one case.
-	CaseID string
-	// EntityID filters to one entity.
-	EntityID string
+	// PrincipalFilter filters entries to one principal (substring-matched).
+	PrincipalFilter string
+	// Limit caps the response (server default 100, capped at 1000).
+	Limit int
+	// Purpose is the declared purpose token, or "all" to bypass the purpose
+	// allowlist. Defaults to "analytics".
+	Purpose string
 }
 
 // RagStoreAnswerOptions configures RagStoreAnswer.
@@ -288,9 +301,16 @@ func (m *McpClient) GetEntityProfile(ctx context.Context, entityID, purpose stri
 }
 
 // GetTimeline returns a chronological event list for an entity.
+//
+// mcp_tool_get_timeline (crates/relata-cli/src/serve/mcp.rs) has no time-range
+// concept — SinceNS/UntilNS were previously accepted but structurally
+// unreachable (opts was discarded outright); the real limit knob is now wired
+// through instead (#4667, same class as the already-fixed TS #4649).
 func (m *McpClient) GetTimeline(ctx context.Context, entityID, purpose string, opts *GetTimelineOptions) (map[string]any, error) {
-	_ = opts
 	args := map[string]any{"entity": entityID, "purpose": purpose}
+	if opts != nil && opts.Limit > 0 {
+		args["limit"] = opts.Limit
+	}
 	return m.CallTool(ctx, "get_timeline", args)
 }
 
@@ -305,26 +325,72 @@ func (m *McpClient) FindConnections(ctx context.Context, entity, purpose string,
 	return m.CallTool(ctx, "find_connections", args)
 }
 
-// GetRelationships returns the direct neighbours of an entity.
+// GetRelationships returns KnowledgeTriple rows matching entityID as the subject
+// (plus any additional filters in opts).
+//
+// mcp_tool_get_relationships (crates/relata-cli/src/serve/mcp.rs) never reads
+// entity_id/depth (there is no hop-depth graph walk here, only a flat triple
+// filter) — it reads purpose/limit and lowercase subject/predicate/object/source
+// filters; Depth was previously accepted but structurally unreachable (opts was
+// discarded outright). The real predicate/object/source/limit filters are now
+// wired through (#4667, same class as the already-fixed TS #4646).
 func (m *McpClient) GetRelationships(ctx context.Context, entityID, purpose string, opts *GetRelationshipsOptions) (map[string]any, error) {
-	_ = opts
 	args := map[string]any{"subject": entityID, "purpose": purpose}
+	if opts != nil {
+		if opts.Predicate != "" {
+			args["predicate"] = opts.Predicate
+		}
+		if opts.Object != "" {
+			args["object"] = opts.Object
+		}
+		if opts.Source != "" {
+			args["source"] = opts.Source
+		}
+		if opts.Limit > 0 {
+			args["limit"] = opts.Limit
+		}
+	}
 	return m.CallTool(ctx, "get_relationships", args)
 }
 
 // AddCaseNote appends an investigative note to a case.
 func (m *McpClient) AddCaseNote(ctx context.Context, caseID, note string, opts *AddCaseNoteOptions) (map[string]any, error) {
 	args := map[string]any{"case_id": caseID, "note": note}
-	if opts != nil && opts.Author != "" {
-		args["author"] = opts.Author
+	if opts != nil {
+		if opts.Author != "" {
+			args["author"] = opts.Author
+		}
+		if opts.Category != "" {
+			args["category"] = opts.Category
+		}
+		if len(opts.EntitiesMentioned) > 0 {
+			args["entities_mentioned"] = opts.EntitiesMentioned
+		}
 	}
 	return m.CallTool(ctx, "add_case_note", args)
 }
 
-// GetAuditTrail returns the provenance chain for a case or entity.
+// GetAuditTrail returns the query audit log, optionally filtered by principal.
+//
+// mcp_tool_get_audit_trail (crates/relata-cli/src/serve/mcp.rs) never reads
+// case_id/entity_id — it filters by principal_filter/limit/purpose, and treats
+// purpose: "all" as a sentinel that bypasses the usual purpose allowlist check.
+// CaseID/EntityID were previously accepted but structurally unreachable (opts
+// was discarded outright); the real filters are now wired through (#4667, same
+// class as the already-fixed TS #4650).
 func (m *McpClient) GetAuditTrail(ctx context.Context, opts *GetAuditTrailOptions) (map[string]any, error) {
-	_ = opts
 	args := map[string]any{}
+	if opts != nil {
+		if opts.PrincipalFilter != "" {
+			args["principal_filter"] = opts.PrincipalFilter
+		}
+		if opts.Limit > 0 {
+			args["limit"] = opts.Limit
+		}
+		if opts.Purpose != "" {
+			args["purpose"] = opts.Purpose
+		}
+	}
 	return m.CallTool(ctx, "get_audit_trail", args)
 }
 
