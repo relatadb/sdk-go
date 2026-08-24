@@ -854,22 +854,23 @@ func (m *McpClient) ListRules(ctx context.Context) (map[string]any, error) {
 type McpCreateRuleOptions struct {
 	// Severity is the rule severity (e.g. low/medium/high/critical).
 	Severity string
-	// Description is an optional rule description.
-	Description string
 	// Purpose is the declared purpose token. Defaults to "security".
 	Purpose string
 }
 
 // CreateRule creates a detection rule (ADR-162, "create_rule").
-func (m *McpClient) CreateRule(ctx context.Context, name, conditionSQL string, opts *McpCreateRuleOptions) (map[string]any, error) {
+//
+// targetType is required: the underlying POST /rules handler
+// (crates/relata-cli/src/serve/rules.rs) 400s with "missing required field
+// 'target_type'" when it is absent, and this wrapper never sent it (#4663, same
+// treatment as the already-fixed TS #4656). Description is intentionally not
+// exposed — rules.rs never reads a "description" field anywhere.
+func (m *McpClient) CreateRule(ctx context.Context, name, conditionSQL, targetType string, opts *McpCreateRuleOptions) (map[string]any, error) {
 	purpose := "security"
-	args := map[string]any{"name": name, "condition_sql": conditionSQL}
+	args := map[string]any{"name": name, "condition_sql": conditionSQL, "target_type": targetType}
 	if opts != nil {
 		if opts.Severity != "" {
 			args["severity"] = opts.Severity
-		}
-		if opts.Description != "" {
-			args["description"] = opts.Description
 		}
 		if opts.Purpose != "" {
 			purpose = opts.Purpose

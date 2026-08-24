@@ -370,11 +370,11 @@ func TestMcpClient_ListRules_SendsNoArgs(t *testing.T) {
 
 func TestMcpClient_CreateRule_SendsNameAndConditionSQL(t *testing.T) {
 	mcp, gotBody := mcpCapture(t)
-	if _, err := mcp.CreateRule(context.Background(), "high-value-txn", "amount > 10000", &McpCreateRuleOptions{Severity: "high"}); err != nil {
+	if _, err := mcp.CreateRule(context.Background(), "high-value-txn", "amount > 10000", "Transaction", &McpCreateRuleOptions{Severity: "high"}); err != nil {
 		t.Fatal(err)
 	}
 	args := argsOf(t, gotBody)
-	if args["name"] != "high-value-txn" || args["condition_sql"] != "amount > 10000" || args["severity"] != "high" || args["purpose"] != "security" {
+	if args["name"] != "high-value-txn" || args["condition_sql"] != "amount > 10000" || args["target_type"] != "Transaction" || args["severity"] != "high" || args["purpose"] != "security" {
 		t.Fatalf("args = %v", args)
 	}
 }
