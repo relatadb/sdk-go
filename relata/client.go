@@ -773,9 +773,12 @@ func (c *Client) GraphNodeSimilarity(ctx context.Context, purpose, objectType, n
 	return c.query(ctx, purpose, sql)
 }
 
-// GraphLinkPredict predicts missing relationships.
-func (c *Client) GraphLinkPredict(ctx context.Context, purpose, objectType string) (map[string]any, error) {
-	return c.query(ctx, purpose, fmt.Sprintf("GRAPH_LINK_PREDICT(%s)", sqlLiteral(objectType)))
+// GraphLinkPredict predicts a missing relationship between two nodes (#4633).
+// The engine requires both FROM => and TO => — mirrors GraphDijkstra's
+// from/to shape.
+func (c *Client) GraphLinkPredict(ctx context.Context, purpose, objectType, from, to string) (map[string]any, error) {
+	sql := fmt.Sprintf("GRAPH_LINK_PREDICT(%s, FROM => %s, TO => %s)", sqlLiteral(objectType), sqlLiteral(from), sqlLiteral(to))
+	return c.query(ctx, purpose, sql)
 }
 
 // GraphTriangleCount counts triangles (graph density / cohesion).
