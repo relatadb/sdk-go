@@ -294,9 +294,39 @@ func (m *McpClient) GetAuditTrail(ctx context.Context, opts *GetAuditTrailOption
 	return m.CallTool(ctx, "get_audit_trail", args)
 }
 
-// GetCaseSummary returns an LLM-generated narrative summary of a case.
-func (m *McpClient) GetCaseSummary(ctx context.Context, caseID, purpose string) (map[string]any, error) {
-	return m.CallTool(ctx, "get_case_summary", map[string]any{"case_id": caseID, "purpose": purpose})
+// GetCaseSummaryOptions configures GetCaseSummary.
+type GetCaseSummaryOptions struct {
+	// IncludeGraph includes knowledge-graph stats in the summary. Defaults to true.
+	IncludeGraph *bool
+	// IncludeNotes includes analyst CaseAnnotation notes. Defaults to true.
+	IncludeNotes *bool
+	// IncludeAnswers includes stored RAG answers. Defaults to true.
+	IncludeAnswers *bool
+}
+
+// GetCaseSummary returns an LLM-generated narrative summary of the tenant's data
+// inventory + knowledge-graph stats + analyst notes ("get_case_summary").
+//
+// NOT case-scoped: the server's mcp_tool_get_case_summary
+// (crates/relata-cli/src/serve/mcp.rs) never reads a case_id argument anywhere —
+// there is no case-scoping capability in this handler at all, so a caller-supplied
+// case id had no effect (#4658, same treatment as the already-fixed TS #4651). This
+// wrapper drops that misleading parameter and exposes the real
+// include_graph/include_notes/include_answers toggles the handler actually reads.
+func (m *McpClient) GetCaseSummary(ctx context.Context, purpose string, opts *GetCaseSummaryOptions) (map[string]any, error) {
+	args := map[string]any{"purpose": purpose}
+	if opts != nil {
+		if opts.IncludeGraph != nil {
+			args["include_graph"] = *opts.IncludeGraph
+		}
+		if opts.IncludeNotes != nil {
+			args["include_notes"] = *opts.IncludeNotes
+		}
+		if opts.IncludeAnswers != nil {
+			args["include_answers"] = *opts.IncludeAnswers
+		}
+	}
+	return m.CallTool(ctx, "get_case_summary", args)
 }
 
 // RagStoreAnswer persists a Q&A pair for downstream RAG.
