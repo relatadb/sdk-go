@@ -51,8 +51,14 @@ type GetDomainSummaryOptions struct {
 
 // FindInSocialCorpusOptions configures FindInSocialCorpus.
 type FindInSocialCorpusOptions struct {
-	// Corpus selects an ingest corpus.
-	Corpus string
+	// User restricts the search to one user (matched against UserField).
+	User string
+	// UserField is the row field User is matched against. Defaults to "user".
+	UserField string
+	// BlobField, if set, restricts the search to hits carrying this media blob field.
+	BlobField string
+	// TopK caps the response. Defaults to 20.
+	TopK int
 }
 
 // LookupIdentityOptions configures LookupIdentity.
@@ -236,9 +242,34 @@ func (m *McpClient) GetDomainSummary(ctx context.Context, domain string) (map[st
 	return m.CallTool(ctx, "get_domain_summary", map[string]any{"domain": domain})
 }
 
-// FindInSocialCorpus searches the ingested social-media corpus.
-func (m *McpClient) FindInSocialCorpus(ctx context.Context, query string, opts *FindInSocialCorpusOptions) (map[string]any, error) {
-	args := map[string]any{"object_type": query}
+// FindInSocialCorpus searches the ingested social-media corpus ("find_in_social_corpus").
+//
+// The server's mcp_tool_find_in_social_corpus (crates/relata-cli/src/serve/mcp.rs)
+// requires objectType to be a registered ontology type name (e.g. "SocialPost")
+// and reads the free-text query under a separate text_query key. This wrapper
+// previously mapped the caller's search text onto object_type and dropped the
+// real query entirely (#4666, same treatment as the already-fixed TS #4644).
+func (m *McpClient) FindInSocialCorpus(ctx context.Context, objectType, textQuery string, opts *FindInSocialCorpusOptions) (map[string]any, error) {
+	topK := 20
+	args := map[string]any{"object_type": objectType}
+	if textQuery != "" {
+		args["text_query"] = textQuery
+	}
+	if opts != nil {
+		if opts.User != "" {
+			args["user"] = opts.User
+		}
+		if opts.UserField != "" {
+			args["user_field"] = opts.UserField
+		}
+		if opts.BlobField != "" {
+			args["blob_field"] = opts.BlobField
+		}
+		if opts.TopK > 0 {
+			topK = opts.TopK
+		}
+	}
+	args["top_k"] = topK
 	return m.CallTool(ctx, "find_in_social_corpus", args)
 }
 
