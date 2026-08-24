@@ -28,8 +28,11 @@ type McpInitializeOptions struct {
 
 // GetEntitiesOptions configures the GetEntities pagination/filter.
 type GetEntitiesOptions struct {
-	// FilterExpr is an optional server-side filter expression.
-	FilterExpr string
+	// Filters is an optional set of exact-match field filters, sent as a JSON
+	// object. The server (mcp_tool_get_entities, crates/relata-cli/src/serve/mcp.rs)
+	// requires "filters" to be a JSON object and retains rows where every
+	// key/value pair matches; a bare JSON string is silently ignored (#4665).
+	Filters map[string]any
 	// Limit caps the response. Defaults to 50.
 	Limit int
 }
@@ -212,8 +215,8 @@ func (m *McpClient) GetEntities(ctx context.Context, objectType string, opts *Ge
 		if opts.Limit > 0 {
 			args["limit"] = opts.Limit
 		}
-		if opts.FilterExpr != "" {
-			args["filters"] = opts.FilterExpr
+		if len(opts.Filters) > 0 {
+			args["filters"] = opts.Filters
 		}
 	}
 	return m.CallTool(ctx, "get_entities", args)
