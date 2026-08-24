@@ -343,13 +343,47 @@ func (m *McpClient) RagStoreElements(ctx context.Context, elements []map[string]
 	return m.CallTool(ctx, "rag_store_elements", map[string]any{"elements": elements, "source_filename": sourceFilename, "purpose": purpose})
 }
 
-// IngestDocument is the datagrep-envelope document ingest via MCP.
-func (m *McpClient) IngestDocument(ctx context.Context, chunksJSONL, manifestJSON, purpose string) (map[string]any, error) {
-	return m.CallTool(ctx, "ingest_document", map[string]any{
-		"text":    chunksJSONL,
-		"source":  manifestJSON,
-		"purpose": purpose,
-	})
+// IngestDocumentOptions configures IngestDocument.
+type IngestDocumentOptions struct {
+	// Label overrides the derived document label. Defaults to Source.
+	Label string
+	// Confidence in the extracted content (0-1). Defaults to 0.9.
+	Confidence float64
+	// HasConfidence reports whether Confidence should be sent (0.0 is a valid confidence).
+	HasConfidence bool
+	// Entities are pre-extracted entity objects to attach to the ingest.
+	Entities []map[string]any
+	// Relations are pre-extracted relation objects to attach to the ingest.
+	Relations []map[string]any
+}
+
+// IngestDocument ingests a document via MCP ("ingest_document").
+//
+// The server's mcp_tool_ingest_document_with_gate
+// (crates/relata-cli/src/serve/mcp/doc_writes.rs) reads a flat
+// source/text/label/confidence/entities/relations shape: source is the short
+// document-source identifier/filename, text is the document body. This wrapper
+// previously sent chunksJSONL/manifestJSON under those two keys inverted
+// (manifestJSON as source, chunksJSONL as text), so every call persisted
+// semantically scrambled data (#4662, same treatment as the already-fixed TS
+// #4655). Callers now pass source/text directly.
+func (m *McpClient) IngestDocument(ctx context.Context, source, text, purpose string, opts *IngestDocumentOptions) (map[string]any, error) {
+	args := map[string]any{"source": source, "text": text, "purpose": purpose}
+	if opts != nil {
+		if opts.Label != "" {
+			args["label"] = opts.Label
+		}
+		if opts.HasConfidence {
+			args["confidence"] = opts.Confidence
+		}
+		if len(opts.Entities) > 0 {
+			args["entities"] = opts.Entities
+		}
+		if len(opts.Relations) > 0 {
+			args["relations"] = opts.Relations
+		}
+	}
+	return m.CallTool(ctx, "ingest_document", args)
 }
 
 // Remember is the "remember" MCP tool — store a memory (same shape as Memory.Add).
