@@ -42,7 +42,11 @@ type RegisterLookupOptions struct {
 
 // EraseSubjectOptions configures IdentityClient.EraseSubject.
 type EraseSubjectOptions struct {
-	// Certify adds the CERTIFY keyword for Art. 17 attestation. Defaults to true.
+	// Certify adds the CERTIFY keyword for Art. 17 attestation. Defaults to
+	// false: CERTIFY is destructive opt-in — omitted or false omits the
+	// keyword and the server refuses the erasure with "CERTIFY keyword
+	// required to confirm irreversible erasure". Only an explicit
+	// Certify=true (with CertifySet) confirms the irreversible crypto-shred.
 	Certify bool
 	// CertifySet reports whether Certify was explicitly set.
 	CertifySet bool
@@ -137,8 +141,16 @@ func (i *IdentityClient) InvokeLookup(ctx context.Context, name, key string) (ma
 // EraseSubject issues "ERASE SUBJECT '<id>' REASON '<r>' [CERTIFY]" via the
 // query path. Returns the server's Art. 17 receipt. Pairs with the per-subject
 // DEK destroy (#61): today the server does governed-tombstone only.
+//
+// Certify is destructive opt-in: omitted (opts == nil, or CertifySet unset)
+// or false omits the CERTIFY keyword and the server refuses the erasure with
+// "CERTIFY keyword required to confirm irreversible erasure" — matching the
+// engine's own safety rail. Only an explicit Certify=true confirms the
+// irreversible crypto-shred. (Historically the omitted default was true,
+// which silently confirmed destruction for callers that never considered
+// the flag.)
 func (i *IdentityClient) EraseSubject(ctx context.Context, subjectIdentity, reason, purpose string, opts *EraseSubjectOptions) (map[string]any, error) {
-	certify := true
+	certify := false
 	if opts != nil && opts.CertifySet {
 		certify = opts.Certify
 	}

@@ -536,8 +536,38 @@ func TestIdentityClient_EraseSubject(t *testing.T) {
 		t.Fatalf("out = %v", out)
 	}
 	sql, _ := gotBody["sql"].(string)
-	if !contains(sql, "ERASE SUBJECT 'alice@example.com'") || !contains(sql, "CERTIFY") {
+	// Omitted certify (opts == nil) defaults to the safe side — no CERTIFY
+	// keyword; the server then refuses the erasure until the caller opts in.
+	if !contains(sql, "ERASE SUBJECT 'alice@example.com'") || contains(sql, "CERTIFY") {
 		t.Fatalf("sql = %q", sql)
+	}
+}
+
+func TestIdentityClient_EraseSubjectCertifyOptIn(t *testing.T) {
+	var gotBody map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		_ = json.Unmarshal(b, &gotBody)
+		fmt.Fprint(w, `{"receipt":"ok"}`)
+	}))
+	defer srv.Close()
+
+	c := newTestClient(srv, nil)
+	ic := NewIdentityClient(c)
+	if _, err := ic.EraseSubject(context.Background(), "alice@example.com", "gdpr-art-17", "erasure", &EraseSubjectOptions{Certify: true, CertifySet: true}); err != nil {
+		t.Fatal(err)
+	}
+	sql, _ := gotBody["sql"].(string)
+	if !contains(sql, "CERTIFY") {
+		t.Fatalf("sql = %q, want CERTIFY when explicitly opted in", sql)
+	}
+
+	if _, err := ic.EraseSubject(context.Background(), "alice@example.com", "gdpr-art-17", "erasure", &EraseSubjectOptions{Certify: false, CertifySet: true}); err != nil {
+		t.Fatal(err)
+	}
+	sql, _ = gotBody["sql"].(string)
+	if contains(sql, "CERTIFY") {
+		t.Fatalf("sql = %q, want CERTIFY omitted for Certify=false", sql)
 	}
 }
 
