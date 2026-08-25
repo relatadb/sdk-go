@@ -385,10 +385,29 @@ type SchemaAlterOptions struct {
 	Optional  *bool  // nullability override
 }
 
+// schemaAlterActions maps SchemaAlter's documented short action verbs to the
+// server's long-form verbs (crates/relata-cli/src/serve/types_routes.rs
+// schema_alter_handler). The server only ever understood the long form —
+// this SDK previously sent the short verbs through unchanged, so every call
+// following the method's own doc comment 400'd (#4704).
+var schemaAlterActions = map[string]string{
+	"add":    "add_column",
+	"drop":   "remove_column",
+	"rename": "rename_column",
+	"retype": "change_type",
+}
+
 // SchemaAlter applies online schema evolution via PATCH /types/:name/schema
-// (#1307). action is "add" | "drop" | "rename" | "retype"; column is the target.
+// (#1307). action is "add" | "drop" | "rename" | "retype", translated to the
+// server's add_column | remove_column | rename_column | change_type on the
+// wire (#4704); the server's own long-form verbs are also accepted
+// unchanged. column is the target.
 func (c *Client) SchemaAlter(ctx context.Context, name, action, column string, opts *SchemaAlterOptions) (map[string]any, error) {
-	body := map[string]any{"action": action, "column": column}
+	wireAction := action
+	if translated, ok := schemaAlterActions[action]; ok {
+		wireAction = translated
+	}
+	body := map[string]any{"action": wireAction, "column": column}
 	if opts != nil {
 		if opts.NewColumn != "" {
 			body["new_column"] = opts.NewColumn
