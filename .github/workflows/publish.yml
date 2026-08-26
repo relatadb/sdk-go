@@ -30,13 +30,19 @@ jobs:
 
       - name: Tag new version
         run: |
-          LATEST=$(git tag --list 'v*' --sort=-version:refname | head -1)
-          if [ -z "$LATEST" ]; then
-            NEW="v0.1.0"
-          else
-            PATCH=$(echo "$LATEST" | awk -F. '{print $3}')
-            PREFIX=$(echo "$LATEST" | awk -F. '{print $1"."$2}')
-            NEW="${PREFIX}.$((PATCH + 1))"
+          # Tag the CANONICAL version from relata/version.go (kept in lockstep
+          # with Cargo.toml's [workspace.package].version by
+          # scripts/check_versions.py in the parent repo), not a self-incremented
+          # counter. The module path carries /v2 and the Go module proxy only
+          # resolves /v2 imports from tags >= v2.0.0 — the old counter logic
+          # tagged v0.1.0..v0.1.4, none of which can ever serve the /v2 path,
+          # so `go get github.com/relatadb/sdk-go/v2@latest` resolved to a bare
+          # commit pseudo-version (observed 2026-08-26:
+          # v2.0.0-20260826000147-11899f544794, no tagged version at all).
+          NEW="v$(sed -n 's/^const Version = "\(.*\)"$/\1/p' relata/version.go)"
+          if [ -z "$NEW" ] || [ "$NEW" = "v" ]; then
+            echo "cannot read 'const Version' from relata/version.go" >&2
+            exit 1
           fi
 
           # Skip if tag already exists
