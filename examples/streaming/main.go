@@ -36,6 +36,7 @@ func main() {
 	})
 	streaming := relata.NewStreamingClient(client)
 	logClient := relata.NewLogClient(client)
+	ingest := relata.NewIngestClient(client)
 
 	// ── 1. Watch with a 5-second deadline ─────────────────────────────────
 	watchCtx, watchCancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -63,9 +64,11 @@ func main() {
 	writeCtx, writeCancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer writeCancel()
 
+	// /query is read-only (#782) — writes go through the governed ingest
+	// door, not SQL INSERT.
 	fmt.Println("\n=== 2. Issuing a write to trigger watch events ===")
-	if _, err := client.Query(writeCtx,
-		"INSERT INTO Person (_pk, name) VALUES ('watch-1', 'Watch Test 1')"); err != nil {
+	rows := []map[string]any{{"_pk": "watch-1", "name": "Watch Test 1"}}
+	if _, err := ingest.Bulk(writeCtx, "Person", rows, nil); err != nil {
 		fmt.Printf("  write error: %v\n", err)
 	} else {
 		fmt.Println("  inserted Person watch-1")
