@@ -7,4 +7,4 @@ package relata
 // constant against the canonical version on every CI run and rewrites it via
 // --fix on a release bump; do not hand-edit it independently of that script.
 // It is also the source for the SDK's User-Agent header (client.go).
-const Version = "2.4.1"
+const Version = "2.4.2"
