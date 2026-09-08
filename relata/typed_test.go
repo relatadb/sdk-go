@@ -863,7 +863,7 @@ func TestVectorClient_SimilarTo(t *testing.T) {
 		t.Fatal(err)
 	}
 	// #3211: the reference id is bound as a server-side $1 parameter.
-	want := "SELECT * FROM SIMILAR TO Document WHERE id = $1 LIMIT 3"
+	want := "SIMILAR TO Document WHERE id = $1 LIMIT 3"
 	if gotSQL != want {
 		t.Fatalf("sql = %q, want %q", gotSQL, want)
 	}
