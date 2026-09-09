@@ -204,6 +204,11 @@ func (v *VectorClient) HybridSearch(ctx context.Context, objectType, queryText s
 //
 // #3211: objectType is validated against the identifier allowlist and
 // referenceID is bound as a server-side $1 parameter rather than interpolated.
+//
+// #5269: SIMILAR TO is a standalone statement form — it is NOT wrapped in
+// SELECT * FROM. The engine's parser (parse_similar_body in
+// crates/relata-query/src/parser.rs) expects
+// "[PURPOSE '<p>'] SIMILAR TO <type> WHERE id = '<id>' LIMIT <n>" directly.
 func (v *VectorClient) SimilarTo(ctx context.Context, objectType, referenceID string, opts *SimilarToOptions) ([]map[string]any, error) {
 	if err := validateIdentifier(objectType, "object_type"); err != nil {
 		return nil, err
@@ -216,7 +221,7 @@ func (v *VectorClient) SimilarTo(ctx context.Context, objectType, referenceID st
 		}
 		purpose = opts.Purpose
 	}
-	sql := fmt.Sprintf("SELECT * FROM SIMILAR TO %s WHERE id = $1 LIMIT %d", objectType, k)
+	sql := fmt.Sprintf("SIMILAR TO %s WHERE id = $1 LIMIT %d", objectType, k)
 	result, err := v.queryWithParams(ctx, sql, []any{referenceID}, purpose)
 	if err != nil {
 		return nil, err

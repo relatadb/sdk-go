@@ -41,12 +41,24 @@ type RequestBreakglassOptions struct {
 	// Justification is a free-text justification for the emergency access,
 	// captured for audit.
 	Justification string
+	// Officer is a delegated/on-behalf-of human officer identity (#5276).
+	// Set this when a service principal (e.g. a BFF holding one shared
+	// bearer token) is mediating for a human officer, so the two-officer
+	// rule can tell two officers behind the same token apart — otherwise
+	// every request/approve pair through a shared token collapses to one
+	// identity and approval is structurally impossible.
+	Officer string
 }
 
 // ApproveBreakglassOptions configures the optional fields of ApproveBreakglass.
 type ApproveBreakglassOptions struct {
 	// Note is an optional second-officer approver note.
 	Note string
+	// Officer is a delegated/on-behalf-of human officer identity (#5276) —
+	// see RequestBreakglassOptions.Officer for the full rationale. Pass the
+	// approving officer here when this call is made through a shared
+	// service-principal bearer token.
+	Officer string
 }
 
 // ListAlertsOptions configures the optional filters of ListAlerts.
@@ -296,6 +308,9 @@ func (g *GovernanceClient) RequestBreakglass(ctx context.Context, sourceID strin
 		if opts.Justification != "" {
 			payload["justification"] = opts.Justification
 		}
+		if opts.Officer != "" {
+			payload["officer"] = opts.Officer
+		}
 	}
 	var resp map[string]any
 	if err := g.c.postJSON(ctx, "/humint/breakglass/request", payload, &resp); err != nil {
@@ -309,8 +324,13 @@ func (g *GovernanceClient) RequestBreakglass(ctx context.Context, sourceID strin
 // that two distinct approvals are required.
 func (g *GovernanceClient) ApproveBreakglass(ctx context.Context, requestID string, opts *ApproveBreakglassOptions) (map[string]any, error) {
 	payload := map[string]any{"request_id": requestID}
-	if opts != nil && opts.Note != "" {
-		payload["note"] = opts.Note
+	if opts != nil {
+		if opts.Note != "" {
+			payload["note"] = opts.Note
+		}
+		if opts.Officer != "" {
+			payload["officer"] = opts.Officer
+		}
 	}
 	var resp map[string]any
 	if err := g.c.postJSON(ctx, "/humint/breakglass/approve", payload, &resp); err != nil {
