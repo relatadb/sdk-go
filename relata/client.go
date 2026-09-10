@@ -347,7 +347,27 @@ func (c *Client) ListTypes(ctx context.Context) (map[string]any, error) {
 	return resp, nil
 }
 
-// RegisterType registers a custom object type at runtime.
+// RegisterType registers a custom object type at runtime (POST /types).
+// spec mirrors the server's full TypeDef body
+// (crates/relata-cli/src/serve/types_routes.rs) and accepts any of:
+//
+//   - "description", "owner" (string) — free-text, not schema-enforced.
+//   - "properties" ([]map[string]any) — each
+//     {"name": string, "required": bool, "state_machine":
+//     {"initial_state": string, "transitions": [{"from": string, "to": string}]}}.
+//   - "computed_columns" ([]map[string]any) — each
+//     {"name": string, "kind": "concat" | "static", "fields": []string,
+//     "separator": string, "value": string}.
+//   - "graph_triggers" ([]map[string]any) — each
+//     {"link_type": string, "src_field": string, "dst_field": string}: on
+//     every ingested row of this type, materialise a LinkStore edge from
+//     src_field's value to dst_field's value, typed link_type — the
+//     mechanism behind automatic graph wiring on ingest.
+//   - "bm25_params" (map[string]any) — {"k1": float64, "b": float64},
+//     overrides the full-text scoring preset for this type only.
+//   - "force" (bool) — required to redefine a computed_columns formula or
+//     state_machine on a type that already has rows (otherwise 409);
+//     existing rows are never retroactively revalidated.
 func (c *Client) RegisterType(ctx context.Context, name string, spec map[string]any) (map[string]any, error) {
 	body := map[string]any{"name": name}
 	for k, v := range spec {
@@ -548,10 +568,29 @@ func (c *Client) ExportData(ctx context.Context, objectType, format string) (map
 	return resp, nil
 }
 
+// RegisterWebhookOptions carries optional POST /webhooks fields. Secret, when
+// set, is stored server-side (never echoed back by ListWebhooks) and used to
+// sign every delivered payload with HMAC-SHA256 in the X-Webhook-Signature
+// header — the only way to get a signed (verifiable) webhook; leaving it
+// empty registers an unsigned one.
+type RegisterWebhookOptions struct {
+	Secret string
+}
+
 // RegisterWebhook registers a webhook for push notifications (#967 Tier 5b).
-func (c *Client) RegisterWebhook(ctx context.Context, url string, eventTypes []string) (map[string]any, error) {
+// opts may be nil to omit every optional field (equivalent to the pre-#5395
+// signature). BREAKING (#5395): opts was added as a new trailing parameter,
+// following the *Options precedent #2319 already set for
+// GraphPageRank/SanctionsScreen/ConvoyDetect/BurnerDetect/HawalaTrace — the
+// server has supported a signing secret since webhooks shipped, but no Go
+// caller could ever reach it.
+func (c *Client) RegisterWebhook(ctx context.Context, url string, eventTypes []string, opts *RegisterWebhookOptions) (map[string]any, error) {
+	body := map[string]any{"url": url, "event_types": eventTypes}
+	if opts != nil && opts.Secret != "" {
+		body["secret"] = opts.Secret
+	}
 	var resp map[string]any
-	if err := c.postJSON(ctx, "/webhooks", map[string]any{"url": url, "event_types": eventTypes}, &resp); err != nil {
+	if err := c.postJSON(ctx, "/webhooks", body, &resp); err != nil {
 		return nil, err
 	}
 	return resp, nil
