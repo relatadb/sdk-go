@@ -77,18 +77,19 @@ func WithFacePurpose(purpose string) FaceSearchOption {
 	return func(p *faceSearchParams) { p.purpose = purpose }
 }
 
-// buildFaceSearchSQL assembles the SELECT * FROM FACE_SEARCH(...) ticket
-// (#2251). Mirrors the server operator in relata_query::parser. Exported for
-// testing parity with the TypeScript buildFaceSearchSql helper.
+// buildFaceSearchSQL assembles the bare FACE_SEARCH(...) ticket (#2251,
+// #5497). Mirrors the server operator in relata_query::parser, which only
+// dispatches this as a bare top-level statement — a SELECT * FROM wrapper is
+// a parse error. Exported for testing parity with the TypeScript
+// buildFaceSearchSql helper.
 func buildFaceSearchSQL(galleryID, csv string, k int, threshold float64) string {
-	return "SELECT * FROM FACE_SEARCH(" +
+	return "FACE_SEARCH(" +
 		sqlLiteral(csv) + ", " + sqlLiteral(galleryID) +
 		", K => " + itoa(k) + ", THRESHOLD => " + ftoa(threshold) + ")"
 }
 
 // FaceSearch runs a biometric face k-NN search against a gallery (#2251,
-// ADR-030). It executes SELECT * FROM FACE_SEARCH(...) through the governed
-// /query door.
+// ADR-030). It executes FACE_SEARCH(...) through the governed /query door.
 //
 // embedding may be a []float32, []float64, or a pre-formatted comma-separated
 // string. k defaults to 10, threshold to 0.7.
@@ -127,17 +128,18 @@ func WithPdqPurpose(purpose string) MatchPdqOption {
 	return func(p *matchPdqParams) { p.purpose = purpose }
 }
 
-// buildMatchPdqSQL assembles the SELECT * FROM MATCH_PDQ(...) ticket (#2251).
-// Mirrors the TypeScript buildMatchPdqSql helper.
+// buildMatchPdqSQL assembles the bare MATCH_PDQ(...) ticket (#2251, #5497).
+// Bare top-level form only — see buildFaceSearchSQL's #5497 note. Mirrors
+// the TypeScript buildMatchPdqSql helper.
 func buildMatchPdqSQL(corpusID, queryHash string, threshold float64) string {
-	return "SELECT * FROM MATCH_PDQ(" +
+	return "MATCH_PDQ(" +
 		sqlLiteral(queryHash) + ", " + sqlLiteral(corpusID) +
 		", THRESHOLD => " + ftoa(threshold) + ")"
 }
 
 // MatchPdq runs a perceptual-hash (PDQ) near-duplicate search over a corpus
-// (#2251). It executes SELECT * FROM MATCH_PDQ(...) through the governed /query
-// door. PDQ near-duplicates differ by ≤ 31 bits (ADR-187). threshold defaults
+// (#2251). It executes MATCH_PDQ(...) through the governed /query door. PDQ
+// near-duplicates differ by ≤ 31 bits (ADR-187). threshold defaults
 // to 0.9.
 func (c *Client) MatchPdq(ctx context.Context, corpusID, queryHash string, opts ...MatchPdqOption) (*QueryResult, error) {
 	p := &matchPdqParams{threshold: 0.9}
@@ -177,12 +179,13 @@ func WithSimilarImagePurpose(purpose string) SimilarImageOption {
 	return func(p *similarImageParams) { p.purpose = purpose }
 }
 
-// buildSimilarImageSQL assembles the SELECT * FROM SIMILAR_IMAGE(...) ticket
-// (#2840, PR #2859). Mirrors the server operator's grammar in
+// buildSimilarImageSQL assembles the bare SIMILAR_IMAGE(...) ticket
+// (#2840, PR #2859, #5497). Bare top-level form only — see
+// buildFaceSearchSQL's #5497 note. Mirrors the server operator's grammar in
 // relata_query::parser (SIMILAR_IMAGE's parser arm): a positional media_ref
 // literal followed by optional named THRESHOLD / INDEX arguments.
 func buildSimilarImageSQL(mediaRef string, threshold float64, index string) string {
-	sql := "SELECT * FROM SIMILAR_IMAGE(" +
+	sql := "SIMILAR_IMAGE(" +
 		sqlLiteral(mediaRef) + ", THRESHOLD => " + ftoa(threshold)
 	if index != "" {
 		sql += ", INDEX => " + sqlLiteral(index)
@@ -192,7 +195,7 @@ func buildSimilarImageSQL(mediaRef string, threshold float64, index string) stri
 
 // SimilarImage runs a perceptual near-duplicate image search over mediaRef
 // (#2840, PR #2859) via the server's SIMILAR_IMAGE operator. It executes
-// SELECT * FROM SIMILAR_IMAGE(...) through the governed /query door so
+// SIMILAR_IMAGE(...) through the governed /query door so
 // PURPOSE / ACL / cell-masking / tenant isolation apply identically to a
 // hand-written query. threshold defaults to 0.9; when no index is supplied
 // the server searches its default scope.
