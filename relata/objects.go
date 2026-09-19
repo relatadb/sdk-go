@@ -47,8 +47,14 @@ type UpsertOptions struct {
 }
 
 // Upsert upserts a single state object. The objectID becomes the row's primary
-// key; re-upserting with the same id supersedes bi-temporally. Returns the
-// server's upsert receipt (object_id, write_seq, valid_from).
+// key; re-upserting with the same id supersedes bi-temporally.
+//
+// A schema rejection is NOT returned as an error: POST /ingest is an
+// asynchronous queue-ack, so a rejected row yields a nil error and a payload
+// like {"rows_queued":0,"rows_rejected":1,"errors":["Type.field: minCount 1
+// not met"]}. Callers MUST check rows_rejected / errors on every call. Returns
+// the ingest ack (rows_queued, rows_rejected, errors, task_id, ...), not a
+// per-row receipt.
 func (o *ObjectClient) Upsert(ctx context.Context, objectType, objectID string, fields map[string]any, opts *UpsertOptions) (map[string]any, error) {
 	row := make(map[string]any, len(fields)+2)
 	for k, v := range fields {
@@ -62,8 +68,9 @@ func (o *ObjectClient) Upsert(ctx context.Context, objectType, objectID string, 
 	return o.postIngest(ctx, objectType, body, "application/x-ndjson", opts)
 }
 
-// BatchUpsert bulk-upserts. Each row must carry its own "id" key. Returns the
-// bulk receipt (accepted, rejected, write_seq, queue_depth).
+// BatchUpsert bulk-upserts. Each row must carry its own "id" key. Per-row
+// rejections are reported in the receipt, not as an error — inspect it. Returns
+// the bulk receipt (accepted, rejected, write_seq, queue_depth).
 func (o *ObjectClient) BatchUpsert(ctx context.Context, objectType string, rows []map[string]any, opts *UpsertOptions) (map[string]any, error) {
 	if opts != nil && opts.Source != "" {
 		annotated := make([]map[string]any, len(rows))
