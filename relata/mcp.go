@@ -28,10 +28,11 @@ type McpInitializeOptions struct {
 
 // GetEntitiesOptions configures the GetEntities pagination/filter.
 type GetEntitiesOptions struct {
-	// Filters is an optional set of exact-match field filters, sent as a JSON
-	// object. The server (mcp_tool_get_entities, crates/relata-cli/src/serve/mcp.rs)
-	// requires "filters" to be a JSON object and retains rows where every
-	// key/value pair matches; a bare JSON string is silently ignored (#4665).
+	// Filters is an optional set of field filters, sent as a JSON object. The
+	// server (mcp_tool_get_entities, crates/relata-cli/src/serve/mcp.rs) pushes
+	// them into the SQL WHERE clause before LIMIT (#5533): string values match
+	// exactly but case-insensitively, numbers/booleans exactly. "filters" must
+	// be a JSON object; a bare JSON string is silently ignored (#4665).
 	Filters map[string]any
 	// Limit caps the response. Defaults to 50.
 	Limit int
