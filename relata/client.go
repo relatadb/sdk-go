@@ -614,15 +614,6 @@ func (c *Client) DeleteWebhook(ctx context.Context, id string) (map[string]any, 
 	return resp, nil
 }
 
-// Sparql executes a SPARQL query.
-func (c *Client) Sparql(ctx context.Context, query string) (map[string]any, error) {
-	var resp map[string]any
-	if err := c.postJSON(ctx, "/sparql", map[string]any{"query": query}, &resp); err != nil {
-		return nil, err
-	}
-	return resp, nil
-}
-
 // ClusterTopology returns the cluster topology.
 func (c *Client) ClusterTopology(ctx context.Context) (map[string]any, error) {
 	var resp map[string]any
