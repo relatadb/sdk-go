@@ -379,12 +379,42 @@ Python `from_client` classmethod. Optional parameters use struct-pointer options
 | `relata.ingest` | `NewIngestClient` | Bulk NDJSON + CSV + media task status; it does not upload raw media bytes |
 | `relata.vectors` | `NewVectorClient` | KNN + hybrid search + similar-to (SQL-backed) + `Embed`/`EmbedBatch` (`POST /embed[/batch]`) |
 | `relata.search` (`SearchClient`) | `NewSearchClient` | Typed `POST /search` JSON query door (`rank_by`/`filters`) — separate from the untyped `Client.Search` |
-| `relata.system` | `NewSystemClient` | LLM config + test + jobs status |
+| `relata.system` | `NewSystemClient` | Generic jobs and operator surfaces; no feed broker routing |
+| `relata` (`FeedBrokerClient`) | `NewFeedBrokerClient` | Optional RIFN broker health, channels, signed-entry publishing at an explicit broker URL |
 | `relata.streaming` | `NewStreamingClient` | NDJSON `RowIterator` + SSE `SSEIterator` + Arrow `BytesIterator` |
 | `relata.tenants` | `NewTenantAdminClient` | Tenant CRUD + quota + sharing agreements + platform admin |
 | `relata.backup` | `NewBackupClient` | Backup / restore / PITR (admin-auth) |
 | `relata.tokens` | `NewTokenClient` | Dedup / uniqueness tokens (test-and-set, check, revoke, stats) |
 | `relata.log` | `NewLogClient` | Ordered integrity log (append, head, load leaves) |
+
+The former `get_domain_summary` MCP route is not a core tool in v3.0. To build
+the same application-facing inventory, call generic, tenant-scoped
+`mcp.ListEntityTypes(ctx)` and pass its result to
+`relata.SummarizeDomain("financial", inventory)`. That helper supplies local
+profile metadata; it performs no extra query or authorization check.
+
+```go
+import (
+    "context"
+    "fmt"
+    "github.com/relatadb/sdk-go/v2/relata"
+)
+
+db := relata.New("http://localhost:9090", &relata.ClientOptions{DefaultPurpose: "analytics"})
+defer db.Close()
+mcp := relata.NewMcpClient(db)
+inventory, err := mcp.ListEntityTypes(ctx)
+if err != nil { return err }
+summary, err := relata.SummarizeDomain("financial", inventory)
+if err != nil { return err }
+fmt.Printf("%v\n", summary)
+```
+
+RIFN is an optional broker service with its own URL, separate from the Relata
+database listener. Construct `NewFeedBrokerClient` with that explicit broker
+URL and its own `ClientOptions`. `Publish` sends a complete, caller-signed
+feed entry plus the required `X-Publisher-Did`; the SDK does not create or
+sign entries, and `NewSystemClient` does not inherit or configure a broker.
 
 **Admin-listener reachability (`ClientOptions.AdminBaseURL`, #2321):** on a
 hardened `server`/`cluster` deployment, `/admin/*` and `/platform/*` are

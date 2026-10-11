@@ -2,7 +2,6 @@ package relata
 
 import (
 	"context"
-	"encoding/json"
 	"net/url"
 )
 
@@ -33,34 +32,6 @@ func (s *SystemClient) JobsStatus(ctx context.Context) (map[string]any, error) {
 func (s *SystemClient) JobStatus(ctx context.Context, name string) (map[string]any, error) {
 	var resp map[string]any
 	if err := s.c.get(ctx, "/jobs/"+url.PathEscape(name), &resp); err != nil {
-		return nil, err
-	}
-	return resp, nil
-}
-
-// FeedHealth returns the RIFN feed broker health status.
-func (s *SystemClient) FeedHealth(ctx context.Context) (map[string]any, error) {
-	var resp map[string]any
-	if err := s.c.get(ctx, "/feed/health", &resp); err != nil {
-		return nil, err
-	}
-	return resp, nil
-}
-
-// FeedChannels lists available feed channels.
-func (s *SystemClient) FeedChannels(ctx context.Context) (map[string]any, error) {
-	var resp map[string]any
-	if err := s.c.get(ctx, "/feed/channels", &resp); err != nil {
-		return nil, err
-	}
-	return resp, nil
-}
-
-// FeedPublish publishes a record to a feed channel.
-func (s *SystemClient) FeedPublish(ctx context.Context, channel string, payload json.RawMessage) (map[string]any, error) {
-	body := map[string]any{"channel": channel, "payload": payload}
-	var resp map[string]any
-	if err := s.c.postJSON(ctx, "/feed/publish", body, &resp); err != nil {
 		return nil, err
 	}
 	return resp, nil

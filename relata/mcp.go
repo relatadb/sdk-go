@@ -44,12 +44,6 @@ type SearchEntitiesOptions struct {
 	ObjectType string
 }
 
-// GetDomainSummaryOptions configures GetDomainSummary.
-type GetDomainSummaryOptions struct {
-	// ObjectType restricts the summary to one type.
-	ObjectType string
-}
-
 // FindInSocialCorpusOptions configures FindInSocialCorpus.
 type FindInSocialCorpusOptions struct {
 	// User restricts the search to one user (matched against UserField).
@@ -255,11 +249,6 @@ func (m *McpClient) SearchEntities(ctx context.Context, query string, opts *Sear
 		args["entity_types"] = []string{opts.ObjectType}
 	}
 	return m.CallTool(ctx, "search_entities", args)
-}
-
-// GetDomainSummary returns counts + freshness per type.
-func (m *McpClient) GetDomainSummary(ctx context.Context, domain string) (map[string]any, error) {
-	return m.CallTool(ctx, "get_domain_summary", map[string]any{"domain": domain})
 }
 
 // FindInSocialCorpus searches the ingested social-media corpus ("find_in_social_corpus").
