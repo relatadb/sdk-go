@@ -118,6 +118,50 @@ func TestAggregateUsageEventsRejectsConflictTargetAndInvalidScore(t *testing.T) 
 	}
 }
 
+func TestAggregateUsageWithBaselineKeepsUnknownLegacyFeedbackSeparate(t *testing.T) {
+	target := EventTarget{ObjectType: "DocumentSource", Key: "report_id", Value: "report-42"}
+	legacyMean, lastCited := 0.6, int64(90)
+	baseline := LegacyUsageBaseline{
+		FormatVersion: "document-usage-baseline-v1", CutoverAt: 100,
+		Target:        target,
+		CitationCount: 8, RetrievalCount: 12, FeedbackAvg: &legacyMean,
+		FeedbackCount: nil, LastCitedAt: &lastCited,
+	}
+	rows := []map[string]any{{
+		"event_id": "evt-new", "target_type": target.ObjectType, "target_id": target.Value,
+		"observed_at": int64(101), "cited": true, "retrieved": true, "feedback_score": 0.9,
+	}}
+	got, err := AggregateUsageWithBaseline(rows, target, baseline)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.CitationCount != 9 || got.RetrievalCount != 13 || got.LastCitedAt == nil || *got.LastCitedAt != 101 {
+		t.Fatalf("combined counters = %+v", got)
+	}
+	if got.FeedbackCount != nil || got.FeedbackAvg != nil || got.PostCutover.FeedbackAvg == nil || *got.PostCutover.FeedbackAvg != 0.9 || got.Legacy.FeedbackAvg == nil || *got.Legacy.FeedbackAvg != 0.6 {
+		t.Fatalf("unknown legacy sample count was merged: %+v", got)
+	}
+}
+
+func TestAggregateUsageWithBaselineWeightsKnownLegacyCountAndRejectsOldEvents(t *testing.T) {
+	target := EventTarget{ObjectType: "DocumentSource", Key: "report_id", Value: "report-42"}
+	legacyMean, legacyCount := 0.5, 2
+	baseline := LegacyUsageBaseline{FormatVersion: "document-usage-baseline-v1", Target: target, CutoverAt: 100, FeedbackAvg: &legacyMean, FeedbackCount: &legacyCount}
+	rows := []map[string]any{{"event_id": "evt-new", "target_type": target.ObjectType, "target_id": target.Value, "observed_at": int64(100), "feedback_score": 1.0}}
+	got, err := AggregateUsageWithBaseline(rows, target, baseline)
+	if err != nil || got.FeedbackCount == nil || *got.FeedbackCount != 3 || got.FeedbackAvg == nil || math.Abs(*got.FeedbackAvg-2.0/3.0) > 1e-12 {
+		t.Fatalf("weighted result = %+v, err = %v", got, err)
+	}
+	rows[0]["observed_at"] = int64(99)
+	if _, err := AggregateUsageWithBaseline(rows, target, baseline); err == nil || !strings.Contains(err.Error(), "predates") {
+		t.Fatalf("pre-cutover event should fail, err = %v", err)
+	}
+	baseline.Target.Value = "another-report"
+	if _, err := AggregateUsageWithBaseline(rows, target, baseline); err == nil || !strings.Contains(err.Error(), "different target") {
+		t.Fatalf("different target baseline should fail, err = %v", err)
+	}
+}
+
 func TestAggregateUsageEventsPreservesModernEpochNanoseconds(t *testing.T) {
 	const base int64 = 1791710000000000000
 	target := EventTarget{ObjectType: "DocumentSource", Key: "report_id", Value: "report-42"}

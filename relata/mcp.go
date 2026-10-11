@@ -2,7 +2,64 @@ package relata
 
 import (
 	"context"
+	"fmt"
+	"math"
+	"strconv"
 )
+
+func validateFinancialPurpose(value string) error {
+	if len(value) == 0 || len(value) > 64 {
+		return fmt.Errorf("purpose must be 1-64 characters")
+	}
+	for _, char := range value {
+		if !(char >= 'a' && char <= 'z' || char >= 'A' && char <= 'Z' || char >= '0' && char <= '9' || char == '_' || char == '-') {
+			return fmt.Errorf("purpose contains invalid characters")
+		}
+	}
+	return nil
+}
+
+func validateFinancialLiteral(value, name string) error {
+	if value == "" {
+		return fmt.Errorf("%s is required", name)
+	}
+	for _, char := range value {
+		if char == '\'' || char == '\\' {
+			return fmt.Errorf("%s cannot contain SQL quote or backslash characters", name)
+		}
+	}
+	return nil
+}
+
+func financialUnsigned(value, fallback, minimum, maximum int) int {
+	if value < 0 {
+		value = fallback
+	}
+	if value < minimum {
+		return minimum
+	}
+	if value > maximum {
+		return maximum
+	}
+	return value
+}
+
+func (m *McpClient) financialQuery(ctx context.Context, purpose, expression string) (map[string]any, error) {
+	if err := validateFinancialPurpose(purpose); err != nil {
+		return nil, err
+	}
+	return m.CallTool(ctx, "query", map[string]any{
+		"sql":     fmt.Sprintf("PURPOSE '%s' %s", purpose, expression),
+		"purpose": purpose,
+	})
+}
+
+func formatFinancialNumber(value, fallback float64) string {
+	if math.IsNaN(value) || math.IsInf(value, 0) {
+		value = fallback
+	}
+	return strconv.FormatFloat(value, 'g', -1, 64)
+}
 
 // McpClient is the synchronous Model Context Protocol client. It wraps
 // /mcp/initialize, /mcp/tools, /mcp/tools/call, and provides convenience
@@ -978,7 +1035,7 @@ type TraceCryptoOptions struct {
 	Purpose string
 }
 
-// TraceCrypto follows a cryptocurrency address hop-by-hop ("trace_crypto").
+// TraceCrypto builds the former crypto-trace expression and sends it through governed query.
 func (m *McpClient) TraceCrypto(ctx context.Context, address string, opts *TraceCryptoOptions) (map[string]any, error) {
 	maxHops := 5
 	purpose := "analytics"
@@ -994,9 +1051,12 @@ func (m *McpClient) TraceCrypto(ctx context.Context, address string, opts *Trace
 			purpose = opts.Purpose
 		}
 	}
-	return m.CallTool(ctx, "trace_crypto", map[string]any{
-		"address": address, "max_hops": maxHops, "min_amount": minAmount, "purpose": purpose,
-	})
+	if err := validateFinancialLiteral(address, "address"); err != nil {
+		return nil, err
+	}
+	maxHops = financialUnsigned(maxHops, 5, 1, 10)
+	expression := fmt.Sprintf("CRYPTO_TRACE('%s', MAX_HOPS => %d, MIN_AMOUNT => %s)", address, maxHops, formatFinancialNumber(minAmount, 0))
+	return m.financialQuery(ctx, purpose, expression)
 }
 
 // BeneficialOwnershipOptions configures BeneficialOwnership.
@@ -1007,7 +1067,7 @@ type BeneficialOwnershipOptions struct {
 	Purpose string
 }
 
-// BeneficialOwnership traces the beneficial ownership chain for a party ("beneficial_ownership").
+// BeneficialOwnership builds the former ownership-chain expression through governed query.
 func (m *McpClient) BeneficialOwnership(ctx context.Context, party string, opts *BeneficialOwnershipOptions) (map[string]any, error) {
 	maxDepth := 6
 	purpose := "analytics"
@@ -1019,9 +1079,12 @@ func (m *McpClient) BeneficialOwnership(ctx context.Context, party string, opts 
 			purpose = opts.Purpose
 		}
 	}
-	return m.CallTool(ctx, "beneficial_ownership", map[string]any{
-		"party": party, "max_depth": maxDepth, "purpose": purpose,
-	})
+	if err := validateFinancialLiteral(party, "party"); err != nil {
+		return nil, err
+	}
+	maxDepth = financialUnsigned(maxDepth, 6, 1, 8)
+	expression := fmt.Sprintf("BENEFICIAL_OWNERSHIP_CHAIN('%s', MAX_DEPTH => %d)", party, maxDepth)
+	return m.financialQuery(ctx, purpose, expression)
 }
 
 // ReconstructWireOptions configures ReconstructWire.
@@ -1032,7 +1095,7 @@ type ReconstructWireOptions struct {
 	Purpose string
 }
 
-// ReconstructWire reconstructs a wire-transfer chain for an account ("reconstruct_wire").
+// ReconstructWire builds the former wire-reconstruction expression through governed query.
 func (m *McpClient) ReconstructWire(ctx context.Context, account string, opts *ReconstructWireOptions) (map[string]any, error) {
 	tolerancePct := 5.0
 	purpose := "analytics"
@@ -1044,9 +1107,11 @@ func (m *McpClient) ReconstructWire(ctx context.Context, account string, opts *R
 			purpose = opts.Purpose
 		}
 	}
-	return m.CallTool(ctx, "reconstruct_wire", map[string]any{
-		"account": account, "tolerance_pct": tolerancePct, "purpose": purpose,
-	})
+	if err := validateFinancialLiteral(account, "account"); err != nil {
+		return nil, err
+	}
+	expression := fmt.Sprintf("WIRE_RECONSTRUCTION('%s', TOLERANCE_PCT => %s)", account, formatFinancialNumber(tolerancePct, 5))
+	return m.financialQuery(ctx, purpose, expression)
 }
 
 // TraceHawalaOptions configures TraceHawala.
@@ -1057,7 +1122,7 @@ type TraceHawalaOptions struct {
 	Purpose string
 }
 
-// TraceHawala traces informal hawala value-transfer networks ("trace_hawala").
+// TraceHawala builds the former hawala-trace expression through governed query.
 func (m *McpClient) TraceHawala(ctx context.Context, seed string, opts *TraceHawalaOptions) (map[string]any, error) {
 	maxHops := 5
 	purpose := "analytics"
@@ -1069,9 +1134,12 @@ func (m *McpClient) TraceHawala(ctx context.Context, seed string, opts *TraceHaw
 			purpose = opts.Purpose
 		}
 	}
-	return m.CallTool(ctx, "trace_hawala", map[string]any{
-		"seed": seed, "max_hops": maxHops, "purpose": purpose,
-	})
+	if err := validateFinancialLiteral(seed, "seed"); err != nil {
+		return nil, err
+	}
+	maxHops = financialUnsigned(maxHops, 5, 1, 10)
+	expression := fmt.Sprintf("HAWALA_TRACE('%s', MAX_HOPS => %d)", seed, maxHops)
+	return m.financialQuery(ctx, purpose, expression)
 }
 
 // GeofenceOptions configures Geofence.
@@ -1254,20 +1322,22 @@ type ScreenSanctionsOptions struct {
 	Purpose string
 }
 
-// ScreenSanctions screens a name/entity against sanctions lists ("screen_sanctions").
+// ScreenSanctions builds the former sanctions expression through governed query.
 func (m *McpClient) ScreenSanctions(ctx context.Context, name string, opts *ScreenSanctionsOptions) (map[string]any, error) {
 	purpose := "compliance_review"
-	args := map[string]any{"name": name}
 	if opts != nil {
-		if opts.HasThreshold {
-			args["threshold"] = opts.Threshold
-		}
 		if opts.Purpose != "" {
 			purpose = opts.Purpose
 		}
 	}
-	args["purpose"] = purpose
-	return m.CallTool(ctx, "screen_sanctions", args)
+	if err := validateFinancialLiteral(name, "name"); err != nil {
+		return nil, err
+	}
+	expression := fmt.Sprintf("SANCTIONS_SCREEN('%s')", name)
+	if opts != nil && opts.HasThreshold {
+		expression = fmt.Sprintf("SANCTIONS_SCREEN('%s', THRESHOLD => %s)", name, formatFinancialNumber(opts.Threshold, 0))
+	}
+	return m.financialQuery(ctx, purpose, expression)
 }
 
 // AggregateStatsOptions configures AggregateStats.

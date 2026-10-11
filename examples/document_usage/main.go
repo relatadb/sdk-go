@@ -62,6 +62,29 @@ func main() {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
+	target := relata.EventTarget{ObjectType: "DocumentSource", Key: "report_id", Value: targetID}
+	// Synthetic pre-cutover state for demonstrating the versioned reducer. Real
+	// applications load this record from their governed migration export.
+	legacyMean, trustedCount := 0.6, 2
+	baseline := relata.LegacyUsageBaseline{
+		FormatVersion: "document-usage-baseline-v1", Target: target, CutoverAt: 0,
+		CitationCount: 7, RetrievalCount: 11, FeedbackAvg: &legacyMean,
+	}
+	migrated, err := relata.AggregateUsageWithBaseline(queryRows, target, baseline)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+	trustedBaseline := baseline
+	trustedBaseline.FeedbackCount = &trustedCount
+	trustedMigrated, err := relata.AggregateUsageWithBaseline(queryRows, target, trustedBaseline)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+	wrongTargetBaseline := baseline
+	wrongTargetBaseline.Target.Value = "other"
+	_, wrongTargetErr := relata.AggregateUsageWithBaseline(queryRows, target, wrongTargetBaseline)
 	var lastCitedAt *string
 	if summary.LastCitedAt != nil {
 		value := strconv.FormatInt(*summary.LastCitedAt, 10)
@@ -83,12 +106,31 @@ func main() {
 			FeedbackAvg    *float64 `json:"feedback_avg"`
 			LastCitedAtNS  *string  `json:"last_cited_at_ns"`
 		} `json:"summary"`
+		Migration struct {
+			BaselineFormatVersion  string   `json:"baseline_format_version"`
+			CitationCount          int      `json:"citation_count"`
+			RetrievalCount         int      `json:"retrieval_count"`
+			LegacyFeedbackAvg      *float64 `json:"legacy_feedback_avg"`
+			PostCutoverFeedbackAvg *float64 `json:"post_cutover_feedback_avg"`
+			FeedbackCount          *int     `json:"feedback_count"`
+			FeedbackAvg            *float64 `json:"feedback_avg"`
+			TrustedFeedbackCount   *int     `json:"trusted_feedback_count"`
+			TrustedFeedbackAvg     *float64 `json:"trusted_feedback_avg"`
+			WrongTargetRejected    bool     `json:"wrong_target_rejected"`
+		} `json:"migration"`
 	}{}
 	output.Receipt.EventID, output.Receipt.Status, output.Receipt.Durability = receipt.EventID, receipt.Status, receipt.Durability
 	output.Summary.TargetType, output.Summary.TargetID = summary.TargetType, summary.TargetID
 	output.Summary.EventCount, output.Summary.CitationCount = summary.EventCount, summary.CitationCount
 	output.Summary.RetrievalCount, output.Summary.FeedbackCount = summary.RetrievalCount, summary.FeedbackCount
 	output.Summary.FeedbackAvg, output.Summary.LastCitedAtNS = summary.FeedbackAvg, lastCitedAt
+	output.Migration.BaselineFormatVersion = migrated.Legacy.FormatVersion
+	output.Migration.CitationCount, output.Migration.RetrievalCount = migrated.CitationCount, migrated.RetrievalCount
+	output.Migration.LegacyFeedbackAvg = migrated.Legacy.FeedbackAvg
+	output.Migration.PostCutoverFeedbackAvg = migrated.PostCutover.FeedbackAvg
+	output.Migration.FeedbackCount, output.Migration.FeedbackAvg = migrated.FeedbackCount, migrated.FeedbackAvg
+	output.Migration.TrustedFeedbackCount, output.Migration.TrustedFeedbackAvg = trustedMigrated.FeedbackCount, trustedMigrated.FeedbackAvg
+	output.Migration.WrongTargetRejected = wrongTargetErr != nil
 	if err := json.NewEncoder(os.Stdout).Encode(output); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)

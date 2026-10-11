@@ -380,23 +380,24 @@ func TestMcpClient_ScheduleJob_SendsName(t *testing.T) {
 	}
 }
 
-func TestMcpClient_TraceCrypto_SendsAddress(t *testing.T) {
+func TestMcpClient_TraceCrypto_ComposesGovernedQuery(t *testing.T) {
 	mcp, gotBody := mcpCapture(t)
-	if _, err := mcp.TraceCrypto(context.Background(), "bc1qxyz", &TraceCryptoOptions{MaxHops: 3}); err != nil {
+	if _, err := mcp.TraceCrypto(context.Background(), "bc1qxyz", &TraceCryptoOptions{MaxHops: 30, MinAmount: 1.25, Purpose: "audit"}); err != nil {
 		t.Fatal(err)
 	}
 	args := argsOf(t, gotBody)
-	if args["address"] != "bc1qxyz" || args["max_hops"] != float64(3) || args["purpose"] != "analytics" {
+	if (*gotBody)["name"] != "query" || args["sql"] != "PURPOSE 'audit' CRYPTO_TRACE('bc1qxyz', MAX_HOPS => 10, MIN_AMOUNT => 1.25)" || args["purpose"] != "audit" {
 		t.Fatalf("args = %v", args)
 	}
 }
 
-func TestMcpClient_BeneficialOwnership_SendsParty(t *testing.T) {
+func TestMcpClient_BeneficialOwnership_ComposesGovernedQuery(t *testing.T) {
 	mcp, gotBody := mcpCapture(t)
 	if _, err := mcp.BeneficialOwnership(context.Background(), "Acme Holdings", nil); err != nil {
 		t.Fatal(err)
 	}
-	if argsOf(t, gotBody)["party"] != "Acme Holdings" {
+	args := argsOf(t, gotBody)
+	if (*gotBody)["name"] != "query" || args["sql"] != "PURPOSE 'analytics' BENEFICIAL_OWNERSHIP_CHAIN('Acme Holdings', MAX_DEPTH => 6)" {
 		t.Fatalf("args = %v", (*gotBody)["arguments"])
 	}
 }
@@ -406,7 +407,8 @@ func TestMcpClient_ReconstructWire_SendsAccount(t *testing.T) {
 	if _, err := mcp.ReconstructWire(context.Background(), "IE12BOFI90000112345678", nil); err != nil {
 		t.Fatal(err)
 	}
-	if argsOf(t, gotBody)["account"] != "IE12BOFI90000112345678" {
+	args := argsOf(t, gotBody)
+	if (*gotBody)["name"] != "query" || args["sql"] != "PURPOSE 'analytics' WIRE_RECONSTRUCTION('IE12BOFI90000112345678', TOLERANCE_PCT => 5)" {
 		t.Fatalf("args = %v", (*gotBody)["arguments"])
 	}
 }
@@ -416,7 +418,8 @@ func TestMcpClient_TraceHawala_SendsSeed(t *testing.T) {
 	if _, err := mcp.TraceHawala(context.Background(), "actor-1", nil); err != nil {
 		t.Fatal(err)
 	}
-	if argsOf(t, gotBody)["seed"] != "actor-1" {
+	args := argsOf(t, gotBody)
+	if (*gotBody)["name"] != "query" || args["sql"] != "PURPOSE 'analytics' HAWALA_TRACE('actor-1', MAX_HOPS => 5)" {
 		t.Fatalf("args = %v", (*gotBody)["arguments"])
 	}
 }
@@ -501,8 +504,18 @@ func TestMcpClient_ScreenSanctions_SendsName(t *testing.T) {
 		t.Fatal(err)
 	}
 	args := argsOf(t, gotBody)
-	if args["name"] != "John Doe" || args["threshold"] != 0.9 || args["purpose"] != "compliance_review" {
+	if (*gotBody)["name"] != "query" || args["sql"] != "PURPOSE 'compliance_review' SANCTIONS_SCREEN('John Doe', THRESHOLD => 0.9)" || args["purpose"] != "compliance_review" {
 		t.Fatalf("args = %v", args)
+	}
+}
+
+func TestMcpClient_FinancialHelpersRejectSQLLiteralInjection(t *testing.T) {
+	mcp, gotBody := mcpCapture(t)
+	if _, err := mcp.TraceCrypto(context.Background(), "x'); SELECT * FROM Person; --", nil); err == nil {
+		t.Fatal("expected unsafe literal to be rejected")
+	}
+	if len(*gotBody) != 0 {
+		t.Fatalf("unsafe call reached transport: %v", *gotBody)
 	}
 }
 

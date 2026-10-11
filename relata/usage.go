@@ -24,6 +24,31 @@ type UsageAggregate struct {
 	LastCitedAt    *int64
 }
 
+// LegacyUsageBaseline is a frozen, versioned pre-event snapshot. A nil
+// FeedbackCount means the historical mean cannot be combined exactly.
+type LegacyUsageBaseline struct {
+	FormatVersion  string
+	Target         EventTarget
+	CutoverAt      int64
+	CitationCount  int
+	RetrievalCount int
+	FeedbackAvg    *float64
+	FeedbackCount  *int
+	LastCitedAt    *int64
+}
+
+// MigratedUsageAggregate keeps the old baseline and new event reduction
+// separately visible while exposing safely combined counters.
+type MigratedUsageAggregate struct {
+	Legacy         LegacyUsageBaseline
+	PostCutover    UsageAggregate
+	CitationCount  int
+	RetrievalCount int
+	FeedbackCount  *int
+	FeedbackAvg    *float64
+	LastCitedAt    *int64
+}
+
 type usageEventPayload struct {
 	targetType string
 	targetID   string
@@ -115,6 +140,83 @@ func AggregateUsageEvents(rows []map[string]any, target EventTarget) (UsageAggre
 	if result.FeedbackCount > 0 {
 		average := scoreTotal / float64(result.FeedbackCount)
 		result.FeedbackAvg = &average
+	}
+	return result, nil
+}
+
+// AggregateUsageWithBaseline combines a frozen v1 snapshot with a complete
+// post-cutover event inventory. Old writers must be drained before snapshot;
+// pre-cutover events are rejected. Nil legacy FeedbackCount keeps the two
+// means separate and returns nil combined feedback fields.
+func AggregateUsageWithBaseline(rows []map[string]any, target EventTarget, baseline LegacyUsageBaseline) (MigratedUsageAggregate, error) {
+	if baseline.FormatVersion != "document-usage-baseline-v1" {
+		return MigratedUsageAggregate{}, fmt.Errorf("unsupported legacy usage baseline format version")
+	}
+	if baseline.Target != target {
+		return MigratedUsageAggregate{}, fmt.Errorf("legacy usage baseline belongs to a different target")
+	}
+	if baseline.CitationCount < 0 || baseline.RetrievalCount < 0 {
+		return MigratedUsageAggregate{}, fmt.Errorf("legacy counters must be non-negative")
+	}
+	if baseline.FeedbackCount != nil && *baseline.FeedbackCount < 0 {
+		return MigratedUsageAggregate{}, fmt.Errorf("feedback count must be non-negative")
+	}
+	if baseline.FeedbackAvg != nil && (math.IsNaN(*baseline.FeedbackAvg) || math.IsInf(*baseline.FeedbackAvg, 0) || *baseline.FeedbackAvg < 0 || *baseline.FeedbackAvg > 1) {
+		return MigratedUsageAggregate{}, fmt.Errorf("feedback average must be finite and between 0 and 1")
+	}
+	if baseline.FeedbackCount != nil && *baseline.FeedbackCount == 0 && baseline.FeedbackAvg != nil {
+		return MigratedUsageAggregate{}, fmt.Errorf("feedback average must be nil when feedback count is zero")
+	}
+	if baseline.FeedbackCount != nil && *baseline.FeedbackCount > 0 && baseline.FeedbackAvg == nil {
+		return MigratedUsageAggregate{}, fmt.Errorf("feedback average is required when feedback count is positive")
+	}
+	post, err := AggregateUsageEvents(rows, target)
+	if err != nil {
+		return MigratedUsageAggregate{}, err
+	}
+	maxInt := int(^uint(0) >> 1)
+	if post.CitationCount > maxInt-baseline.CitationCount || post.RetrievalCount > maxInt-baseline.RetrievalCount {
+		return MigratedUsageAggregate{}, fmt.Errorf("combined usage counter exceeds the platform integer range")
+	}
+	for _, row := range rows {
+		observedAt, ok := usageTimestamp(row["observed_at"])
+		if !ok {
+			return MigratedUsageAggregate{}, fmt.Errorf("observed_at must be an integer timestamp")
+		}
+		if observedAt < baseline.CutoverAt {
+			return MigratedUsageAggregate{}, fmt.Errorf("usage event predates the baseline cutover")
+		}
+	}
+	result := MigratedUsageAggregate{
+		Legacy: baseline, PostCutover: post,
+		CitationCount:  baseline.CitationCount + post.CitationCount,
+		RetrievalCount: baseline.RetrievalCount + post.RetrievalCount,
+	}
+	if baseline.LastCitedAt != nil {
+		timestamp := *baseline.LastCitedAt
+		result.LastCitedAt = &timestamp
+	}
+	if post.LastCitedAt != nil && (result.LastCitedAt == nil || *post.LastCitedAt > *result.LastCitedAt) {
+		timestamp := *post.LastCitedAt
+		result.LastCitedAt = &timestamp
+	}
+	if baseline.FeedbackCount != nil {
+		if post.FeedbackCount > maxInt-*baseline.FeedbackCount {
+			return MigratedUsageAggregate{}, fmt.Errorf("combined feedback count exceeds the platform integer range")
+		}
+		count := *baseline.FeedbackCount + post.FeedbackCount
+		result.FeedbackCount = &count
+		if count > 0 {
+			total := 0.0
+			if baseline.FeedbackAvg != nil {
+				total += *baseline.FeedbackAvg * float64(*baseline.FeedbackCount)
+			}
+			if post.FeedbackAvg != nil {
+				total += *post.FeedbackAvg * float64(post.FeedbackCount)
+			}
+			average := total / float64(count)
+			result.FeedbackAvg = &average
+		}
 	}
 	return result, nil
 }
