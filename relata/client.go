@@ -301,40 +301,6 @@ func (c *Client) MultiSearch(ctx context.Context, queries []map[string]any) (map
 	return resp, nil
 }
 
-// GraphQL executes a GraphQL query against the governed query path (ADR-220).
-//
-// gqlQuery is the GraphQL query string; variables and operationName are optional.
-// $var references in limit and where are bound server-side (#3260). A referenced
-// variable that is missing, null, or wrong-typed is a hard server error (returned
-// as an error) — never silently dropped. String values are bound as quoted
-// literals, so variable content cannot inject SQL.
-// Returns the "data" field on success (a []map[string]any of row objects for a
-// query, or a map[string]any for an introspection __schema request). Returns an
-// error if the server returns a non-empty "errors" array.
-func (c *Client) GraphQL(ctx context.Context, gqlQuery string, variables map[string]any, operationName string) (any, error) {
-	body := map[string]any{"query": gqlQuery}
-	if variables != nil {
-		body["variables"] = variables
-	}
-	if operationName != "" {
-		body["operationName"] = operationName
-	}
-	var resp struct {
-		Data   any              `json:"data"`
-		Errors []map[string]any `json:"errors"`
-	}
-	if err := c.postJSON(ctx, "/graphql", body, &resp); err != nil {
-		return nil, err
-	}
-	if len(resp.Errors) > 0 {
-		msg := "graphql error"
-		if m, ok := resp.Errors[0]["message"].(string); ok {
-			msg = m
-		}
-		return nil, fmt.Errorf("relata: graphql: %s", msg)
-	}
-	return resp.Data, nil
-}
 
 // ── Type management & ontology (#967) ───────────────────────────────────────
 
@@ -1597,4 +1563,39 @@ func min(a, b int) int {
 		return a
 	}
 	return b
+}
+
+// GraphQL executes a GraphQL query against the governed query path (ADR-220).
+//
+// gqlQuery is the GraphQL query string; variables and operationName are optional.
+// $var references in limit and where are bound server-side (#3260). A referenced
+// variable that is missing, null, or wrong-typed is a hard server error (returned
+// as an error) — never silently dropped. String values are bound as quoted
+// literals, so variable content cannot inject SQL.
+// Returns the "data" field on success (a []map[string]any of row objects for a
+// query, or a map[string]any for an introspection __schema request). Returns an
+// error if the server returns a non-empty "errors" array.
+func (c *Client) GraphQL(ctx context.Context, gqlQuery string, variables map[string]any, operationName string) (any, error) {
+	body := map[string]any{"query": gqlQuery}
+	if variables != nil {
+		body["variables"] = variables
+	}
+	if operationName != "" {
+		body["operationName"] = operationName
+	}
+	var resp struct {
+		Data   any              `json:"data"`
+		Errors []map[string]any `json:"errors"`
+	}
+	if err := c.postJSON(ctx, "/graphql", body, &resp); err != nil {
+		return nil, err
+	}
+	if len(resp.Errors) > 0 {
+		msg := "graphql error"
+		if m, ok := resp.Errors[0]["message"].(string); ok {
+			msg = m
+		}
+		return nil, fmt.Errorf("relata: graphql: %s", msg)
+	}
+	return resp.Data, nil
 }

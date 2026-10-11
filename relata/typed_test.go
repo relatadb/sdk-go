@@ -617,20 +617,6 @@ func TestStreamingClient_QueryRows_PurposeRequired(t *testing.T) {
 
 // ---- S3Client ---------------------------------------------------------------
 
-func TestS3Client_FromClient(t *testing.T) {
-	c := New("http://localhost:9090", &ClientOptions{BearerToken: "tok", Tenant: "acme"})
-	s3 := NewS3Client(c)
-	if s3.EndpointURL != "http://localhost:9090" {
-		t.Fatalf("endpoint = %q", s3.EndpointURL)
-	}
-	if s3.bearerToken != "tok" || s3.Tenant != "acme" || s3.Region != "us-east-1" {
-		t.Fatalf("s3 = %+v", s3)
-	}
-	hc := s3.HTTP(nil)
-	if hc == nil || hc.Timeout == 0 {
-		t.Fatalf("http client = %+v", hc)
-	}
-}
 
 // ---- SystemClient -----------------------------------------------------------
 

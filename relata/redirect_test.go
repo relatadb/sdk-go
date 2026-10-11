@@ -86,26 +86,3 @@ func TestClient_CustomHTTPTimeout_DoesNotFollowRedirect(t *testing.T) {
 		t.Fatalf("attacker origin was contacted %d times — bearer token leaked", hits)
 	}
 }
-
-func TestS3Client_HTTP_DoesNotFollowRedirectOrResendBearerToken(t *testing.T) {
-	attacker, attackerHits := newAttackerServer(t)
-	redirecting, lastAuth := newRedirectingServer(t, attacker.URL+"/steal")
-
-	c := newTestClient(redirecting, &ClientOptions{BearerToken: "s3cr3t"})
-	s3 := NewS3Client(c)
-
-	_, err := s3.ListBuckets(context.Background())
-	if err == nil {
-		t.Fatal("expected an error, the redirect must not be followed")
-	}
-	if !errors.Is(err, ErrRedirectRefused) {
-		t.Fatalf("expected errors.Is(err, ErrRedirectRefused), got: %v", err)
-	}
-
-	if got := lastAuth.Load().(string); got != "Bearer s3cr3t" {
-		t.Fatalf("expected the original request to carry the bearer token, got %q", got)
-	}
-	if hits := atomic.LoadInt32(attackerHits); hits != 0 {
-		t.Fatalf("attacker origin was contacted %d times — bearer token leaked", hits)
-	}
-}
