@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"math"
 	"net/http"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -72,6 +74,87 @@ func TestRecordUsageValidatesBeforeNetworkCall(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatal("oversized key should fail before network call")
+	}
+}
+
+func TestAggregateUsageEventsDeduplicatesAndRebuildsFormerCounters(t *testing.T) {
+	target := EventTarget{ObjectType: "DocumentSource", Key: "report_id", Value: "report-42"}
+	rows := []map[string]any{
+		{"event_id": "evt-b", "target_type": target.ObjectType, "target_id": target.Value, "observed_at": int64(20), "cited": true, "retrieved": true, "feedback_score": 0.4},
+		{"event_id": "evt-a", "target_type": target.ObjectType, "target_id": target.Value, "observed_at": int64(10), "cited": true, "retrieved": true, "feedback_score": 0.8},
+		{"event_id": "evt-b", "target_type": target.ObjectType, "target_id": target.Value, "observed_at": int64(20), "cited": true, "retrieved": true, "feedback_score": 0.4},
+		{"event_id": "evt-c", "target_type": target.ObjectType, "target_id": target.Value, "observed_at": int64(30), "retrieved": true},
+	}
+	got, err := AggregateUsageEvents(rows, target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.EventCount != 3 || got.CitationCount != 2 || got.RetrievalCount != 3 || got.FeedbackCount != 2 || got.FeedbackAvg == nil || math.Abs(*got.FeedbackAvg-0.6) > 1e-12 || got.LastCitedAt == nil || *got.LastCitedAt != 20 {
+		t.Fatalf("aggregate = %+v", got)
+	}
+	reversed, err := AggregateUsageEvents([]map[string]any{rows[3], rows[2], rows[1], rows[0]}, target)
+	if err != nil || reversed.EventCount != got.EventCount || reversed.CitationCount != got.CitationCount || reversed.RetrievalCount != got.RetrievalCount || reversed.FeedbackAvg == nil || *reversed.FeedbackAvg != *got.FeedbackAvg || reversed.LastCitedAt == nil || *reversed.LastCitedAt != *got.LastCitedAt {
+		t.Fatalf("order changed aggregate: first=%+v reversed=%+v err=%v", got, reversed, err)
+	}
+}
+
+func TestAggregateUsageEventsRejectsConflictTargetAndInvalidScore(t *testing.T) {
+	target := EventTarget{ObjectType: "DocumentSource", Key: "report_id", Value: "report-42"}
+	row := map[string]any{"event_id": "evt-1", "target_type": target.ObjectType, "target_id": target.Value, "observed_at": int64(10), "cited": true}
+	conflict := map[string]any{"event_id": "evt-1", "target_type": target.ObjectType, "target_id": target.Value, "observed_at": int64(10), "cited": false}
+	wrongTarget := map[string]any{"event_id": "evt-2", "target_type": target.ObjectType, "target_id": "other", "observed_at": int64(10)}
+	badScore := map[string]any{"event_id": "evt-3", "target_type": target.ObjectType, "target_id": target.Value, "observed_at": int64(10), "feedback_score": math.NaN()}
+	for name, rows := range map[string][]map[string]any{
+		"conflict":   {row, conflict},
+		"target":     {wrongTarget},
+		"score":      {badScore},
+		"missing id": {{"target_type": target.ObjectType, "target_id": target.Value, "observed_at": int64(10)}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			if _, err := AggregateUsageEvents(rows, target); err == nil {
+				t.Fatal("expected validation error")
+			}
+		})
+	}
+}
+
+func TestAggregateUsageEventsPreservesModernEpochNanoseconds(t *testing.T) {
+	const base int64 = 1791710000000000000
+	target := EventTarget{ObjectType: "DocumentSource", Key: "report_id", Value: "report-42"}
+	rows := []map[string]any{
+		{"event_id": "evt-later", "target_type": target.ObjectType, "target_id": target.Value, "observed_at": json.Number(strconv.FormatInt(base+1, 10)), "cited": true},
+		{"event_id": "evt-earlier", "target_type": target.ObjectType, "target_id": target.Value, "observed_at": strconv.FormatInt(base, 10), "cited": true},
+	}
+	got, err := AggregateUsageEvents(rows, target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.LastCitedAt == nil || *got.LastCitedAt != base+1 {
+		t.Fatalf("last cited timestamp = %v, want %d", got.LastCitedAt, base+1)
+	}
+	rows[0]["observed_at"] = float64(base + 1)
+	if _, err := AggregateUsageEvents(rows, target); err == nil {
+		t.Fatal("unsafe JSON float timestamp should be rejected")
+	}
+}
+
+func TestAggregateUsageEventsDecodesUseNumberTimestampAndScore(t *testing.T) {
+	const payload = `{"data":[{"event_id":"evt-live","target_type":"DocumentSource","target_id":"report-42","observed_at":1791710000000000001,"cited":true,"retrieved":true,"feedback_score":0.9}]}`
+	decoder := json.NewDecoder(strings.NewReader(payload))
+	decoder.UseNumber()
+	var wire struct {
+		Data []map[string]any `json:"data"`
+	}
+	if err := decoder.Decode(&wire); err != nil {
+		t.Fatal(err)
+	}
+	target := EventTarget{ObjectType: "DocumentSource", Key: "report_id", Value: "report-42"}
+	got, err := AggregateUsageEvents(wire.Data, target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.EventCount != 1 || got.CitationCount != 1 || got.RetrievalCount != 1 || got.FeedbackCount != 1 || got.FeedbackAvg == nil || math.Abs(*got.FeedbackAvg-0.9) > 1e-12 || got.LastCitedAt == nil || *got.LastCitedAt != 1791710000000000001 {
+		t.Fatalf("aggregate from UseNumber response = %+v", got)
 	}
 }
 
