@@ -9,10 +9,10 @@ import (
 	"time"
 )
 
-// IngestClient is the synchronous bulk-ingest client. It surfaces the server's
-// POST /ingest?object_type=<Type> for NDJSON / CSV batches, plus media-upload
-// status polling. Distinct from Client.IngestDocument which targets the
-// datagrep-extractor envelope.
+// IngestClient exposes the generic row-ingest APIs and media-upload status
+// polling. Client.IngestDocument sends prepared document rows as a queued
+// mixed-type request to /ingest/bulk; document extraction and source-format
+// mapping belong in an application adapter.
 type IngestClient struct {
 	c       *Client
 	purpose string
