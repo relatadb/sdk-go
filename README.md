@@ -394,20 +394,25 @@ the same application-facing inventory, call generic, tenant-scoped
 profile metadata; it performs no extra query or authorization check.
 
 ```go
+package main
+
 import (
     "context"
     "fmt"
     "github.com/relatadb/sdk-go/v2/relata"
 )
 
-db := relata.New("http://localhost:9090", &relata.ClientOptions{DefaultPurpose: "analytics"})
-defer db.Close()
-mcp := relata.NewMcpClient(db)
-inventory, err := mcp.ListEntityTypes(ctx)
-if err != nil { return err }
-summary, err := relata.SummarizeDomain("financial", inventory)
-if err != nil { return err }
-fmt.Printf("%v\n", summary)
+func main() {
+    ctx := context.Background()
+    db := relata.New("http://localhost:9090", &relata.ClientOptions{DefaultPurpose: "analytics"})
+    defer db.Close()
+    mcp := relata.NewMcpClient(db)
+    inventory, err := mcp.ListEntityTypes(ctx)
+    if err != nil { panic(err) }
+    summary, err := relata.SummarizeDomain("financial", inventory)
+    if err != nil { panic(err) }
+    fmt.Printf("%v\n", summary)
+}
 ```
 
 RIFN is an optional broker service with its own URL, separate from the Relata

@@ -36,6 +36,12 @@ func TestSummarizeDomainAllAndValidation(t *testing.T) {
 	if _, err := SummarizeDomain("other", map[string]any{"types": []any{}}); err == nil {
 		t.Fatal("expected unknown domain error")
 	}
+	if _, err := SummarizeDomain("telco", map[string]any{}); err == nil {
+		t.Fatal("expected missing inventory error")
+	}
+	if _, err := SummarizeDomain("telco", map[string]any{"types": nil}); err == nil {
+		t.Fatal("expected non-array inventory error")
+	}
 	if _, err := SummarizeDomain("telco", map[string]any{"types": []any{map[string]any{"type": "CallRecord", "rows": -1}}}); err == nil {
 		t.Fatal("expected invalid count error")
 	}
