@@ -312,6 +312,22 @@ func (c *Client) ListTypes(ctx context.Context) (map[string]any, error) {
 	return resp, nil
 }
 
+// QuerySchema returns names-only object/link types the authenticated principal
+// may read. Use this as context for application-owned query composition; send
+// any generated statement through Query for server-side authorization and
+// validation.
+func (c *Client) QuerySchema(ctx context.Context, purpose string) (map[string]any, error) {
+	path := "/query/schema"
+	if purpose != "" {
+		path += "?purpose=" + url.QueryEscape(purpose)
+	}
+	var resp map[string]any
+	if err := c.get(ctx, path, &resp); err != nil {
+		return nil, err
+	}
+	return resp, nil
+}
+
 // RegisterType registers a custom object type at runtime (POST /types).
 // spec mirrors the server's full TypeDef body
 // (crates/relata-cli/src/serve/types_routes.rs) and accepts any of:
@@ -942,50 +958,6 @@ func (c *Client) Geofence(ctx context.Context, purpose, fence, targetType string
 	return c.query(ctx, purpose, sql)
 }
 
-// ── Maritime operators (#2247) ───────────────────────────────────────────────
-
-// VesselTrack tracks a vessel's AIS position reports over a time window.
-// windowSecs (when > 0) is converted to nanoseconds to match the server's
-// window_ns parameter; pass 0 for "all reported positions".
-func (c *Client) VesselTrack(ctx context.Context, purpose string, mmsi int64, windowSecs int64) (map[string]any, error) {
-	sql := fmt.Sprintf("VESSEL_TRACK(%d", mmsi)
-	if windowSecs > 0 {
-		sql += fmt.Sprintf(", WINDOW => %d", windowSecs*1_000_000_000)
-	}
-	sql += ")"
-	return c.query(ctx, purpose, sql)
-}
-
-// DarkFleetDetect flags vessels with AIS gaps (transponder-off "going dark"
-// periods). Pass maxGapHours <= 0 for the server default.
-func (c *Client) DarkFleetDetect(ctx context.Context, purpose string, maxGapHours float64) (map[string]any, error) {
-	var sql string
-	if maxGapHours > 0 {
-		sql = fmt.Sprintf("DARK_FLEET_DETECT(MAX_GAP_HOURS => %f)", maxGapHours)
-	} else {
-		sql = "DARK_FLEET_DETECT()"
-	}
-	return c.query(ctx, purpose, sql)
-}
-
-// VesselToVesselTransfer detects ship-to-ship transfers (close-proximity
-// vessel encounters). Pass proximityNm <= 0 and timeWindowMinutes <= 0 for the
-// server defaults.
-func (c *Client) VesselToVesselTransfer(ctx context.Context, purpose string, proximityNm float64, timeWindowMinutes int) (map[string]any, error) {
-	parts := []string{}
-	if proximityNm > 0 {
-		parts = append(parts, fmt.Sprintf("PROXIMITY_NM => %f", proximityNm))
-	}
-	if timeWindowMinutes > 0 {
-		parts = append(parts, fmt.Sprintf("TIME_WINDOW_MINUTES => %d", timeWindowMinutes))
-	}
-	sql := "VESSEL_TO_VESSEL_TRANSFER()"
-	if len(parts) > 0 {
-		sql = fmt.Sprintf("VESSEL_TO_VESSEL_TRANSFER(%s)", strings.Join(parts, ", "))
-	}
-	return c.query(ctx, purpose, sql)
-}
-
 // query is a helper that posts SQL to /query.
 func (c *Client) query(ctx context.Context, purpose, sql string) (map[string]any, error) {
 	var resp map[string]any
@@ -1069,52 +1041,44 @@ func (c *Client) Ready(ctx context.Context) (*ReadyReport, error) {
 	return &resp, nil
 }
 
-// IngestDocument submits a datagrep-extractor document (the _chunks.jsonl and
-// _manifest.json outputs) to POST /rag/ingest (renamed from /ingest/document
-// by #4499). The server parses and version-checks the protocol envelope, then
-// queues the chunks for storage. See GET /rag/specs for the protocol
-// version/field-contract handshake.
-func (c *Client) IngestDocument(ctx context.Context, chunksJSONL, manifestJSON string) (*IngestDocumentResponse, error) {
+// IngestDocument queues prepared governed rows through POST /ingest/bulk.
+// Document extraction and mapping belong in application adapters; each row
+// should include _type and a stable _pk. The server admits all types under one
+// process-local task receipt. Queue acceptance is not crash-durable.
+func (c *Client) IngestDocument(ctx context.Context, objects []map[string]any, purpose string) (*IngestDocumentResponse, error) {
+	if purpose == "" {
+		purpose = c.defaultPurpose
+	}
 	payload := IngestDocumentRequest{
-		ChunksJSONL:  chunksJSONL,
-		ManifestJSON: manifestJSON,
+		Objects: objects,
+		Queued:  true,
+		Purpose: purpose,
 	}
 	var resp IngestDocumentResponse
-	if err := c.postJSON(ctx, "/rag/ingest", payload, &resp); err != nil {
+	if err := c.postJSON(ctx, "/ingest/bulk", payload, &resp); err != nil {
 		return nil, err
 	}
 	return &resp, nil
 }
 
-// IngestDocumentStatus reads the current process-local status of a document
-// ingest task from GET /rag/ingest/{taskID}. Unknown or expired tasks return
+// IngestDocumentStatus reads the current process-local status of an ingest
+// task from GET /ingest/tasks/{taskID}. Unknown or expired tasks return
 // the server's normal not-found error.
 func (c *Client) IngestDocumentStatus(ctx context.Context, taskID string) (*IngestDocumentTaskStatus, error) {
 	var resp IngestDocumentTaskStatus
-	if err := c.get(ctx, "/rag/ingest/"+pathSegment(taskID), &resp); err != nil {
+	if err := c.get(ctx, "/ingest/tasks/"+pathSegment(taskID), &resp); err != nil {
 		return nil, err
 	}
 	return &resp, nil
 }
 
-// DocumentUsage records a post-ingest usage signal against a DocumentSource
-// (#4498) via POST /rag/documents/{reportID}/usage.
-//
-// CitationCount/RetrievalCount/LastCitedAt are write-BACK signals, not
-// ingest-time constants — an agentic RAG loop calls this once per
-// retrieval/citation/feedback event, e.g. right after generating an answer
-// that cites a chunk from reportID:
-//
-//	client.DocumentUsage(ctx, reportID, relata.DocumentUsageRequest{Cited: true})
-//
-// Returns an ErrNotFound-wrapping error when reportID has no live
-// DocumentSource for the caller's tenant (HTTP 404), and a *RelataError with
-// StatusCode 400 when req supplies no signal at all (Cited/Retrieved both
-// false and FeedbackScore nil).
-func (c *Client) DocumentUsage(ctx context.Context, reportID string, req DocumentUsageRequest) (*DocumentUsageResponse, error) {
-	var resp DocumentUsageResponse
-	path := "/rag/documents/" + pathSegment(reportID) + "/usage"
-	if err := c.postJSON(ctx, path, req, &resp); err != nil {
+// AppendEvent synchronously appends one event to an installed schema type
+// marked append_only. Exact retries return the original receipt; key reuse
+// with a different payload returns a conflict. Requires local persistent WAL
+// and currently rejects cluster mode.
+func (c *Client) AppendEvent(ctx context.Context, req EventAppendRequest) (*EventAppendReceipt, error) {
+	var resp EventAppendReceipt
+	if err := c.postJSON(ctx, "/events/append", req, &resp); err != nil {
 		return nil, err
 	}
 	return &resp, nil

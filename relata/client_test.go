@@ -475,34 +475,38 @@ func TestReady(t *testing.T) {
 func TestIngestDocument(t *testing.T) {
 	var gotBody map[string]any
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/rag/ingest" {
+		if r.URL.Path != "/ingest/bulk" {
 			t.Fatalf("path = %s", r.URL.Path)
 		}
 		b, _ := io.ReadAll(r.Body)
 		_ = json.Unmarshal(b, &gotBody)
-		fmt.Fprint(w, `{"report_id":"r-1","task_id":"t-1","chunks_ingested":3,"relations_ingested":2,"structure_nodes_ingested":1,"warnings":[],"schema_version":"1.0","queue_depth":2}`)
+		fmt.Fprint(w, `{"task_id":"t-1","rows_queued":3,"rows_rejected":0,"errors":[],"queue_depth":2}`)
 	}))
 	defer srv.Close()
 
 	c := newTestClient(srv, nil)
-	resp, err := c.IngestDocument(context.Background(), `{"c":1}`, `{"m":1}`)
+	rows := []map[string]any{
+		{"_type": "DocumentSource", "_pk": "doc-1"},
+		{"_type": "DocumentChunk", "_pk": "chunk-1", "source_id": "doc-1"},
+	}
+	resp, err := c.IngestDocument(context.Background(), rows, "analytics")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if resp.ReportID != "r-1" || resp.TaskID != "t-1" || resp.ChunksIngested != 3 || resp.RelationsIngested != 2 || resp.StructureNodesIngested != 1 || resp.SchemaVersion != "1.0" || resp.QueueDepth != 2 {
+	if resp.TaskID != "t-1" || resp.RowsQueued != 3 || resp.RowsRejected != 0 || resp.QueueDepth != 2 {
 		t.Fatalf("resp = %+v", resp)
 	}
-	if gotBody["chunks_jsonl"] != `{"c":1}` || gotBody["manifest_json"] != `{"m":1}` {
+	if gotBody["queued"] != true || gotBody["purpose"] != "analytics" || gotBody["objects"] == nil {
 		t.Fatalf("payload = %v", gotBody)
 	}
 }
 
 func TestIngestDocumentStatus(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.EscapedPath() != "/rag/ingest/task%2Fone" {
+		if r.URL.EscapedPath() != "/ingest/tasks/task%2Fone" {
 			t.Fatalf("escaped path = %s", r.URL.EscapedPath())
 		}
-		fmt.Fprint(w, `{"task_id":"task/one","status":"complete","report_id":"r-1","chunks_total":3,"chunks_written":3,"warnings":[],"_relata_write_token":{"wall_ns":123,"counter":0}}`)
+		fmt.Fprint(w, `{"task_id":"task/one","status":"complete","rows_total":3,"rows_written":2,"rows_dropped":1,"drop_reasons":["write-failed"],"_relata_write_token":{"wall_ns":123,"counter":0}}`)
 	}))
 	defer srv.Close()
 
@@ -511,11 +515,51 @@ func TestIngestDocumentStatus(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if status.TaskID != "task/one" || status.Status != "complete" || status.ReportID == nil || *status.ReportID != "r-1" {
+	if status.TaskID != "task/one" || status.Status != "complete" {
 		t.Fatalf("status = %+v", status)
 	}
-	if status.ChunksTotal != 3 || status.ChunksWritten != 3 || status.WriteToken == nil || status.WriteToken.WallNS != 123 {
+	if status.RowsTotal != 3 || status.RowsWritten != 2 || status.RowsDropped != 1 || len(status.DropReasons) != 1 || status.WriteToken == nil || status.WriteToken.WallNS != 123 {
 		t.Fatalf("status progress = %+v", status)
+	}
+}
+
+func TestAppendEventUsesGenericContractAndMapsReceipt(t *testing.T) {
+	var gotBody map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/events/append" {
+			t.Fatalf("method/path = %s %s", r.Method, r.URL.Path)
+		}
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := json.Unmarshal(body, &gotBody); err != nil {
+			t.Fatal(err)
+		}
+		fmt.Fprint(w, `{"event_id":"evt-abc","object_type":"DocumentUsageEvent","status":"accepted","durability":"local_wal_sync"}`)
+	}))
+	defer srv.Close()
+
+	c := newTestClient(srv, nil)
+	receipt, err := c.AppendEvent(context.Background(), EventAppendRequest{
+		ObjectType:     "DocumentUsageEvent",
+		IdempotencyKey: "answer-1:citation",
+		Target: EventTarget{
+			ObjectType: "DocumentSource",
+			Key:        "report_id",
+			Value:      "rpt-1",
+		},
+		Purpose:    "rag-usage",
+		Attributes: map[string]any{"cited": true},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if receipt.EventID != "evt-abc" || receipt.Status != "accepted" || receipt.Durability != "local_wal_sync" {
+		t.Fatalf("receipt = %+v", receipt)
+	}
+	if gotBody["idempotency_key"] != "answer-1:citation" || gotBody["object_type"] != "DocumentUsageEvent" {
+		t.Fatalf("payload = %v", gotBody)
 	}
 }
 

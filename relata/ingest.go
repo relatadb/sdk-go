@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
+	"time"
 )
 
 // IngestClient is the synchronous bulk-ingest client. It surfaces the server's
@@ -150,29 +152,25 @@ func (i *IngestClient) MediaStatus(ctx context.Context, taskID string) (map[stri
 	return resp, nil
 }
 
-// IngestCDR ingests CDR (call detail records) via POST /ingest/cdr (#2252).
-//
-// Each row is a map whose keys map to CDR fields (caller, callee, start,
-// duration, tower, type); common aliases like caller_msisdn/a_number are
-// accepted. Rows are serialised to the CSV shape the server's CdrBatch::from_csv
-// expects. Purpose is mandatory server-side — pass it via opts or the parent
-// client's default purpose.
+// IngestCDR normalizes CDR aliases and queues canonical CdrRecord rows through
+// the generic POST /ingest task contract. Invalid source rows are returned in
+// the receipt's errors; poll task_id to observe writer completion.
 func (i *IngestClient) IngestCDR(ctx context.Context, rows []map[string]any, opts *BulkOptions) (map[string]any, error) {
-	body := rowsToCDRCSV(rows)
-	status, data, _, err := i.c.rawHTTPRequest(ctx, "POST", encodeGetURL("/ingest/cdr", i.purposeParams(opts)), []byte(body), "text/csv")
+	normalized, rowErrors := normalizeCDRRows(rows)
+	var resp map[string]any
+	var err error
+	if len(normalized) > 0 {
+		resp, err = i.Bulk(ctx, "CdrRecord", normalized, opts)
+	} else {
+		resp, err = i.postIngest(ctx, "CdrRecord", "[]", "application/json", opts)
+	}
 	if err != nil {
 		return nil, err
 	}
-	if status < 200 || status >= 300 {
-		return nil, errorFromStatus(status, data, "", 0, "", "")
-	}
-	var resp map[string]any
-	if len(data) == 0 {
-		return resp, nil
-	}
-	if err := json.Unmarshal(data, &resp); err != nil {
-		return nil, fmt.Errorf("relata: decode response: %w", err)
-	}
+	serverErrors, _ := resp["errors"].([]any)
+	resp["errors"] = append(rowErrors, serverErrors...)
+	rejected, _ := resp["rows_rejected"].(float64)
+	resp["rows_rejected"] = rejected + float64(len(rowErrors))
 	return resp, nil
 }
 
@@ -217,10 +215,9 @@ func (i *IngestClient) otlp(ctx context.Context, path string, payload map[string
 	return resp, nil
 }
 
-// ── CDR CSV serialisation (#2252) ─────────────────────────────────────────────
+// ── CDR application adapter (#5744) ──────────────────────────────────────────
 
-// cdrAliases maps the canonical CDR column to its accepted aliases — mirrors
-// the server's CdrRecord::from_csv_row header recognition (case-insensitive).
+// cdrAliases maps canonical CDR fields to accepted input aliases.
 var cdrAliases = map[string][]string{
 	"caller":   {"caller", "caller_msisdn", "a_number", "a_msisdn"},
 	"callee":   {"callee", "callee_msisdn", "b_number", "b_msisdn", "called"},
@@ -230,41 +227,119 @@ var cdrAliases = map[string][]string{
 	"type":     {"type", "call_type", "record_type"},
 }
 
-var cdrColumns = []string{"caller", "callee", "start", "duration", "tower", "type"}
-
-// cdrField renders a CDR cell value — the server parses CSV via naive split(',').
-func cdrField(value any) string {
-	if value == nil {
-		return ""
-	}
-	// Strip commas / CR / LF so a value can never break column alignment.
-	s := strings.ReplaceAll(fmt.Sprintf("%v", value), ",", "")
-	s = strings.ReplaceAll(s, "\r", " ")
-	s = strings.ReplaceAll(s, "\n", " ")
-	return s
-}
-
-// rowsToCDRCSV serialises typed CDR rows into the CSV shape POST /ingest/cdr
-// expects.
-func rowsToCDRCSV(rows []map[string]any) string {
-	var b strings.Builder
-	b.WriteString(strings.Join(cdrColumns, ","))
-	for _, row := range rows {
-		b.WriteByte('\n')
-		fields := make([]string, len(cdrColumns))
-		for i, col := range cdrColumns {
-			var val any
-			for _, key := range cdrAliases[col] {
-				if v, ok := row[key]; ok {
-					val = v
-					break
+func normalizeCDRRows(rows []map[string]any) ([]map[string]any, []any) {
+	normalized := make([]map[string]any, 0, len(rows))
+	errors := make([]any, 0)
+	nowNs := time.Now().UnixNano()
+	for index, row := range rows {
+		value := func(field string) any {
+			for _, alias := range cdrAliases[field] {
+				for key, item := range row {
+					if strings.EqualFold(key, alias) {
+						return item
+					}
 				}
 			}
-			fields[i] = cdrField(val)
+			return nil
 		}
-		b.WriteString(strings.Join(fields, ","))
+		callerRaw, calleeRaw := value("caller"), value("callee")
+		callerDigits, calleeDigits := cdrDigits(callerRaw), cdrDigits(calleeRaw)
+		fail := ""
+		if len(callerDigits) > 15 {
+			fail = fmt.Sprintf("caller_msisdn '%v': too many digits (max 15 for E.164)", callerRaw)
+		} else if len(calleeDigits) > 15 {
+			fail = fmt.Sprintf("callee_msisdn '%v': too many digits (max 15 for E.164)", calleeRaw)
+		}
+		caller, callerErr := strconv.ParseInt(callerDigits, 10, 64)
+		callee, calleeErr := strconv.ParseInt(calleeDigits, 10, 64)
+		if fail == "" && callerErr != nil {
+			fail = fmt.Sprintf("caller_msisdn '%s': %v", callerDigits, callerErr)
+		}
+		if fail == "" && calleeErr != nil {
+			fail = fmt.Sprintf("callee_msisdn '%s': %v", calleeDigits, calleeErr)
+		}
+		start := nowNs
+		if raw := value("start"); raw != nil {
+			parsed, err := strconv.ParseInt(strings.TrimSpace(fmt.Sprint(raw)), 10, 64)
+			if err != nil && fail == "" {
+				fail = fmt.Sprintf("call_start '%v': %v", raw, err)
+			} else if err == nil {
+				start = parsed
+				if start < 10_000_000_000_000 {
+					if start > int64(^uint64(0)>>1)/1_000_000_000 {
+						start = int64(^uint64(0) >> 1)
+					} else if start < (-int64(^uint64(0)>>1)-1)/1_000_000_000 {
+						start = -int64(^uint64(0)>>1) - 1
+					} else {
+						start *= 1_000_000_000
+					}
+				}
+			}
+		}
+		duration := uint64(0)
+		if raw := value("duration"); raw != nil {
+			parsed, err := strconv.ParseUint(strings.TrimSpace(fmt.Sprint(raw)), 10, 32)
+			if err != nil && fail == "" {
+				fail = fmt.Sprintf("duration '%v': %v", raw, err)
+			} else if err == nil {
+				duration = parsed
+			}
+		}
+		if fail != "" {
+			errors = append(errors, map[string]any{"row": index + 1, "error": fail})
+			continue
+		}
+		callType := strings.ToLower(strings.TrimSpace(fmt.Sprint(value("type"))))
+		switch callType {
+		case "voice", "call", "0":
+			callType = "voice"
+		case "sms", "mms", "1":
+			callType = "sms"
+		case "data", "gprs", "2":
+			callType = "data"
+		default:
+			callType = "unknown"
+		}
+		tower := ""
+		if raw := value("tower"); raw != nil {
+			tower = strings.TrimSpace(fmt.Sprint(raw))
+		}
+		normalizedRow := map[string]any{
+			"caller_msisdn": caller, "callee_msisdn": callee,
+			"call_start_ns": start, "duration_secs": duration,
+			"tower_id": tower, "call_type": callType, "source_file_id": 0,
+		}
+		for _, field := range []string{"_pk", "id", "source_file_id"} {
+			if raw, ok := cdrMetadataValue(row, field); ok && raw != nil {
+				normalizedRow[field] = raw
+			}
+		}
+		normalized = append(normalized, normalizedRow)
 	}
-	return b.String()
+	return normalized, errors
+}
+
+func cdrMetadataValue(row map[string]any, field string) (any, bool) {
+	if value, ok := row[field]; ok {
+		return value, true
+	}
+	for key, value := range row {
+		if strings.EqualFold(key, field) {
+			return value, true
+		}
+	}
+	return nil, false
+}
+
+func cdrDigits(value any) string {
+	text := fmt.Sprint(value)
+	var digits strings.Builder
+	for _, r := range text {
+		if r >= '0' && r <= '9' {
+			digits.WriteRune(r)
+		}
+	}
+	return digits.String()
 }
 
 // postIngest sends a raw body to /ingest?object_type=… and decodes the receipt.

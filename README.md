@@ -152,7 +152,17 @@ one `*http.Client`, like `*sql.DB`).
 | `Ready(ctx)` | `(*ReadyReport, error)` | `GET /health/ready` — 9-condition readiness |
 | `AuditCount(ctx)` | `(*AuditCountResponse, error)` | `GET /audit/count` — returns `ErrChainCorrupted` if `ChainValid == false` |
 | `ClusterNodes(ctx)` | `([]ClusterNode, error)` | `GET /cluster/nodes` |
-| `IngestDocument(ctx, chunksJSONL, manifestJSON)` | `(*IngestDocumentResponse, error)` | `POST /rag/ingest` (renamed from `/ingest/document` by #4499) — datagrep-envelope document ingest |
+| `IngestDocument(ctx, objects, purpose)` | `(*IngestDocumentResponse, error)` | Queues prepared mixed-type rows via `POST /ingest/bulk` (`queued: true`) and returns one process-local task receipt |
+| `IngestDocumentStatus(ctx, taskID)` | `(*IngestDocumentTaskStatus, error)` | Polls `GET /ingest/tasks/:task_id` for written/dropped row counts |
+
+`IngestDocument` takes application-prepared governed rows (for example a
+`DocumentSource`, linked `DocumentChunk` rows, and optional evidence rows with
+`_type` and stable `_pk` fields). It does not parse raw documents or datagrep
+extractor files. The optional `relata-connectors prepare-document` adapter
+converts extractor JSONL/manifest files to an `objects` array for this method.
+Queue admission is process-local and not crash-durable; poll
+`IngestDocumentStatus` for written/dropped row counts. The separate MCP
+`ingest_document(source, text, ...)` tool remains a direct application workflow.
 
 ### `ClientOptions`
 
@@ -437,7 +447,7 @@ for Arrow IPC consumption.
 | `VersionInfo` | `Version`, `Commit`, `Profile`, `SchemaVersion`, `Features` |
 | `Stats` | `Records`, `States`, `SnapshotRows`, `LogLeaves`, `Tokens`, `Raw` (full server response) |
 | `ReadyReport` | `IsReady`, `Status`, `Reason`, `Detail` |
-| `IngestDocumentResponse` | `ReportID`, `ChunksIngested`, `Warnings`, `SchemaVersion`, `QueueDepth` |
+| `IngestDocumentResponse` | `TaskID`, `RowsQueued`, `RowsRejected`, `Errors`, `QueueDepth` |
 | `BackupRef` | `SnapshotID`, `Kind`, `WrittenAtNS`, `SizeBytes`, `SHA256`, `RowCount`, `Path` |
 | `RestoreStatus` | `RestoreID`, `SnapshotID`, `Status`, `RTOActualSecs`, `Error` + `IsCompleted()` / `IsFailed()` |
 | `TokenStats` | `Count`, `OldestNS`, `EvictionPolicy` |

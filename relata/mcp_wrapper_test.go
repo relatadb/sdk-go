@@ -227,39 +227,6 @@ func TestMcpClient_Summarise_SendsIDs(t *testing.T) {
 	}
 }
 
-func TestMcpClient_NlQuery_SendsQuery(t *testing.T) {
-	mcp, gotBody := mcpCapture(t)
-	if _, err := mcp.NlQuery(context.Background(), "find all persons in Dublin", &NlQueryOptions{Interpret: true}); err != nil {
-		t.Fatal(err)
-	}
-	args := argsOf(t, gotBody)
-	if args["query"] != "find all persons in Dublin" || args["interpret"] != true {
-		t.Fatalf("args = %v", args)
-	}
-}
-
-func TestMcpClient_NlQuery_SendsMaxSubQuestionsWhenProvided(t *testing.T) {
-	mcp, gotBody := mcpCapture(t)
-	if _, err := mcp.NlQuery(context.Background(), "find alice, and who alice is linked to", &NlQueryOptions{MaxSubQuestions: 3}); err != nil {
-		t.Fatal(err)
-	}
-	args := argsOf(t, gotBody)
-	if args["max_sub_questions"] != float64(3) {
-		t.Fatalf("args = %v", args)
-	}
-}
-
-func TestMcpClient_NlQuery_OmitsMaxSubQuestionsByDefault(t *testing.T) {
-	mcp, gotBody := mcpCapture(t)
-	if _, err := mcp.NlQuery(context.Background(), "find all persons in Dublin", nil); err != nil {
-		t.Fatal(err)
-	}
-	args := argsOf(t, gotBody)
-	if _, present := args["max_sub_questions"]; present {
-		t.Fatalf("max_sub_questions should be omitted by default, args = %v", args)
-	}
-}
-
 func TestMcpClient_EraseSubject_SendsSubjectAndReason(t *testing.T) {
 	mcp, gotBody := mcpCapture(t)
 	if _, err := mcp.EraseSubject(context.Background(), "alice@example.com", &McpEraseSubjectOptions{Reason: "user-request"}); err != nil {
@@ -409,36 +376,6 @@ func TestMcpClient_ScheduleJob_SendsName(t *testing.T) {
 		t.Fatal(err)
 	}
 	if argsOf(t, gotBody)["name"] != "transaction_ring" {
-		t.Fatalf("args = %v", (*gotBody)["arguments"])
-	}
-}
-
-func TestMcpClient_ListWorkflows_SendsNoArgs(t *testing.T) {
-	mcp, gotBody := mcpCapture(t)
-	if _, err := mcp.ListWorkflows(context.Background()); err != nil {
-		t.Fatal(err)
-	}
-	if (*gotBody)["name"] != "list_workflows" {
-		t.Fatalf("name = %v", (*gotBody)["name"])
-	}
-}
-
-func TestMcpClient_RunWorkflow_SendsName(t *testing.T) {
-	mcp, gotBody := mcpCapture(t)
-	if _, err := mcp.RunWorkflow(context.Background(), "aml-review"); err != nil {
-		t.Fatal(err)
-	}
-	if argsOf(t, gotBody)["name"] != "aml-review" {
-		t.Fatalf("args = %v", (*gotBody)["arguments"])
-	}
-}
-
-func TestMcpClient_WorkflowStatus_SendsRunID(t *testing.T) {
-	mcp, gotBody := mcpCapture(t)
-	if _, err := mcp.WorkflowStatus(context.Background(), "run-1"); err != nil {
-		t.Fatal(err)
-	}
-	if argsOf(t, gotBody)["run_id"] != "run-1" {
 		t.Fatalf("args = %v", (*gotBody)["arguments"])
 	}
 }

@@ -127,6 +127,10 @@ type RememberOptions struct {
 	Confidence float64
 	// MemoryClass is episodic / semantic / procedural.
 	MemoryClass string
+	// SessionID links the memory to an agent session.
+	SessionID string
+	// Fields contains extra metadata fields accepted by the target memory type.
+	Fields map[string]any
 }
 
 // RecallOptions configures the MCP Recall tool.
@@ -149,6 +153,8 @@ type RecallOptions struct {
 	StabilityDays *float64
 	// CancelThreshold short-circuits the scan once a hit exceeds it.
 	CancelThreshold *float64
+	// SessionID limits recall to one agent session.
+	SessionID string
 }
 
 // Initialize sends the MCP initialize handshake.
@@ -499,12 +505,21 @@ func (m *McpClient) Remember(ctx context.Context, content, purpose string, opts 
 			memoryClass = opts.MemoryClass
 		}
 	}
-	return m.CallTool(ctx, "remember", map[string]any{
+	args := map[string]any{
 		"content":      content,
 		"purpose":      purpose,
 		"confidence":   confidence,
 		"memory_class": memoryClass,
-	})
+	}
+	if opts != nil {
+		if opts.SessionID != "" {
+			args["session_id"] = opts.SessionID
+		}
+		if len(opts.Fields) > 0 {
+			args["fields"] = opts.Fields
+		}
+	}
+	return m.CallTool(ctx, "remember", args)
 }
 
 // Recall is the "recall" MCP tool. See RecallOptions for the ADR-145
@@ -531,6 +546,9 @@ func (m *McpClient) Recall(ctx context.Context, query, purpose string, opts *Rec
 		}
 		if opts.CancelThreshold != nil {
 			args["cancel_threshold"] = *opts.CancelThreshold
+		}
+		if opts.SessionID != "" {
+			args["session_id"] = opts.SessionID
 		}
 	}
 	args["top_k"] = topK
@@ -732,7 +750,8 @@ type SummariseOptions struct {
 	Purpose string
 }
 
-// Summarise produces a governed, provenance-stamped summary ("summarise").
+// Summarise produces a deterministic extractive, provenance-stamped summary.
+// For model-composed summaries use SummariseMemory with an application callback.
 func (m *McpClient) Summarise(ctx context.Context, opts *SummariseOptions) (map[string]any, error) {
 	args := map[string]any{}
 	if opts != nil {
@@ -753,39 +772,6 @@ func (m *McpClient) Summarise(ctx context.Context, opts *SummariseOptions) (map[
 		}
 	}
 	return m.CallTool(ctx, "summarise", args)
-}
-
-// NlQueryOptions configures NlQuery.
-type NlQueryOptions struct {
-	// Purpose is the declared purpose token for the audit trail.
-	Purpose string
-	// Interpret pipes the result through the LLM interpretation layer.
-	Interpret bool
-	// MaxSubQuestions decomposes a multi-part question (e.g. "find X, and who X is
-	// linked to") into up to this many independently-routed and independently-executed
-	// sub-questions (#3267); zero (default) disables decomposition. Capped at 5
-	// server-side regardless of the value given.
-	MaxSubQuestions int
-}
-
-// NlQuery executes a natural-language query translated to SQL and executed ("nl_query").
-//
-// A dialect router (#3267) classifies the question as SQL, Cypher, or a governed graph
-// operator and prompts accordingly; the response carries a "dialect" field. When
-// MaxSubQuestions > 1 and the question decomposes, the response instead carries
-// "decomposed": true and a "sub_results" array.
-func (m *McpClient) NlQuery(ctx context.Context, query string, opts *NlQueryOptions) (map[string]any, error) {
-	args := map[string]any{"query": query, "interpret": false}
-	if opts != nil {
-		if opts.Purpose != "" {
-			args["purpose"] = opts.Purpose
-		}
-		args["interpret"] = opts.Interpret
-		if opts.MaxSubQuestions > 0 {
-			args["max_sub_questions"] = opts.MaxSubQuestions
-		}
-	}
-	return m.CallTool(ctx, "nl_query", args)
 }
 
 // McpEraseSubjectOptions configures EraseSubject.
@@ -997,21 +983,6 @@ func (m *McpClient) ListJobs(ctx context.Context) (map[string]any, error) {
 // ScheduleJob triggers an immediate run of a named detection job ("schedule_job").
 func (m *McpClient) ScheduleJob(ctx context.Context, name string) (map[string]any, error) {
 	return m.CallTool(ctx, "schedule_job", map[string]any{"name": name})
-}
-
-// ListWorkflows lists all registered workflow definitions ("list_workflows").
-func (m *McpClient) ListWorkflows(ctx context.Context) (map[string]any, error) {
-	return m.CallTool(ctx, "list_workflows", map[string]any{})
-}
-
-// RunWorkflow starts a workflow execution by name ("run_workflow").
-func (m *McpClient) RunWorkflow(ctx context.Context, name string) (map[string]any, error) {
-	return m.CallTool(ctx, "run_workflow", map[string]any{"name": name})
-}
-
-// WorkflowStatus queries step-level status of a workflow run ("workflow_status").
-func (m *McpClient) WorkflowStatus(ctx context.Context, runID string) (map[string]any, error) {
-	return m.CallTool(ctx, "workflow_status", map[string]any{"run_id": runID})
 }
 
 // TraceCryptoOptions configures TraceCrypto.

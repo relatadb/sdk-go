@@ -13,7 +13,7 @@ import (
 
 // #2252 — CDR + OTLP ingest helpers.
 
-func TestIngestCDR_SerialisesCSVWithAliases(t *testing.T) {
+func TestIngestCDR_NormalizesAliasesAndUsesGenericTaskContract(t *testing.T) {
 	var gotPath, gotCT, gotBody string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotPath = r.URL.Path
@@ -21,42 +21,62 @@ func TestIngestCDR_SerialisesCSVWithAliases(t *testing.T) {
 		if q := r.URL.Query().Get("purpose"); q != "finint" {
 			t.Errorf("purpose = %q, want finint", q)
 		}
+		if q := r.URL.Query().Get("object_type"); q != "CdrRecord" {
+			t.Errorf("object_type = %q, want CdrRecord", q)
+		}
 		b, _ := io.ReadAll(r.Body)
 		gotBody = string(b)
 		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprint(w, `{"rows_queued":2,"errors":[],"queue_depth":0}`)
+		fmt.Fprint(w, `{"rows_queued":1,"rows_rejected":0,"errors":[],"task_id":"itsk_test"}`)
 	}))
 	defer srv.Close()
 
 	c := newTestClient(srv, &ClientOptions{DefaultPurpose: "finint"})
 	ic := NewIngestClient(c)
 	rows := []map[string]any{
-		{"caller": "911234567890", "callee": "919876543210", "duration": 120, "tower": "CELL-042", "type": "voice"},
-		{"a_number": "911111111111", "b_number": "922222222222", "tower_id": "CELL-001", "call_type": "sms"},
+		{"caller": "911234567890", "callee": "919876543210", "duration": 120, "tower": "CELL-042", "type": "voice", "_pk": "cdr-stable-1", "source_file_id": 42},
+		{"a_number": "+91 1111-111111", "b_msisdn": "922222222222", "call_start": 1700000000, "tower_id": "CELL-001", "call_type": "sms", "id": "cdr-stable-2", "source_file_id": 43},
+		{"caller": "not a number", "callee": "922222222222"},
 	}
 	out, err := ic.IngestCDR(context.Background(), rows, &BulkOptions{Purpose: "finint"})
 	if err != nil {
 		t.Fatalf("IngestCDR: %v", err)
 	}
-	if rows2, _ := out["rows_queued"].(float64); rows2 != 2 {
+	if rows2, _ := out["rows_queued"].(float64); rows2 != 1 {
 		t.Fatalf("rows_queued = %v", out["rows_queued"])
 	}
-	if gotPath != "/ingest/cdr" {
+	if gotPath != "/ingest" {
 		t.Fatalf("path = %q", gotPath)
 	}
-	if gotCT != "text/csv" {
+	if gotCT != "application/x-ndjson" {
 		t.Fatalf("content-type = %q", gotCT)
 	}
-	lines := strings.Split(gotBody, "\n")
-	if lines[0] != "caller,callee,start,duration,tower,type" {
-		t.Fatalf("header = %q", lines[0])
+	lines := strings.Split(strings.TrimSpace(gotBody), "\n")
+	if len(lines) != 2 {
+		t.Fatalf("NDJSON rows = %d, want 2: %q", len(lines), gotBody)
 	}
-	// Aliases resolve to canonical columns.
-	if !strings.Contains(gotBody, "911234567890") || !strings.Contains(gotBody, "911111111111") {
-		t.Fatalf("body missing MSISDNs: %q", gotBody)
+	var first, second map[string]any
+	if err := json.Unmarshal([]byte(lines[0]), &first); err != nil {
+		t.Fatalf("decode first NDJSON row: %v", err)
 	}
-	if !strings.Contains(gotBody, "CELL-042") {
-		t.Fatalf("body missing tower id: %q", gotBody)
+	if err := json.Unmarshal([]byte(lines[1]), &second); err != nil {
+		t.Fatalf("decode second NDJSON row: %v", err)
+	}
+	if first["caller_msisdn"] != float64(911234567890) || first["call_type"] != "voice" {
+		t.Fatalf("normalized first CDR = %#v", first)
+	}
+	if first["_pk"] != "cdr-stable-1" || first["source_file_id"] != float64(42) {
+		t.Fatalf("first CDR identity/provenance = %#v", first)
+	}
+	if second["caller_msisdn"] != float64(911111111111) || second["call_type"] != "sms" || second["call_start_ns"] != float64(1700000000000000000) {
+		t.Fatalf("normalized second CDR = %#v", second)
+	}
+	if second["id"] != "cdr-stable-2" || second["source_file_id"] != float64(43) {
+		t.Fatalf("second CDR identity/provenance = %#v", second)
+	}
+	errors, _ := out["errors"].([]any)
+	if len(errors) != 1 || out["rows_rejected"] != float64(1) {
+		t.Fatalf("partial row errors = %#v, rejected=%v", errors, out["rows_rejected"])
 	}
 }
 

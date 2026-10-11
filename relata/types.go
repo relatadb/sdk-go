@@ -309,52 +309,32 @@ func (r *ReadyReport) isReadySet(b []byte) bool {
 	return ok
 }
 
-// IngestDocumentRequest is the body sent to POST /rag/ingest (renamed from
-// /ingest/document by #4499).
+// IngestDocumentRequest is the body sent to queued POST /ingest/bulk.
 type IngestDocumentRequest struct {
-	// ChunksJSONL is newline-delimited JSON — one chunk per line.
-	ChunksJSONL string `json:"chunks_jsonl"`
-
-	// ManifestJSON is the extraction manifest JSON string.
-	ManifestJSON string `json:"manifest_json"`
+	Objects []map[string]any `json:"objects"`
+	Queued  bool             `json:"queued"`
+	Purpose string           `json:"purpose,omitempty"`
 }
 
-// IngestDocumentResponse is the response from POST /rag/ingest (renamed from
-// /ingest/document by #4499).
+// IngestDocumentResponse is the receipt from queued POST /ingest/bulk.
 type IngestDocumentResponse struct {
-	// ReportID is the server-assigned manifest ID for the ingested document.
-	ReportID string `json:"report_id"`
-
-	// TaskID identifies the background persistence task when returned by the server.
-	TaskID string `json:"task_id"`
-
-	// ChunksIngested is the number of chunks accepted into the ingest queue.
-	ChunksIngested int `json:"chunks_ingested"`
-
-	// RelationsIngested and StructureNodesIngested report accepted non-chunk rows.
-	RelationsIngested      int `json:"relations_ingested"`
-	StructureNodesIngested int `json:"structure_nodes_ingested"`
-
-	// Warnings lists non-fatal protocol warnings (e.g. newer-minor-version fields).
-	Warnings []string `json:"warnings"`
-
-	// SchemaVersion is the protocol version the server parsed the document as.
-	SchemaVersion string `json:"schema_version"`
-
-	// QueueDepth is the ingest queue depth after this submission.
-	QueueDepth int `json:"queue_depth"`
+	TaskID       string   `json:"task_id"`
+	RowsQueued   int      `json:"rows_queued"`
+	RowsRejected int      `json:"rows_rejected"`
+	Errors       []string `json:"errors"`
+	QueueDepth   int      `json:"queue_depth"`
 }
 
-// IngestDocumentTaskStatus is the current response from
-// GET /rag/ingest/{taskID}. Task status is process-local on the server.
+// IngestDocumentTaskStatus is the generic task response from
+// GET /ingest/tasks/{taskID}. Task status is process-local on the server.
 type IngestDocumentTaskStatus struct {
-	TaskID        string            `json:"task_id"`
-	Status        string            `json:"status"`
-	ReportID      *string           `json:"report_id"`
-	ChunksTotal   int               `json:"chunks_total"`
-	ChunksWritten int               `json:"chunks_written"`
-	Warnings      []string          `json:"warnings"`
-	WriteToken    *IngestWriteToken `json:"_relata_write_token"`
+	TaskID      string            `json:"task_id"`
+	Status      string            `json:"status"`
+	RowsTotal   int               `json:"rows_total"`
+	RowsWritten int               `json:"rows_written"`
+	RowsDropped int               `json:"rows_dropped"`
+	DropReasons []string          `json:"drop_reasons"`
+	WriteToken  *IngestWriteToken `json:"_relata_write_token"`
 }
 
 // IngestWriteToken is an optional cluster watermark attached to a completed
@@ -364,46 +344,32 @@ type IngestWriteToken struct {
 	Counter uint32 `json:"counter"`
 }
 
-// DocumentUsageRequest is the body sent to POST
-// /rag/documents/{reportID}/usage (#4498). At least one field must be set.
-type DocumentUsageRequest struct {
-	// Cited records that the caller's generated answer cited a chunk from
-	// this document: increments CitationCount by 1 and sets LastCitedAt to
-	// now.
-	Cited bool `json:"cited,omitempty"`
-
-	// Retrieved records that this document was touched by a retrieval,
-	// regardless of whether it was ultimately cited: increments
-	// RetrievalCount by 1.
-	Retrieved bool `json:"retrieved,omitempty"`
-
-	// FeedbackScore is a relevance/usefulness signal (recommended range
-	// [0.0, 1.0], not enforced server-side) — folded into FeedbackAvg as a
-	// running mean. Nil means "no feedback signal in this call".
-	FeedbackScore *float64 `json:"feedback_score,omitempty"`
+// EventTarget identifies a schema-declared object property used to scope an
+// event append to an existing target in the caller's tenant.
+type EventTarget struct {
+    ObjectType string `json:"object_type"`
+    Key        string `json:"key"`
+    Value      string `json:"value"`
 }
 
-// DocumentUsageResponse is the response from POST
-// /rag/documents/{reportID}/usage (#4498). CitationCount / RetrievalCount /
-// LastCitedAt / FeedbackAvg are write-BACK signals maintained by repeated
-// calls to this endpoint, not ingest-time constants.
-type DocumentUsageResponse struct {
-	// ReportID is the DocumentSource this usage event targeted.
-	ReportID string `json:"report_id"`
+// EventAppendRequest is the body sent to POST /events/append. The target
+// event type must be installed and marked append_only; the idempotency key is
+// required and must not be reused with a different payload.
+type EventAppendRequest struct {
+    ObjectType     string         `json:"object_type"`
+    IdempotencyKey string         `json:"idempotency_key"`
+    Target         EventTarget    `json:"target"`
+    Attributes     map[string]any `json:"attributes"`
+    Purpose        string         `json:"purpose,omitempty"`
+}
 
-	// CitationCount is the total citations recorded so far.
-	CitationCount *int64 `json:"citation_count"`
-
-	// RetrievalCount is the total retrievals recorded so far.
-	RetrievalCount *int64 `json:"retrieval_count"`
-
-	// LastCitedAt is nanoseconds since epoch of the most recent citation, or
-	// nil if the document has never been cited.
-	LastCitedAt *int64 `json:"last_cited_at"`
-
-	// FeedbackAvg is the running mean of every FeedbackScore recorded so
-	// far, or nil if none has been recorded yet.
-	FeedbackAvg *float64 `json:"feedback_avg"`
+// EventAppendReceipt is returned after local WAL fsync or exact idempotent
+// replay. Cluster mode is currently unsupported by this route.
+type EventAppendReceipt struct {
+    EventID    string `json:"event_id"`
+    ObjectType string `json:"object_type"`
+    Status     string `json:"status"`
+    Durability string `json:"durability"`
 }
 
 // ClientOptions configures the Relata HTTP client.
