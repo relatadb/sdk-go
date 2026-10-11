@@ -1266,12 +1266,6 @@ func (c *Client) putJSON(ctx context.Context, path string, in any, out any) erro
 	return c.doRequest(ctx, http.MethodPut, path, data, defaultContentType, out)
 }
 
-// postRaw performs a POST request to path with a raw (non-JSON) body and the
-// given content type. Used by the NDJSON/CSV ingest paths.
-func (c *Client) postRaw(ctx context.Context, path, contentType string, body []byte, out any) error {
-	return c.doRequest(ctx, http.MethodPost, path, body, contentType, out)
-}
-
 // doRequest is the single transport entry point. It builds the request, sets
 // the common headers (including a per-request X-Request-ID), executes with
 // retry on 502/503/504 + network errors, reads the body, classifies errors via

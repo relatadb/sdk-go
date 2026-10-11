@@ -119,8 +119,9 @@ func (g *GovernanceClient) resolvePurpose(override string) (string, error) {
 	return g.c.defaultPurpose, nil
 }
 
-// CreateRule creates a detection rule. The map shape matches the server's
-// RuleSpec (name, object_type, condition, action, …). Returns the created rule
+// CreateRule creates a prepared detection rule. The server requires name,
+// condition_sql, and target_type; severity, mitre_technique, trigger, and
+// action are optional. Returns the created rule
 // record including its server-assigned id.
 //
 // purpose is mandatory server-side (POST /rules?purpose=<p>) — pass it via
@@ -146,35 +147,6 @@ func (g *GovernanceClient) CreateRule(ctx context.Context, rule map[string]any, 
 func (g *GovernanceClient) DisableRule(ctx context.Context, ruleID string) (map[string]any, error) {
 	var resp map[string]any
 	if err := g.c.delete(ctx, "/rules/"+pathSegment(ruleID), &resp); err != nil {
-		return nil, err
-	}
-	return resp, nil
-}
-
-// ImportSigmaOptions configures the optional fields of ImportSigma.
-type ImportSigmaOptions struct {
-	// Purpose overrides the client's DefaultPurpose for this call.
-	// The server rejects the request with 403 if neither is set.
-	Purpose string
-}
-
-// ImportSigma imports a Sigma rule (YAML string). Returns the import summary
-// (rules_imported, rules_skipped, errors).
-//
-// The server (POST /rules/sigma?purpose=<p>) requires purpose as a query
-// param and the raw YAML text as the request body — not a JSON envelope.
-func (g *GovernanceClient) ImportSigma(ctx context.Context, sigmaYAML string, opts *ImportSigmaOptions) (map[string]any, error) {
-	override := ""
-	if opts != nil {
-		override = opts.Purpose
-	}
-	purpose, err := g.resolvePurpose(override)
-	if err != nil {
-		return nil, err
-	}
-	var resp map[string]any
-	path := "/rules/sigma?purpose=" + url.QueryEscape(purpose)
-	if err := g.c.postRaw(ctx, path, "application/x-yaml", []byte(sigmaYAML), &resp); err != nil {
 		return nil, err
 	}
 	return resp, nil

@@ -346,20 +346,6 @@ func TestMcpClient_CreateRule_SendsNameAndConditionSQL(t *testing.T) {
 	}
 }
 
-func TestMcpClient_ImportSigma_SendsYamlKey(t *testing.T) {
-	mcp, gotBody := mcpCapture(t)
-	if _, err := mcp.ImportSigma(context.Background(), "title: test\n", ""); err != nil {
-		t.Fatal(err)
-	}
-	args := argsOf(t, gotBody)
-	if args["yaml"] != "title: test\n" {
-		t.Fatalf("args = %v", args)
-	}
-	if _, present := args["sigma_yaml"]; present {
-		t.Fatalf("sigma_yaml must not be sent: %v", args)
-	}
-}
-
 func TestMcpClient_ListJobs_SendsNoArgs(t *testing.T) {
 	mcp, gotBody := mcpCapture(t)
 	if _, err := mcp.ListJobs(context.Background()); err != nil {

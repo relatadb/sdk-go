@@ -51,14 +51,14 @@ func TestGovernanceClient_CreateRule(t *testing.T) {
 
 	c := newTestClient(srv, &ClientOptions{DefaultPurpose: "audit"})
 	g := NewGovernanceClient(c)
-	out, err := g.CreateRule(context.Background(), map[string]any{"name": "x", "object_type": "Person"}, nil)
+	out, err := g.CreateRule(context.Background(), map[string]any{"name": "x", "condition_sql": "age > 18", "target_type": "Person"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if gotMethod != "POST" || gotPath != "/rules" || gotQuery != "purpose=audit" {
 		t.Fatalf("method/path/query = %s %s %s", gotMethod, gotPath, gotQuery)
 	}
-	if gotBody["name"] != "x" {
+	if gotBody["name"] != "x" || gotBody["condition_sql"] != "age > 18" || gotBody["target_type"] != "Person" {
 		t.Fatalf("body = %v", gotBody)
 	}
 	if out["id"] != "r1" {
@@ -75,39 +75,6 @@ func TestGovernanceClient_CreateRule_PurposeRequired(t *testing.T) {
 	_, err := g.CreateRule(context.Background(), map[string]any{"name": "x"}, nil)
 	if !errors.Is(err, ErrPurposeRequired) {
 		t.Fatalf("err = %v, want ErrPurposeRequired", err)
-	}
-}
-
-func TestGovernanceClient_ImportSigma(t *testing.T) {
-	var gotPath, gotQuery, gotContentType, gotBody string
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		gotPath = r.URL.Path
-		gotQuery = r.URL.RawQuery
-		gotContentType = r.Header.Get("Content-Type")
-		b, _ := io.ReadAll(r.Body)
-		gotBody = string(b)
-		fmt.Fprint(w, `{"rules_imported":1,"rules_skipped":0,"errors":[]}`)
-	}))
-	defer srv.Close()
-
-	c := newTestClient(srv, &ClientOptions{DefaultPurpose: "audit"})
-	g := NewGovernanceClient(c)
-	yaml := "title: test\ndetection:\n  condition: selection\n"
-	out, err := g.ImportSigma(context.Background(), yaml, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if gotPath != "/rules/sigma" || gotQuery != "purpose=audit" {
-		t.Fatalf("path/query = %s %s", gotPath, gotQuery)
-	}
-	if gotContentType != "application/x-yaml" {
-		t.Fatalf("content-type = %s", gotContentType)
-	}
-	if gotBody != yaml {
-		t.Fatalf("body = %q, want raw YAML %q", gotBody, yaml)
-	}
-	if out["rules_imported"] != float64(1) {
-		t.Fatalf("out = %v", out)
 	}
 }
 

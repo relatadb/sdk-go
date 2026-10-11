@@ -370,7 +370,7 @@ Python `from_client` classmethod. Optional parameters use struct-pointer options
 
 | Module | Constructor | Surface |
 |---|---|---|
-| `relata.governance` | `NewGovernanceClient` | Rules, Sigma import, retention (holds + WORM), breakglass, alerts, DSAR |
+| `relata.governance` | `NewGovernanceClient` | Prepared rules, retention (holds + WORM), breakglass, alerts, DSAR |
 | `relata.mcp` | `NewMcpClient` | 22 MCP tool wrappers + generic `CallTool` + `Initialize`/`ListTools` |
 | `relata.a2a` | `NewA2AClient` | A2A task submit/poll + LangGraph checkpoints + agent card |
 | `relata.audit` | `NewAuditClient` | Audit entries (filtered/paginated) + signed receipts + PDF export |
@@ -446,8 +446,19 @@ gov := relata.NewGovernanceClient(client)
 
 profile, _ := mcp.GetEntityProfile(ctx, "person-123", "compliance")
 holds, _ := gov.ListLegalHolds(ctx)
-sigma, _ := gov.ImportSigma(ctx, sigmaYAML)
+rule, _ := gov.CreateRule(ctx, map[string]any{
+    "name": "high-transfer",
+    "condition_sql": "amount_usd > 1000000",
+    "target_type": "Transaction",
+    "severity": "high",
+}, nil)
 ```
+
+Sigma YAML conversion is an optional application workflow, not an SDK method.
+Use `relata-connectors import-sigma <file.yml> [--broker <url>] [--purpose <p>]`
+for the supported converter, or convert externally and submit prepared rule
+JSON with `GovernanceClient.CreateRule`. The v3 SDK no longer sends raw YAML to
+the database listener or MCP `import_sigma` tool.
 
 ### Streaming iterators
 

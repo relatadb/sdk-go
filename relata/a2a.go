@@ -2,8 +2,9 @@ package relata
 
 import "context"
 
-// A2AClient is the synchronous Agent-to-Agent task client. It wraps task
-// submission/polling, LangGraph checkpoint load/save, and the agent card.
+// A2AClient is the synchronous HTTP client for Agent-to-Agent routes. The
+// server executes submitted tasks synchronously and retains task status and
+// checkpoint state only in bounded, process-local stores.
 type A2AClient struct {
 	c *Client
 }
@@ -14,9 +15,10 @@ func NewA2AClient(c *Client) *A2AClient {
 	return &A2AClient{c: c}
 }
 
-// SubmitTask submits a long-running A2A task. The payload matches the A2A
-// protocol — typically {"name": "...", "input": {...}, "skill": ...}. Returns
-// the task record with its id and initial status.
+// SubmitTask submits an A2A task. The server executes it synchronously in this
+// request. The returned record is available only while retained in the
+// server's bounded, process-local task history; it is not a durable job
+// receipt. Payloads typically contain name, input, and skill.
 func (a *A2AClient) SubmitTask(ctx context.Context, payload map[string]any) (map[string]any, error) {
 	var resp map[string]any
 	if err := a.c.postJSON(ctx, "/a2a/tasks", payload, &resp); err != nil {

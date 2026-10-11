@@ -1007,14 +1007,6 @@ func (m *McpClient) CreateRule(ctx context.Context, name, conditionSQL, targetTy
 	return m.CallTool(ctx, "create_rule", args)
 }
 
-// ImportSigma imports a Sigma detection rule (YAML) ("import_sigma").
-func (m *McpClient) ImportSigma(ctx context.Context, sigmaYAML, purpose string) (map[string]any, error) {
-	if purpose == "" {
-		purpose = "security"
-	}
-	return m.CallTool(ctx, "import_sigma", map[string]any{"yaml": sigmaYAML, "purpose": purpose})
-}
-
 // ListJobs lists all registered detection jobs with live status ("list_jobs").
 func (m *McpClient) ListJobs(ctx context.Context) (map[string]any, error) {
 	return m.CallTool(ctx, "list_jobs", map[string]any{})
