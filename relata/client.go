@@ -301,7 +301,6 @@ func (c *Client) MultiSearch(ctx context.Context, queries []map[string]any) (map
 	return resp, nil
 }
 
-
 // ── Type management & ontology (#967) ───────────────────────────────────────
 
 // ListTypes lists all registered object types with row counts.
@@ -1082,6 +1081,17 @@ func (c *Client) IngestDocument(ctx context.Context, chunksJSONL, manifestJSON s
 	}
 	var resp IngestDocumentResponse
 	if err := c.postJSON(ctx, "/rag/ingest", payload, &resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
+// IngestDocumentStatus reads the current process-local status of a document
+// ingest task from GET /rag/ingest/{taskID}. Unknown or expired tasks return
+// the server's normal not-found error.
+func (c *Client) IngestDocumentStatus(ctx context.Context, taskID string) (*IngestDocumentTaskStatus, error) {
+	var resp IngestDocumentTaskStatus
+	if err := c.get(ctx, "/rag/ingest/"+pathSegment(taskID), &resp); err != nil {
 		return nil, err
 	}
 	return &resp, nil

@@ -325,8 +325,15 @@ type IngestDocumentResponse struct {
 	// ReportID is the server-assigned manifest ID for the ingested document.
 	ReportID string `json:"report_id"`
 
+	// TaskID identifies the background persistence task when returned by the server.
+	TaskID string `json:"task_id"`
+
 	// ChunksIngested is the number of chunks accepted into the ingest queue.
 	ChunksIngested int `json:"chunks_ingested"`
+
+	// RelationsIngested and StructureNodesIngested report accepted non-chunk rows.
+	RelationsIngested      int `json:"relations_ingested"`
+	StructureNodesIngested int `json:"structure_nodes_ingested"`
 
 	// Warnings lists non-fatal protocol warnings (e.g. newer-minor-version fields).
 	Warnings []string `json:"warnings"`
@@ -336,6 +343,25 @@ type IngestDocumentResponse struct {
 
 	// QueueDepth is the ingest queue depth after this submission.
 	QueueDepth int `json:"queue_depth"`
+}
+
+// IngestDocumentTaskStatus is the current response from
+// GET /rag/ingest/{taskID}. Task status is process-local on the server.
+type IngestDocumentTaskStatus struct {
+	TaskID        string            `json:"task_id"`
+	Status        string            `json:"status"`
+	ReportID      *string           `json:"report_id"`
+	ChunksTotal   int               `json:"chunks_total"`
+	ChunksWritten int               `json:"chunks_written"`
+	Warnings      []string          `json:"warnings"`
+	WriteToken    *IngestWriteToken `json:"_relata_write_token"`
+}
+
+// IngestWriteToken is an optional cluster watermark attached to a completed
+// ingest task when the server has a write watermark available.
+type IngestWriteToken struct {
+	WallNS  int64  `json:"wall_ns"`
+	Counter uint32 `json:"counter"`
 }
 
 // DocumentUsageRequest is the body sent to POST
