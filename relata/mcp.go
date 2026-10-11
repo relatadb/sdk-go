@@ -216,12 +216,6 @@ func (m *McpClient) ExplainPolicy(ctx context.Context, sql, purpose string) (map
 	return m.CallTool(ctx, "explain_policy", map[string]any{"sql": sql, "purpose": purpose})
 }
 
-// SuggestExtensions is type/canonical-kind autocomplete.
-func (m *McpClient) SuggestExtensions(ctx context.Context, prefix string) (map[string]any, error) {
-	_ = prefix
-	return m.CallTool(ctx, "suggest_extensions", map[string]any{})
-}
-
 // ListEntityTypes returns every registered ontology type.
 func (m *McpClient) ListEntityTypes(ctx context.Context) (map[string]any, error) {
 	return m.CallTool(ctx, "list_entity_types", map[string]any{})
