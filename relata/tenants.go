@@ -54,7 +54,7 @@ func (t *TenantAdminClient) Usage(ctx context.Context) (map[string]any, error) {
 // Create provisions a new tenant.
 func (t *TenantAdminClient) Create(ctx context.Context, tenantID string, opts *CreateTenantOptions) (map[string]any, error) {
 	tier := "standard"
-	payload := map[string]any{"tenant_id": tenantID, "tier": tier}
+	payload := map[string]any{"id": tenantID, "tier": tier}
 	if opts != nil {
 		if opts.Tier != "" {
 			payload["tier"] = opts.Tier
