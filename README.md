@@ -12,6 +12,11 @@ client, 15 typed v1.1 clients, and RFC 7807 problem+json-aware errors.
   `context`, `time`)
 - **By:** [ZySec AI](https://zysec.ai) — Frontier Sovereign Intelligence · hello@zysec.ai
 
+For the v3.0 platform boundary and SDK migration plan, see the
+[SDK migration guide](../README-v3-migration.md).
+Go is one of the three supported consumer SDKs (Python, TypeScript, Go).
+Other languages use the HTTP API and its OpenAPI reference at `GET /openapi.json`.
+
 ## Install
 
 ```bash
@@ -271,54 +276,37 @@ result, err := relata.HybridSearch("Person", "Ahmed Khalil Karachi", 25).
     Purpose("analysis").Execute(ctx, client)
 ```
 
-## Plain gRPC query with Arrow-IPC opt-in (#4090)
+## HTTP Arrow IPC
 
-`Client.QueryGrpc` runs a SQL query over the server's plain gRPC
-`RelataQuery/Execute` RPC (default port 50051, `RELATA_GRPC_PORT`) and opts
-into the negotiated Arrow-IPC row encoding (`QueryRequest.wants_arrow_ipc_rows`
-— server side landed in PR #4086). The server answers with whichever
-encoding it supports (`arrow_ipc_rows` or a `rows_json` fallback); `QueryGrpc`
-decodes either wire shape into the same `*QueryResult` shape `Query` and
-`QueryFlight` return, so callers never need to know which one came back.
+For columnar query results, `StreamingClient.QueryArrowRaw` returns an
+`io.Reader` over the bytes from `POST /query/arrow`. Pass that reader to an
+Arrow IPC reader from the application you use for analysis.
 
 ```go
-result, err := client.QueryGrpc(ctx,
+streaming := relata.NewStreamingClient(client)
+reader, err := streaming.QueryArrowRaw(ctx,
     "SELECT * FROM Person LIMIT 1000",
-    "",                // grpcEndpoint: "" derives grpc://<host>:50051 from baseURL
-    "analytics",       // purpose
-    "",                // bearer: "" uses the Client's BearerToken
+    &relata.StreamingQueryOptions{Purpose: "analytics"},
 )
-fmt.Println(result.RowCount, result.Rows[0]["name"])
+if err != nil {
+    log.Fatal(err)
+}
+defer reader.Close()
+
+out, err := os.Create("query.arrow")
+if err != nil {
+    log.Fatal(err)
+}
+defer out.Close()
+if _, err := io.Copy(out, reader); err != nil {
+    log.Fatal(err)
+}
 ```
 
-Uses the same `google.golang.org/grpc` + `github.com/apache/arrow/go/v15`
-dependencies `QueryFlight` already requires (see go.mod) — no additional
-module needed, no generated `.proto` stubs. TLS is selected automatically for
-`grpcs://`/`tls://` endpoints, and the same cleartext-bearer fail-closed gate
-as `QueryFlight` applies (`ErrCleartextBearerDisallowed` unless
-`AllowCleartextBearer` is set).
-
-`Client.QueryGrpcStream` is the same opt-in over the server-streaming
-`RelataQuery/ExecuteStream` RPC: the server answers with a stream of
-`RowBatch` frames instead of one buffered `QueryResponse`, and **each frame
-independently** negotiates `arrow_ipc_rows` vs `rows_json` (same
-empty-means-fall-back contract, applied per frame). Every frame is collected
-into the same `*QueryResult`, so a large result set needs no different
-consumption model than a small one.
-
-```go
-result, err := client.QueryGrpcStream(ctx,
-    "SELECT * FROM Person",
-    "",                // grpcEndpoint: "" derives grpc://<host>:50051 from baseURL
-    "analytics",       // purpose
-    "",                // bearer: "" uses the Client's BearerToken
-)
-fmt.Println(result.RowCount)
-```
-
-Because `RowBatch` carries no `row_count` field, the returned `RowCount` is
-the number of rows actually received (whereas `QueryGrpc` reports the
-server's own `QueryResponse.row_count`).
+The Go SDK does not decode Arrow IPC into a typed table. Its ingest client
+exposes media task status; `McpClient.IngestMedia` calls the MCP media tool
+with its documented payload. There is no raw byte upload method for
+`/ingest/media` in this Go SDK.
 
 ## `Memory` — governed agent memory
 
@@ -378,10 +366,9 @@ Python `from_client` classmethod. Optional parameters use struct-pointer options
 | `relata.audit` | `NewAuditClient` | Audit entries (filtered/paginated) + signed receipts + PDF export |
 | `relata.identity` | `NewIdentityClient` | Identity label/uncertainty + lookup tables + `ERASE SUBJECT` |
 | `relata.objects` | `NewObjectClient` | Typed upsert + batch via `/ingest?object_type=` (NDJSON) |
-| `relata.ingest` | `NewIngestClient` | Bulk NDJSON + CSV + media status |
+| `relata.ingest` | `NewIngestClient` | Bulk NDJSON + CSV + media task status; it does not upload raw media bytes |
 | `relata.vectors` | `NewVectorClient` | KNN + hybrid search + similar-to (SQL-backed) + `Embed`/`EmbedBatch` (`POST /embed[/batch]`) |
 | `relata.search` (`SearchClient`) | `NewSearchClient` | Typed `POST /search` JSON query door (`rank_by`/`filters`) — separate from the untyped `Client.Search` |
-| `relata.s3` | `NewS3Client` | Native `net/http` wrapper for the S3 protocol door: `HTTP()` escape hatch + `ListBuckets`/`CreateBucket`/`PutObject`/`GetObject`/`DeleteObject` helpers |
 | `relata.system` | `NewSystemClient` | LLM config + test + jobs status |
 | `relata.streaming` | `NewStreamingClient` | NDJSON `RowIterator` + SSE `SSEIterator` + Arrow `BytesIterator` |
 | `relata.tenants` | `NewTenantAdminClient` | Tenant CRUD + quota + sharing agreements + platform admin |
@@ -544,42 +531,19 @@ oc.Upsert(ctx, "AgentTask", "t-1",
 
 For ACL access in strict mode, grant via env var: `RELATA_ACL_GRANT=AgentTask:read+write`.
 
-## S3 protocol door
+## File-ingest limits
 
-The S3 door is reachable via a native `net/http` wrapper (no boto3, no external S3
-library). `NewS3Client(c).HTTP(nil)` returns a `*http.Client` pre-configured with bearer
-+ tenant headers for arbitrary S3 REST verbs against `/<bucket>/<key>`; the high-level
-`ListBuckets`/`CreateBucket`/`PutObject`/`GetObject`/`DeleteObject` helpers cover the
-common cases without hand-building requests (mirrors the TypeScript SDK's `S3Client`):
-
-```go
-s3 := relata.NewS3Client(client)
-
-_, err := s3.CreateBucket(ctx, "acme-intel")
-_, err = s3.PutObject(ctx, "acme-intel", "report.pdf", data,
-    &relata.PutObjectOptions{ContentType: "application/pdf"})
-obj, err := s3.GetObject(ctx, "acme-intel", "report.pdf")
-fmt.Println(obj.Status, obj.Headers["etag"], len(obj.Body))
-_, err = s3.DeleteObject(ctx, "acme-intel", "report.pdf")
-```
-
-Each helper returns `*relata.S3HttpResponse{ Status, Headers, Body }` and does not
-translate non-2xx statuses into Go errors (S3 semantics — e.g. a missing key is a
-valid 404 response, inspected via `Status`); only transport-level failures return
-`error`. For anything the helpers don't cover — multipart, custom headers, streaming
-bodies — use `s3.HTTP(nil)` directly:
-
-```go
-hc := s3.HTTP(nil)
-req, _ := http.NewRequestWithContext(ctx, "PUT",
-    s3.BaseURL()+"/acme-intel/report.pdf", bytes.NewReader(data))
-resp, err := hc.Do(req)
-```
+The Go SDK exposes `IngestClient.MediaStatus` for polling an existing media
+task. For MCP integrations, `McpClient.IngestMedia` sends the MCP tool's
+base64/payload contract; this is separate from uploading raw bytes to
+`POST /ingest/media`, which the Go SDK does not currently wrap. Use the
+deployment's supported object-store or connector integration for source-file
+transfer.
 
 `ObjectClient.List`/`.Get` (present in the TypeScript SDK) are intentionally **not**
 ported — see the doc comment on `ObjectClient` in `relata/objects.go` for why (the
-server has no GET handler for `/objects/{type}(/{id})`, and the canonical Rust SDK and
-Python SDK both lack them too).
+server has no GET handler for `/objects/{type}(/{id})`, and the internal Rust
+reference client and Python SDK both lack them too).
 
 ## Examples
 
