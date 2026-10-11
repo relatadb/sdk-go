@@ -18,10 +18,9 @@ import (
 // routes have no GET handler on the server: crates/relata-cli/src/serve.rs's
 // /objects/:type_name(/:row_id) routes are registered DELETE-only (#1212;
 // see delete_object_handler/delete_objects_batch_handler) — there is no
-// list_objects_handler or get_object_handler to call. The canonical Rust SDK
-// (crates/relata-sdk-rust/src/objects.rs) and the Python SDK likewise expose
-// no get/list on their ObjectClient. Go stays aligned with the canonical
-// surface here rather than porting a client method with no working server
+// list_objects_handler or get_object_handler to call. The Python SDK likewise
+// exposes no get/list on its ObjectClient. Go stays aligned with the server
+// surface rather than adding a client method with no working server
 // backing; adding the server-side route is out of this SDK ticket's scope
 // (see epic #2754's non-goals) and is a candidate for its own ticket if the
 // TS/server gap is closed.

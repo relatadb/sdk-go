@@ -4,8 +4,7 @@ import "context"
 
 // ─── Schema-BRANCH CRUD + typed edge definitions (#2497) ─────────────────────
 //
-// These mirror the Rust flat client (crates/relata-sdk-rust/src/http.rs:2535-
-// 2570) and the Python RelataClient methods of the same names. They are the
+// These mirror the Python RelataClient methods of the same names. They are the
 // distinct schema-BRANCH surface — schema-ALTER (PATCH /types/:name/schema,
 // #2476) already ships on the server and is a separate concern.
 

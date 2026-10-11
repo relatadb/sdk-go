@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-// Vectors mirror sdks/shared/canonical-vectors.json (shared across all 4 SDKs).
+// Vectors mirror sdks/shared/canonical-vectors.json (shared across the three supported SDKs).
 
 type vecCase struct {
 	Input    string `json:"input"`

@@ -70,7 +70,7 @@ var (
 	// only strips the Authorization header on a cross-host hop and forwards
 	// it unchanged on a same-host one, which would silently leak the bearer
 	// token to whatever the Location header points at. This is the Go-SDK
-	// analogue of the Rust SDK's `redirect::Policy::none()` (#1416) and the
+	// same no-redirect transport hardening (#1416) and the
 	// TS SDK's `redirect: "manual"` + assertNotRedirected (#2364). See #3046.
 	ErrRedirectRefused = errors.New("relata: refused to follow HTTP redirect (potential bearer-token leak)")
 
