@@ -35,7 +35,7 @@ func TestIngestCDR_NormalizesAliasesAndUsesGenericTaskContract(t *testing.T) {
 	ic := NewIngestClient(c)
 	rows := []map[string]any{
 		{"caller": "911234567890", "callee": "919876543210", "duration": 120, "tower": "CELL-042", "type": "voice", "_pk": "cdr-stable-1", "source_file_id": 42},
-		{"a_number": "+91 1111-111111", "b_msisdn": "922222222222", "call_start": 1700000000, "tower_id": "CELL-001", "call_type": "sms", "id": "cdr-stable-2", "source_file_id": 43},
+		{"a_number": "+91 1111-111111", "b_msisdn": "922222222222", "call_start": 1700000000000000001, "tower_id": "CELL-001", "call_type": "sms", "id": "cdr-stable-2", "source_file_id": 43},
 		{"caller": "not a number", "callee": "922222222222"},
 	}
 	out, err := ic.IngestCDR(context.Background(), rows, &BulkOptions{Purpose: "finint"})
@@ -48,28 +48,28 @@ func TestIngestCDR_NormalizesAliasesAndUsesGenericTaskContract(t *testing.T) {
 	if gotPath != "/ingest" {
 		t.Fatalf("path = %q", gotPath)
 	}
-	if gotCT != "application/x-ndjson" {
+	if gotCT != "application/json" {
 		t.Fatalf("content-type = %q", gotCT)
 	}
-	lines := strings.Split(strings.TrimSpace(gotBody), "\n")
-	if len(lines) != 2 {
-		t.Fatalf("NDJSON rows = %d, want 2: %q", len(lines), gotBody)
+	var gotRows []map[string]any
+	if err := json.Unmarshal([]byte(gotBody), &gotRows); err != nil {
+		t.Fatalf("decode CDR JSON array: %v", err)
 	}
-	var first, second map[string]any
-	if err := json.Unmarshal([]byte(lines[0]), &first); err != nil {
-		t.Fatalf("decode first NDJSON row: %v", err)
+	if len(gotRows) != 2 {
+		t.Fatalf("JSON-array rows = %d, want 2: %q", len(gotRows), gotBody)
 	}
-	if err := json.Unmarshal([]byte(lines[1]), &second); err != nil {
-		t.Fatalf("decode second NDJSON row: %v", err)
-	}
+	first, second := gotRows[0], gotRows[1]
 	if first["caller_msisdn"] != float64(911234567890) || first["call_type"] != "voice" {
 		t.Fatalf("normalized first CDR = %#v", first)
 	}
 	if first["_pk"] != "cdr-stable-1" || first["source_file_id"] != float64(42) {
 		t.Fatalf("first CDR identity/provenance = %#v", first)
 	}
-	if second["caller_msisdn"] != float64(911111111111) || second["call_type"] != "sms" || second["call_start_ns"] != float64(1700000000000000000) {
+	if second["caller_msisdn"] != float64(911111111111) || second["call_type"] != "sms" || second["call_start_ns"] != float64(1700000000000000001) {
 		t.Fatalf("normalized second CDR = %#v", second)
+	}
+	if !strings.Contains(gotBody, `"call_start_ns":1700000000000000001`) {
+		t.Fatalf("i64 nanosecond timestamp lost precision on wire: %s", gotBody)
 	}
 	if second["id"] != "cdr-stable-2" || second["source_file_id"] != float64(43) {
 		t.Fatalf("second CDR identity/provenance = %#v", second)
@@ -77,6 +77,47 @@ func TestIngestCDR_NormalizesAliasesAndUsesGenericTaskContract(t *testing.T) {
 	errors, _ := out["errors"].([]any)
 	if len(errors) != 1 || out["rows_rejected"] != float64(1) {
 		t.Fatalf("partial row errors = %#v, rejected=%v", errors, out["rows_rejected"])
+	}
+}
+
+func TestIngestCDR_PreservesOnConflictBulkRoute(t *testing.T) {
+	var gotPath, gotCT, gotBody string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		gotCT = r.Header.Get("Content-Type")
+		if got := r.Header.Get("X-Detect-Packs"); got != "none" {
+			t.Errorf("X-Detect-Packs = %q, want none", got)
+		}
+		b, _ := io.ReadAll(r.Body)
+		gotBody = string(b)
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"rows_queued":1,"rows_rejected":0,"errors":[],"task_id":"itsk_conflict"}`)
+	}))
+	defer srv.Close()
+
+	ic := NewIngestClient(newTestClient(srv, &ClientOptions{DefaultPurpose: "finint"}))
+	_, err := ic.IngestCDR(context.Background(), []map[string]any{{
+		"caller": "911234567890", "callee": "919876543210", "_pk": "cdr-stable",
+	}}, &BulkOptions{Purpose: "finint", OnConflict: "skip", TenantID: "tenant-a", DetectPacks: "none"})
+	if err != nil {
+		t.Fatalf("IngestCDR: %v", err)
+	}
+	if gotPath != "/ingest/bulk" {
+		t.Fatalf("path = %q, want /ingest/bulk", gotPath)
+	}
+	if gotCT != "application/json" {
+		t.Fatalf("content-type = %q, want application/json", gotCT)
+	}
+	var body map[string]any
+	if err := json.Unmarshal([]byte(gotBody), &body); err != nil {
+		t.Fatalf("decode conflict body: %v", err)
+	}
+	if body["on_conflict"] != "skip" || body["tenant_id"] != "tenant-a" {
+		t.Fatalf("conflict options changed: %#v", body)
+	}
+	objects, _ := body["objects"].([]any)
+	if len(objects) != 1 || objects[0].(map[string]any)["_pk"] != "cdr-stable" {
+		t.Fatalf("stable CDR identity missing from conflict route: %#v", objects)
 	}
 }
 

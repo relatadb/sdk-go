@@ -168,7 +168,17 @@ func (i *IngestClient) IngestCDR(ctx context.Context, rows []map[string]any, opt
 	var resp map[string]any
 	var err error
 	if len(normalized) > 0 {
-		resp, err = i.Bulk(ctx, "CdrRecord", normalized, opts)
+		if opts != nil && opts.OnConflict != "" {
+			// Preserve Bulk's /ingest/bulk contract when callers request conflict
+			// handling. The plain /ingest JSON-array path has no such option.
+			resp, err = i.Bulk(ctx, "CdrRecord", normalized, opts)
+		} else {
+			body, encodeErr := json.Marshal(normalized)
+			if encodeErr != nil {
+				return nil, fmt.Errorf("relata: encode CDR rows: %w", encodeErr)
+			}
+			resp, err = i.postIngest(ctx, "CdrRecord", string(body), "application/json", opts)
+		}
 	} else {
 		resp, err = i.postIngest(ctx, "CdrRecord", "[]", "application/json", opts)
 	}
