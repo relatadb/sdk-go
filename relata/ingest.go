@@ -114,8 +114,13 @@ func (i *IngestClient) IngestAuto(ctx context.Context, objectType string, rows [
 }
 
 // IngestIter streams rows from an iterator channel into batched POST /ingest
-// calls with backpressure. Memory is O(batchSize). Returns the total number of
-// rows successfully ingested. Stops on the first error.
+// calls with backpressure. Memory is O(batchSize). The count is input rows in
+// batches whose request returned without an SDK error, not a writer-confirmed
+// count: /ingest is queued. This helper discards batch receipts/task IDs and
+// does not inspect row-level errors in successful responses. Call Bulk per
+// batch and poll each task when completion or per-row error accounting is
+// required. On error, the returned count covers only earlier successful HTTP
+// calls; the failing batch is excluded.
 //
 //	rowsCh := make(chan map[string]any, 100)
 //	go func() { defer close(rowsCh); for _, r := range bigDataset { rowsCh <- r } }()
