@@ -463,6 +463,19 @@ func (c *Client) CreateLink(ctx context.Context, params map[string]any) (map[str
 	return resp, nil
 }
 
+// DeleteLink closes matching current native edges in the caller's tenant, retaining history.
+func (c *Client) DeleteLink(ctx context.Context, linkName, sourceID, targetID string) (map[string]any, error) {
+	data, err := json.Marshal(map[string]string{"link_name": linkName, "source_id": sourceID, "target_id": targetID})
+	if err != nil {
+		return nil, err
+	}
+	var resp map[string]any
+	if err := c.doRequest(ctx, http.MethodDelete, "/links", data, defaultContentType, &resp); err != nil {
+		return nil, err
+	}
+	return resp, nil
+}
+
 // UpsertTyped inserts a typed object (any struct). The struct is JSON-marshalled
 // and sent to /ingest — the Go compiler ensures field-name correctness at build
 // time (#967 Tier 2a).

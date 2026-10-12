@@ -307,8 +307,11 @@ type StreamingQueryOptions struct {
 	Purpose string
 }
 
-// Watch opens the SSE consumer for GET /watch/stream, yielding RowsAppended
-// events as commits matching the watch SQL land.
+// Watch opens the finite SSE poll consumer for GET /watch/stream. The server
+// emits result_changed hashes, gap, and evaluation_failed notifications; it
+// does not stream changed row contents. Reconnects poll the same consumptive
+// queue for this authenticated principal. Registrations are in-memory and must
+// be re-established after a server restart.
 func (s *StreamingClient) Watch(ctx context.Context, sql string, opts *WatchOptions) (*SSEIterator, error) {
 	purpose, err := s.resolvePurpose(nil)
 	if err != nil {
