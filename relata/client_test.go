@@ -506,7 +506,7 @@ func TestIngestDocumentStatus(t *testing.T) {
 		if r.URL.EscapedPath() != "/ingest/tasks/task%2Fone" {
 			t.Fatalf("escaped path = %s", r.URL.EscapedPath())
 		}
-		fmt.Fprint(w, `{"task_id":"task/one","status":"complete","rows_total":3,"rows_written":2,"rows_dropped":1,"drop_reasons":["write-failed"],"_relata_write_token":{"wall_ns":123,"counter":0}}`)
+		fmt.Fprint(w, `{"task_id":"task/one","status":"complete","rows_total":3,"rows_written":2,"rows_dropped":1,"drop_reasons":["write-failed"],"_relata_write_token":{"wall_ns":123,"counter":0},"error":{"code":"partial_write","retryable":false},"partial_result":{"accepted_ids":["chunk-1"]}}`)
 	}))
 	defer srv.Close()
 
@@ -520,6 +520,14 @@ func TestIngestDocumentStatus(t *testing.T) {
 	}
 	if status.RowsTotal != 3 || status.RowsWritten != 2 || status.RowsDropped != 1 || len(status.DropReasons) != 1 || status.WriteToken == nil || status.WriteToken.WallNS != 123 {
 		t.Fatalf("status progress = %+v", status)
+	}
+	var errorDetail map[string]any
+	if err := json.Unmarshal(status.Extensions["error"], &errorDetail); err != nil || errorDetail["code"] != "partial_write" {
+		t.Fatalf("status error extension = %s, err=%v", status.Extensions["error"], err)
+	}
+	var partial map[string]any
+	if err := json.Unmarshal(status.Extensions["partial_result"], &partial); err != nil || partial["accepted_ids"] == nil {
+		t.Fatalf("status partial extension = %s, err=%v", status.Extensions["partial_result"], err)
 	}
 }
 

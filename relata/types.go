@@ -358,6 +358,31 @@ type IngestDocumentTaskStatus struct {
 	RowsDropped int               `json:"rows_dropped"`
 	DropReasons []string          `json:"drop_reasons"`
 	WriteToken  *IngestWriteToken `json:"_relata_write_token"`
+	// Extensions retains fields introduced by newer servers, including future
+	// error and partial-result details, without forcing older SDKs to interpret them.
+	Extensions map[string]json.RawMessage `json:"-"`
+}
+
+// UnmarshalJSON keeps additive task fields available to callers across
+// server upgrades instead of silently discarding unfamiliar outcome details.
+func (s *IngestDocumentTaskStatus) UnmarshalJSON(data []byte) error {
+	type wire IngestDocumentTaskStatus
+	var decoded wire
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return err
+	}
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(data, &fields); err != nil {
+		return err
+	}
+	*s = IngestDocumentTaskStatus(decoded)
+	for _, key := range []string{"task_id", "status", "rows_total", "rows_written", "rows_dropped", "drop_reasons", "_relata_write_token"} {
+		delete(fields, key)
+	}
+	if len(fields) > 0 {
+		s.Extensions = fields
+	}
+	return nil
 }
 
 // IngestWriteToken is an optional cluster watermark attached to a completed
