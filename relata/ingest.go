@@ -4,6 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math/big"
+	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -232,10 +235,29 @@ func normalizeCDRRows(rows []map[string]any) ([]map[string]any, []any) {
 	errors := make([]any, 0)
 	nowNs := time.Now().UnixNano()
 	for index, row := range rows {
+		keys := make([]string, 0, len(row))
+		for key := range row {
+			keys = append(keys, key)
+		}
+		sort.Strings(keys)
+		seenKeys := make(map[string]struct{}, len(row))
+		caseCollision := ""
+		for _, key := range keys {
+			folded := cdrASCIIKeyFold(key)
+			if _, exists := seenKeys[folded]; exists {
+				caseCollision = folded
+				break
+			}
+			seenKeys[folded] = struct{}{}
+		}
+		if caseCollision != "" {
+			errors = append(errors, map[string]any{"row": index + 1, "error": fmt.Sprintf("ambiguous case-insensitive field '%s'", caseCollision)})
+			continue
+		}
 		value := func(field string) any {
 			for _, alias := range cdrAliases[field] {
 				for key, item := range row {
-					if strings.EqualFold(key, alias) {
+					if cdrASCIIKeyFold(key) == alias {
 						return item
 					}
 				}
@@ -258,23 +280,9 @@ func normalizeCDRRows(rows []map[string]any) ([]map[string]any, []any) {
 		if fail == "" && calleeErr != nil {
 			fail = fmt.Sprintf("callee_msisdn '%s': %v", calleeDigits, calleeErr)
 		}
-		start := nowNs
-		if raw := value("start"); raw != nil {
-			parsed, err := strconv.ParseInt(strings.TrimSpace(fmt.Sprint(raw)), 10, 64)
-			if err != nil && fail == "" {
-				fail = fmt.Sprintf("call_start '%v': %v", raw, err)
-			} else if err == nil {
-				start = parsed
-				if start < 10_000_000_000_000 {
-					if start > int64(^uint64(0)>>1)/1_000_000_000 {
-						start = int64(^uint64(0) >> 1)
-					} else if start < (-int64(^uint64(0)>>1)-1)/1_000_000_000 {
-						start = -int64(^uint64(0)>>1) - 1
-					} else {
-						start *= 1_000_000_000
-					}
-				}
-			}
+		start, startErr := cdrTimestamp(value("start"), nowNs)
+		if startErr != nil && fail == "" {
+			fail = startErr.Error()
 		}
 		duration := uint64(0)
 		if raw := value("duration"); raw != nil {
@@ -319,12 +327,81 @@ func normalizeCDRRows(rows []map[string]any) ([]map[string]any, []any) {
 	return normalized, errors
 }
 
+// CDR aliases are ASCII identifiers. Fold only ASCII A-Z so duplicate-key
+// handling has identical semantics in the Python, TypeScript, and Go SDKs.
+func cdrASCIIKeyFold(value string) string {
+	return strings.Map(func(r rune) rune {
+		if r >= 'A' && r <= 'Z' {
+			return r + ('a' - 'A')
+		}
+		return r
+	}, value)
+}
+
+var cdrRfc3339 = regexp.MustCompile(`^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})(?:\.(\d+))?(Z|[+-]\d{2}:\d{2})$`)
+
+func cdrTimestamp(raw any, nowNs int64) (int64, error) {
+	if raw == nil {
+		return nowNs, nil
+	}
+	text := strings.TrimSpace(fmt.Sprint(raw))
+	if parsed, err := strconv.ParseInt(text, 10, 64); err == nil {
+		if parsed < 10_000_000_000_000 {
+			const billion = int64(1_000_000_000)
+			if parsed > int64(^uint64(0)>>1)/billion {
+				return int64(^uint64(0) >> 1), nil
+			}
+			if parsed < (-int64(^uint64(0)>>1)-1)/billion {
+				return -int64(^uint64(0)>>1) - 1, nil
+			}
+			parsed *= billion
+		}
+		return parsed, nil
+	}
+	if _, ok := raw.(string); !ok {
+		return 0, fmt.Errorf("call_start '%s': invalid integer or RFC3339 timestamp", text)
+	}
+	parts := cdrRfc3339.FindStringSubmatch(text)
+	if parts == nil {
+		return 0, fmt.Errorf("call_start '%s': expected integer epoch or RFC3339 timestamp", text)
+	}
+	if len(parts[2]) > 9 {
+		return 0, fmt.Errorf("call_start RFC3339 fraction exceeds nanosecond precision")
+	}
+	if parts[3] == "-00:00" {
+		return 0, fmt.Errorf("call_start RFC3339 -00:00 offset is unknown, not UTC")
+	}
+	if parts[3] != "Z" {
+		offsetHour, _ := strconv.Atoi(parts[3][1:3])
+		offsetMinute, _ := strconv.Atoi(parts[3][4:6])
+		if offsetHour > 23 || offsetMinute > 59 {
+			return 0, fmt.Errorf("call_start '%s': invalid RFC3339 offset", text)
+		}
+	}
+	parsed, err := time.Parse(time.RFC3339, parts[1]+parts[3])
+	if err != nil {
+		return 0, fmt.Errorf("call_start '%s': invalid RFC3339 date, time, or offset", text)
+	}
+	if parts[2] != "" {
+		parsed, err = time.Parse(time.RFC3339Nano, text)
+		if err != nil {
+			return 0, fmt.Errorf("call_start '%s': invalid RFC3339 date, time, or offset", text)
+		}
+	}
+	value := new(big.Int).Mul(big.NewInt(parsed.Unix()), big.NewInt(1_000_000_000))
+	value.Add(value, big.NewInt(int64(parsed.Nanosecond())))
+	if !value.IsInt64() {
+		return 0, fmt.Errorf("call_start RFC3339 value is outside i64 nanosecond range")
+	}
+	return value.Int64(), nil
+}
+
 func cdrMetadataValue(row map[string]any, field string) (any, bool) {
 	if value, ok := row[field]; ok {
 		return value, true
 	}
 	for key, value := range row {
-		if strings.EqualFold(key, field) {
+		if cdrASCIIKeyFold(key) == field {
 			return value, true
 		}
 	}

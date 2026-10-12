@@ -80,6 +80,44 @@ func TestIngestCDR_NormalizesAliasesAndUsesGenericTaskContract(t *testing.T) {
 	}
 }
 
+func TestNormalizeCDRRowsRejectsCaseCollisionAndKeepsAliasPrecedence(t *testing.T) {
+	rows, errors := normalizeCDRRows([]map[string]any{
+		{"CALLER": "111", "caller": "222", "callee": "333"},
+		{"caller": "111", "caller_msisdn": "222", "callee": "333", "_pk": "stable"},
+	})
+	if len(errors) != 1 || !strings.Contains(fmt.Sprint(errors[0]), "ambiguous case-insensitive field 'caller'") {
+		t.Fatalf("case collision errors = %#v", errors)
+	}
+	if len(rows) != 1 || rows[0]["caller_msisdn"] != int64(111) || rows[0]["callee_msisdn"] != int64(333) || rows[0]["_pk"] != "stable" {
+		t.Fatalf("distinct alias precedence = %#v", rows)
+	}
+}
+
+func TestCDRTimestampRFC3339NormalizesExactNanosecondsAndRejectsInvalidInputs(t *testing.T) {
+	got, err := cdrTimestamp("2024-01-01T01:02:03.123456789+01:30", 0)
+	if err != nil || got != 1704065523123456789 {
+		t.Fatalf("RFC3339 offset timestamp = %d, %v", got, err)
+	}
+	for _, input := range []string{
+		"2023-02-29T00:00:00Z",
+		"2024-01-01T00:00:00.1234567891Z",
+		"2500-01-01T00:00:00Z",
+		"2024-01-01T00:00:00-00:00",
+		"2024-01-01T00:00:00+24:00",
+		"2024-01-01T00:00:00+01:60",
+	} {
+		if _, err := cdrTimestamp(input, 0); err == nil {
+			t.Errorf("cdrTimestamp(%q) unexpectedly succeeded", input)
+		}
+	}
+}
+
+func TestCDRKeyFoldIsAsciiOnly(t *testing.T) {
+	if cdrASCIIKeyFold("CALLER") != "caller" || cdrASCIIKeyFold("İD") != "İd" {
+		t.Fatalf("ASCII-only key folding mismatch: %q", cdrASCIIKeyFold("İD"))
+	}
+}
+
 func TestOTLP_PostJSONToRightDoor(t *testing.T) {
 	var gotPath, gotBody string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
