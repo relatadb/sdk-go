@@ -78,6 +78,8 @@ type QueryResult struct {
 
 	// NextCursor is the opaque keyset cursor for the next page, when present.
 	NextCursor *string `json:"next_cursor,omitempty"`
+	// GraphVersion is an opaque process-local graph equality token, not a cursor.
+	GraphVersion string `json:"graph_version,omitempty"`
 	// HasNextCursor distinguishes the current server's explicit exhausted value
 	// (next_cursor: null) from an older server that omitted the field.
 	HasNextCursor bool `json:"-"`
@@ -97,6 +99,7 @@ type queryResultWire struct {
 	RowCount         int              `json:"row_count"`
 	Columns          []string         `json:"columns"`
 	NextCursor       json.RawMessage  `json:"next_cursor"`
+	GraphVersion     string           `json:"graph_version"`
 	Truncated        bool             `json:"truncated"`
 	Partial          bool             `json:"partial"`
 }
@@ -120,6 +123,7 @@ func (r *QueryResult) UnmarshalJSON(b []byte) error {
 		r.ProcessingTimeMs = uint64(wire.ElapsedMs) //nolint:gosec // ElapsedMs is non-negative
 	}
 	r.Columns = wire.Columns
+	r.GraphVersion = wire.GraphVersion
 	r.HasNextCursor = wire.NextCursor != nil
 	r.Truncated = wire.Truncated
 	r.Partial = wire.Partial
