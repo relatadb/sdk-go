@@ -349,7 +349,8 @@ type IngestDocumentResponse struct {
 }
 
 // IngestDocumentTaskStatus is the generic task response from
-// GET /ingest/tasks/{taskID}. Task status is process-local on the server.
+// GET /ingest/tasks/{taskID}. Task status is process-local on the server;
+// pending is nonterminal, while complete, partial, and failed are terminal.
 type IngestDocumentTaskStatus struct {
 	TaskID      string            `json:"task_id"`
 	Status      string            `json:"status"`
@@ -385,8 +386,8 @@ func (s *IngestDocumentTaskStatus) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-// IngestWriteToken is an optional cluster watermark attached to a completed
-// ingest task when the server has a write watermark available.
+// IngestWriteToken is an optional cluster watermark attached to a terminal
+// ingest task that wrote rows, when the server has a write watermark available.
 type IngestWriteToken struct {
 	WallNS  int64  `json:"wall_ns"`
 	Counter uint32 `json:"counter"`

@@ -506,7 +506,7 @@ func TestIngestDocumentStatus(t *testing.T) {
 		if r.URL.EscapedPath() != "/ingest/tasks/task%2Fone" {
 			t.Fatalf("escaped path = %s", r.URL.EscapedPath())
 		}
-		fmt.Fprint(w, `{"task_id":"task/one","status":"complete","rows_total":3,"rows_written":2,"rows_dropped":1,"drop_reasons":["write-failed"],"_relata_write_token":{"wall_ns":123,"counter":0},"error":{"code":"partial_write","retryable":false},"partial_result":{"accepted_ids":["chunk-1"]}}`)
+		fmt.Fprint(w, `{"task_id":"task/one","status":"partial","rows_total":3,"rows_written":2,"rows_dropped":1,"drop_reasons":["write-failed"],"_relata_write_token":{"wall_ns":123,"counter":0},"error":{"code":"partial_write","retryable":false},"partial_result":{"accepted_ids":["chunk-1"]}}`)
 	}))
 	defer srv.Close()
 
@@ -515,7 +515,7 @@ func TestIngestDocumentStatus(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if status.TaskID != "task/one" || status.Status != "complete" {
+	if status.TaskID != "task/one" || status.Status != "partial" {
 		t.Fatalf("status = %+v", status)
 	}
 	if status.RowsTotal != 3 || status.RowsWritten != 2 || status.RowsDropped != 1 || len(status.DropReasons) != 1 || status.WriteToken == nil || status.WriteToken.WallNS != 123 {
@@ -1067,5 +1067,14 @@ func TestIsLoopbackHost(t *testing.T) {
 		if got := isLoopbackHost(in); got != want {
 			t.Errorf("isLoopbackHost(%q) = %v, want %v", in, got, want)
 		}
+	}
+}
+
+func TestIngestDocumentTaskStatusPreservesFailedState(t *testing.T) {
+	var status IngestDocumentTaskStatus
+	data := []byte(`{"task_id":"task-failed","status":"failed","rows_total":2,"rows_written":0,"rows_dropped":2,"drop_reasons":["writer refused rows"]}`)
+	if err := json.Unmarshal(data, &status); err != nil { t.Fatal(err) }
+	if status.Status != "failed" || status.RowsWritten != 0 || status.RowsDropped != 2 {
+		t.Fatalf("decoded status = %+v", status)
 	}
 }
