@@ -651,3 +651,21 @@ func WithMetric(metric string) SearchOption {
 func WithWeights(graph, bm25, vector float64) SearchOption {
 	return func(p *searchParams) { p.weights = &[3]float64{graph, bm25, vector} }
 }
+
+// AlertSubmitRequest submits an application-owned alert. The server assigns tenant and identity.
+type AlertSubmitRequest struct {
+	IdempotencyKey string         `json:"idempotency_key"`
+	Purpose        string         `json:"purpose"`
+	AlertType      string         `json:"alert_type"`
+	Severity       string         `json:"severity"`
+	MatchedType    string         `json:"matched_type"`
+	MatchedRowID   string         `json:"matched_row_id"`
+	Context        map[string]any `json:"context"`
+}
+
+// AlertSubmitReceipt acknowledges local WAL durability, not notification delivery.
+type AlertSubmitReceipt struct {
+	AlertID    string `json:"alert_id"`
+	Status     string `json:"status"`
+	Durability string `json:"durability"`
+}

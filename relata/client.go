@@ -1483,3 +1483,13 @@ func (c *Client) GraphQL(ctx context.Context, gqlQuery string, variables map[str
 	}
 	return resp.Data, nil
 }
+
+// SubmitAlert submits an alert to a single persistent node. Exact retries return
+// the same identity without republishing best-effort webhook/SSE notifications.
+func (c *Client) SubmitAlert(ctx context.Context, req AlertSubmitRequest) (*AlertSubmitReceipt, error) {
+	var resp AlertSubmitReceipt
+	if err := c.postJSON(ctx, "/alerts/submit", req, &resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}

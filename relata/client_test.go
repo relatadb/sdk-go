@@ -1014,3 +1014,30 @@ func TestIngestDocumentTaskStatusPreservesDerivedWriteIncomplete(t *testing.T) {
 		t.Fatalf("incomplete confirmed outcomes = %+v", status)
 	}
 }
+
+func TestSubmitAlertPreservesContract(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/alerts/submit" {
+			t.Errorf("unexpected request %s %s", r.Method, r.URL.Path)
+		}
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatal(err)
+		}
+		if body["idempotency_key"] != "run-1" || body["matched_row_id"] != "row-1" {
+			t.Errorf("payload = %v", body)
+		}
+		fmt.Fprint(w, `{"alert_id":"alert-stable","status":"duplicate","durability":"local_wal_sync"}`)
+	}))
+	defer srv.Close()
+	receipt, err := newTestClient(srv, nil).SubmitAlert(context.Background(), AlertSubmitRequest{
+		IdempotencyKey: "run-1", Purpose: "detection", AlertType: "app-signal", Severity: "high",
+		MatchedType: "Event", MatchedRowID: "row-1", Context: map[string]any{"count": 2},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if receipt.AlertID != "alert-stable" || receipt.Status != "duplicate" || receipt.Durability != "local_wal_sync" {
+		t.Fatalf("receipt = %+v", receipt)
+	}
+}
