@@ -942,11 +942,6 @@ func (c *Client) HawalaTrace(ctx context.Context, purpose, seed string, opts *Ha
 	return c.query(ctx, purpose, sql)
 }
 
-// DnsTunnelDetect detects DNS tunneling.
-func (c *Client) DnsTunnelDetect(ctx context.Context, purpose, entity string) (map[string]any, error) {
-	return c.query(ctx, purpose, fmt.Sprintf("DNS_TUNNEL_DETECT(%s)", sqlLiteral(entity)))
-}
-
 // CrimePatternCluster performs spatial crime pattern analysis.
 func (c *Client) CrimePatternCluster(ctx context.Context, purpose, area string) (map[string]any, error) {
 	return c.query(ctx, purpose, fmt.Sprintf("CRIME_PATTERN_CLUSTER(%s)", sqlLiteral(area)))

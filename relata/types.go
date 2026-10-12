@@ -75,6 +75,16 @@ type QueryResult struct {
 	// Columns lists the column names in projection order, when the server
 	// provides them.
 	Columns []string `json:"columns"`
+
+	// NextCursor is the opaque keyset cursor for the next page, when present.
+	NextCursor *string `json:"next_cursor,omitempty"`
+	// HasNextCursor distinguishes the current server's explicit exhausted value
+	// (next_cursor: null) from an older server that omitted the field.
+	HasNextCursor bool `json:"-"`
+	// Truncated reports response-level row truncation by the server.
+	Truncated bool `json:"truncated,omitempty"`
+	// Partial reports an HTTP 206 fan-out result missing one or more shards.
+	Partial bool `json:"partial,omitempty"`
 }
 
 // queryResultWire is the raw wire shape used for normalisation.
@@ -86,6 +96,9 @@ type queryResultWire struct {
 	ProcessingTimeMs uint64           `json:"processing_time_ms"`
 	RowCount         int              `json:"row_count"`
 	Columns          []string         `json:"columns"`
+	NextCursor       json.RawMessage  `json:"next_cursor"`
+	Truncated        bool             `json:"truncated"`
+	Partial          bool             `json:"partial"`
 }
 
 // UnmarshalJSON normalises the two wire shapes the server emits for POST /query
@@ -107,6 +120,16 @@ func (r *QueryResult) UnmarshalJSON(b []byte) error {
 		r.ProcessingTimeMs = uint64(wire.ElapsedMs) //nolint:gosec // ElapsedMs is non-negative
 	}
 	r.Columns = wire.Columns
+	r.HasNextCursor = wire.NextCursor != nil
+	r.Truncated = wire.Truncated
+	r.Partial = wire.Partial
+	if r.HasNextCursor && string(wire.NextCursor) != "null" {
+		var cursor string
+		if err := json.Unmarshal(wire.NextCursor, &cursor); err != nil {
+			return err
+		}
+		r.NextCursor = &cursor
+	}
 	if r.Columns == nil {
 		r.Columns = []string{}
 	}
@@ -347,29 +370,29 @@ type IngestWriteToken struct {
 // EventTarget identifies a schema-declared object property used to scope an
 // event append to an existing target in the caller's tenant.
 type EventTarget struct {
-    ObjectType string `json:"object_type"`
-    Key        string `json:"key"`
-    Value      string `json:"value"`
+	ObjectType string `json:"object_type"`
+	Key        string `json:"key"`
+	Value      string `json:"value"`
 }
 
 // EventAppendRequest is the body sent to POST /events/append. The target
 // event type must be installed and marked append_only; the idempotency key is
 // required and must not be reused with a different payload.
 type EventAppendRequest struct {
-    ObjectType     string         `json:"object_type"`
-    IdempotencyKey string         `json:"idempotency_key"`
-    Target         EventTarget    `json:"target"`
-    Attributes     map[string]any `json:"attributes"`
-    Purpose        string         `json:"purpose,omitempty"`
+	ObjectType     string         `json:"object_type"`
+	IdempotencyKey string         `json:"idempotency_key"`
+	Target         EventTarget    `json:"target"`
+	Attributes     map[string]any `json:"attributes"`
+	Purpose        string         `json:"purpose,omitempty"`
 }
 
 // EventAppendReceipt is returned after local WAL fsync or exact idempotent
 // replay. Cluster mode is currently unsupported by this route.
 type EventAppendReceipt struct {
-    EventID    string `json:"event_id"`
-    ObjectType string `json:"object_type"`
-    Status     string `json:"status"`
-    Durability string `json:"durability"`
+	EventID    string `json:"event_id"`
+	ObjectType string `json:"object_type"`
+	Status     string `json:"status"`
+	Durability string `json:"durability"`
 }
 
 // ClientOptions configures the Relata HTTP client.

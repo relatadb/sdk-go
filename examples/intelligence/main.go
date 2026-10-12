@@ -6,10 +6,11 @@
 //   - BeneficialOwnershipChain   — trace to ultimate beneficial owner
 //   - CryptoTrace                — follow cryptocurrency fund flow
 //   - ConvoyDetect               — find co-travelling entities
-//   - DnsTunnelDetect            — DNS exfiltration patterns
+//   - DnsTunnelDetect            — local triage over governed DNS query pages
 //
-// Each operator maps to a governed SQL TVF (ADRs 109–115). PURPOSE is audited
-// and ACLs apply on every call.
+// Server-backed operators use governed SQL. DNS tunnel triage composes the
+// authenticated schema and query APIs; tenant, purpose, and row ACLs apply to
+// every page fetched.
 //
 // Usage:
 //
@@ -117,20 +118,18 @@ func main() {
 	}
 
 	// ── 5. DNS tunnel detection ───────────────────────────────────────────
-	fmt.Printf("\n=== 5. DNS_TUNNEL_DETECT: %s ===\n", *target)
-	dns, err := client.DnsTunnelDetect(ctx, "investigation", *target)
+	fmt.Println("\n=== 5. DNS tunnel triage ===")
+	dns, err := client.DnsTunnelDetect(ctx, "investigation", nil)
 	if err != nil {
 		fmt.Printf("  error: %v\n", err)
-		dns = map[string]any{}
+		return
 	}
-	dRows, _ := dns["rows"].([]any)
-	fmt.Printf("  %d anomalous DNS pattern(s)\n", len(dRows))
-	for i, d := range dRows {
+	fmt.Printf("  %d anomalous DNS pattern(s); complete=%v rows_scanned=%d\n", len(dns.Rows), dns.Complete, dns.RowsScanned)
+	for i, row := range dns.Rows {
 		if i >= 5 {
 			break
 		}
-		row, _ := d.(map[string]any)
-		fmt.Printf("    domain=%-30v entropy=%v  bytes=%v\n",
-			row["domain"], row["entropy"], row["bytes_exchanged"])
+		fmt.Printf("    domain=%-30s entropy=%.2f queries=%d max_label_len=%d confidence=%.2f\n",
+			row.Domain, row.AvgEntropy, row.QueryCount, row.MaxLabelLen, row.Confidence)
 	}
 }
