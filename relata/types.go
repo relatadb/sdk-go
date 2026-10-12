@@ -350,15 +350,18 @@ type IngestDocumentResponse struct {
 
 // IngestDocumentTaskStatus is the generic task response from
 // GET /ingest/tasks/{taskID}. Task status is process-local on the server;
-// pending is nonterminal, while complete, partial, and failed are terminal.
+// pending is nonterminal, while complete, partial, failed, and uncertain are
+// terminal. Uncertain does not mean complete and must not be blindly retried.
 type IngestDocumentTaskStatus struct {
-	TaskID      string            `json:"task_id"`
-	Status      string            `json:"status"`
-	RowsTotal   int               `json:"rows_total"`
-	RowsWritten int               `json:"rows_written"`
-	RowsDropped int               `json:"rows_dropped"`
-	DropReasons []string          `json:"drop_reasons"`
-	WriteToken  *IngestWriteToken `json:"_relata_write_token"`
+	TaskID           string            `json:"task_id"`
+	Status           string            `json:"status"`
+	RowsTotal        int               `json:"rows_total"`
+	RowsWritten      int               `json:"rows_written"`
+	RowsDropped      int               `json:"rows_dropped"`
+	DropReasons      []string          `json:"drop_reasons"`
+	OutcomeUncertain bool              `json:"outcome_uncertain,omitempty"`
+	Retryable        *bool             `json:"retryable,omitempty"`
+	WriteToken       *IngestWriteToken `json:"_relata_write_token"`
 	// Extensions retains fields introduced by newer servers, including future
 	// error and partial-result details, without forcing older SDKs to interpret them.
 	Extensions map[string]json.RawMessage `json:"-"`
@@ -377,7 +380,7 @@ func (s *IngestDocumentTaskStatus) UnmarshalJSON(data []byte) error {
 		return err
 	}
 	*s = IngestDocumentTaskStatus(decoded)
-	for _, key := range []string{"task_id", "status", "rows_total", "rows_written", "rows_dropped", "drop_reasons", "_relata_write_token"} {
+	for _, key := range []string{"task_id", "status", "rows_total", "rows_written", "rows_dropped", "drop_reasons", "outcome_uncertain", "retryable", "_relata_write_token"} {
 		delete(fields, key)
 	}
 	if len(fields) > 0 {

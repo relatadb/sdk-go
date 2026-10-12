@@ -153,7 +153,7 @@ one `*http.Client`, like `*sql.DB`).
 | `AuditCount(ctx)` | `(*AuditCountResponse, error)` | `GET /audit/count` — returns `ErrChainCorrupted` if `ChainValid == false` |
 | `ClusterNodes(ctx)` | `([]ClusterNode, error)` | `GET /cluster/nodes` |
 | `IngestDocument(ctx, objects, purpose)` | `(*IngestDocumentResponse, error)` | Queues prepared mixed-type rows via `POST /ingest/bulk` (`queued: true`) and returns one process-local task receipt |
-| `IngestDocumentStatus(ctx, taskID)` | `(*IngestDocumentTaskStatus, error)` | Polls `GET /ingest/tasks/:task_id` for terminal complete/partial/failed state and written/dropped row counts |
+| `IngestDocumentStatus(ctx, taskID)` | `(*IngestDocumentTaskStatus, error)` | Polls `GET /ingest/tasks/:task_id` for terminal complete/partial/failed/uncertain state and confirmed written/dropped row counts |
 
 `IngestDocument` takes application-prepared governed rows (for example a
 `DocumentSource`, linked `DocumentChunk` rows, and optional evidence rows with
@@ -161,7 +161,7 @@ one `*http.Client`, like `*sql.DB`).
 extractor files. The optional `relata-connectors prepare-document` adapter
 converts extractor JSONL/manifest files to an `objects` array for this method.
 Queue admission is process-local and not crash-durable; poll
-`IngestDocumentStatus` for terminal complete/partial/failed state and written/dropped row counts. The separate MCP
+`IngestDocumentStatus` for terminal complete/partial/failed/uncertain state and confirmed written/dropped row counts. An uncertain outcome is unresolved, not complete, and must not be blindly retried. The separate MCP
 `ingest_document(source, text, ...)` tool remains a direct application workflow.
 
 ### `ClientOptions`

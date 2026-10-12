@@ -1061,3 +1061,17 @@ func TestIngestDocumentTaskStatusPreservesFailedState(t *testing.T) {
 		t.Fatalf("decoded status = %+v", status)
 	}
 }
+
+func TestIngestDocumentTaskStatusPreservesUncertainState(t *testing.T) {
+	var status IngestDocumentTaskStatus
+	data := []byte(`{"task_id":"task-uncertain","status":"uncertain","rows_total":3,"rows_written":1,"rows_dropped":0,"drop_reasons":["WAL acknowledgement outcome unknown"],"outcome_uncertain":true,"retryable":false}`)
+	if err := json.Unmarshal(data, &status); err != nil {
+		t.Fatal(err)
+	}
+	if status.Status != "uncertain" || !status.OutcomeUncertain || status.Retryable == nil || *status.Retryable {
+		t.Fatalf("decoded status = %+v", status)
+	}
+	if status.RowsWritten != 1 || status.RowsDropped != 0 || len(status.DropReasons) != 1 {
+		t.Fatalf("uncertain confirmed outcomes = %+v", status)
+	}
+}
