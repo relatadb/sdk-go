@@ -823,7 +823,7 @@ func TestHawalaTrace_BuildsSQL(t *testing.T) {
 	}
 }
 
-// #2319 — GraphPageRank/SanctionsScreen/ConvoyDetect/BurnerDetect/HawalaTrace
+// #2319 — GraphPageRank/SanctionsScreen/ConvoyDetect/HawalaTrace
 // used to force server-optional numeric tunables as mandatory positional Go
 // args; a caller passing the Go zero value (or omitting opts entirely) must
 // omit the clause rather than send a literal 0/0.0 that diverges from the
@@ -924,25 +924,6 @@ func TestConvoyDetect_BuildsSQLWhenSet(t *testing.T) {
 	}
 	if got["sql"] != "CONVOY(RADIUS => 200.000000, TIME_TOL => 300000000000, MIN_POINTS => 3)" {
 		t.Fatalf("sql = %v", got["sql"])
-	}
-}
-
-func TestBurnerDetect_OmitsClauseWhenOptsNil(t *testing.T) {
-	var got map[string]any
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		b, _ := io.ReadAll(r.Body)
-		_ = json.Unmarshal(b, &got)
-		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprint(w, `{"query_id":"q1","elapsed_ms":1,"rows":[]}`)
-	}))
-	defer srv.Close()
-
-	c := newTestClient(srv, nil)
-	if _, err := c.BurnerDetect(context.Background(), "p", nil); err != nil {
-		t.Fatalf("BurnerDetect: %v", err)
-	}
-	if got["sql"] != "BURNER_DETECT()" {
-		t.Fatalf("sql = %v, want no MAX_AGE/MAX_CALLS clause", got["sql"])
 	}
 }
 
@@ -1073,7 +1054,9 @@ func TestIsLoopbackHost(t *testing.T) {
 func TestIngestDocumentTaskStatusPreservesFailedState(t *testing.T) {
 	var status IngestDocumentTaskStatus
 	data := []byte(`{"task_id":"task-failed","status":"failed","rows_total":2,"rows_written":0,"rows_dropped":2,"drop_reasons":["writer refused rows"]}`)
-	if err := json.Unmarshal(data, &status); err != nil { t.Fatal(err) }
+	if err := json.Unmarshal(data, &status); err != nil {
+		t.Fatal(err)
+	}
 	if status.Status != "failed" || status.RowsWritten != 0 || status.RowsDropped != 2 {
 		t.Fatalf("decoded status = %+v", status)
 	}

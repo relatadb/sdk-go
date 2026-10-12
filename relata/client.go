@@ -562,7 +562,7 @@ type RegisterWebhookOptions struct {
 // opts may be nil to omit every optional field (equivalent to the pre-#5395
 // signature). BREAKING (#5395): opts was added as a new trailing parameter,
 // following the *Options precedent #2319 already set for
-// GraphPageRank/SanctionsScreen/ConvoyDetect/BurnerDetect/HawalaTrace — the
+// GraphPageRank/SanctionsScreen/ConvoyDetect/HawalaTrace — the
 // server has supported a signing secret since webhooks shipped, but no Go
 // caller could ever reach it.
 func (c *Client) RegisterWebhook(ctx context.Context, url string, eventTypes []string, opts *RegisterWebhookOptions) (map[string]any, error) {
@@ -878,37 +878,6 @@ func (c *Client) ConvoyDetect(ctx context.Context, purpose string, opts *ConvoyD
 	sql := "CONVOY()"
 	if len(parts) > 0 {
 		sql = fmt.Sprintf("CONVOY(%s)", strings.Join(parts, ", "))
-	}
-	return c.query(ctx, purpose, sql)
-}
-
-// BurnerDetectOptions configures the optional BURNER_DETECT tunables. The
-// server treats MAX_AGE/MAX_CALLS as both optional, defaulting to 7 days / 10
-// calls respectively (#2319).
-type BurnerDetectOptions struct {
-	// MaxAgeDays is the burner-window lookback in days. <= 0 omits the clause
-	// (server default 7 days).
-	MaxAgeDays int
-	// MaxCalls is the call-count ceiling. <= 0 omits the clause (server
-	// default 10).
-	MaxCalls int
-}
-
-// BurnerDetect detects burner phone patterns. opts may be nil to use all
-// server defaults.
-func (c *Client) BurnerDetect(ctx context.Context, purpose string, opts *BurnerDetectOptions) (map[string]any, error) {
-	parts := []string{}
-	if opts != nil {
-		if opts.MaxAgeDays > 0 {
-			parts = append(parts, fmt.Sprintf("MAX_AGE => %d", int64(opts.MaxAgeDays)*86_400_000_000_000))
-		}
-		if opts.MaxCalls > 0 {
-			parts = append(parts, fmt.Sprintf("MAX_CALLS => %d", opts.MaxCalls))
-		}
-	}
-	sql := "BURNER_DETECT()"
-	if len(parts) > 0 {
-		sql = fmt.Sprintf("BURNER_DETECT(%s)", strings.Join(parts, ", "))
 	}
 	return c.query(ctx, purpose, sql)
 }
