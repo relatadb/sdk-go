@@ -911,11 +911,6 @@ func (c *Client) HawalaTrace(ctx context.Context, purpose, seed string, opts *Ha
 	return c.query(ctx, purpose, sql)
 }
 
-// CrimePatternCluster performs spatial crime pattern analysis.
-func (c *Client) CrimePatternCluster(ctx context.Context, purpose, area string) (map[string]any, error) {
-	return c.query(ctx, purpose, fmt.Sprintf("CRIME_PATTERN_CLUSTER(%s)", sqlLiteral(area)))
-}
-
 // Geofence finds entities within a geographic fence.
 func (c *Client) Geofence(ctx context.Context, purpose, fence, targetType string) (map[string]any, error) {
 	sql := fmt.Sprintf("GEOFENCE(%s, TARGET_TYPE => %s)", sqlLiteral(fence), sqlLiteral(targetType))
