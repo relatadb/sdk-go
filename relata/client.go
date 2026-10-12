@@ -575,7 +575,7 @@ type RegisterWebhookOptions struct {
 // opts may be nil to omit every optional field (equivalent to the pre-#5395
 // signature). BREAKING (#5395): opts was added as a new trailing parameter,
 // following the *Options precedent #2319 already set for
-// GraphPageRank/SanctionsScreen/ConvoyDetect/HawalaTrace — the
+// GraphPageRank/ConvoyDetect — the
 // server has supported a signing secret since webhooks shipped, but no Go
 // caller could ever reach it.
 func (c *Client) RegisterWebhook(ctx context.Context, url string, eventTypes []string, opts *RegisterWebhookOptions) (map[string]any, error) {
@@ -831,33 +831,6 @@ func (c *Client) GraphTriangleCount(ctx context.Context, purpose, objectType str
 
 // ── Intelligence operators (#967) ────────────────────────────────────────────
 
-// BeneficialOwnershipChain traces ownership to ultimate beneficial owner.
-func (c *Client) BeneficialOwnershipChain(ctx context.Context, purpose, party string, maxDepth int) (map[string]any, error) {
-	sql := fmt.Sprintf("BENEFICIAL_OWNERSHIP_CHAIN(%s, MAX_DEPTH => %d)", sqlLiteral(party), maxDepth)
-	return c.query(ctx, purpose, sql)
-}
-
-// SanctionsScreenOptions configures the optional SanctionsScreen tunables. The
-// server (`parse_sanctions_screen`) treats THRESHOLD as optional, defaulting
-// to 0.75 when omitted (#2319).
-type SanctionsScreenOptions struct {
-	// Threshold is the fuzzy-match threshold. <= 0 omits the clause (server
-	// default 0.75). Do not pass the Go zero value 0.0 expecting the default —
-	// it is a valid, maximally-permissive threshold and would be sent literally
-	// prior to this fix.
-	Threshold float64
-}
-
-// SanctionsScreen screens against sanctions lists with fuzzy threshold. opts
-// may be nil to use the server default threshold.
-func (c *Client) SanctionsScreen(ctx context.Context, purpose, party string, opts *SanctionsScreenOptions) (map[string]any, error) {
-	sql := fmt.Sprintf("SANCTIONS_SCREEN(%s)", sqlLiteral(party))
-	if opts != nil && opts.Threshold > 0 {
-		sql = fmt.Sprintf("SANCTIONS_SCREEN(%s, THRESHOLD => %f)", sqlLiteral(party), opts.Threshold)
-	}
-	return c.query(ctx, purpose, sql)
-}
-
 // ConvoyDetectOptions configures the optional CONVOY tunables. The server
 // treats RADIUS/TIME_TOL/MIN_POINTS as all optional, defaulting to 100.0
 // meters / 60 s / 2 points respectively (#2319).
@@ -891,35 +864,6 @@ func (c *Client) ConvoyDetect(ctx context.Context, purpose string, opts *ConvoyD
 	sql := "CONVOY()"
 	if len(parts) > 0 {
 		sql = fmt.Sprintf("CONVOY(%s)", strings.Join(parts, ", "))
-	}
-	return c.query(ctx, purpose, sql)
-}
-
-// CryptoTrace follows cryptocurrency fund flow.
-func (c *Client) CryptoTrace(ctx context.Context, purpose, entity string) (map[string]any, error) {
-	return c.query(ctx, purpose, fmt.Sprintf("CRYPTO_TRACE(%s)", sqlLiteral(entity)))
-}
-
-// WireReconstruction reconstructs a wire-transfer chain (FinINT, #2249).
-func (c *Client) WireReconstruction(ctx context.Context, purpose, account string, tolerancePct float64) (map[string]any, error) {
-	sql := fmt.Sprintf("WIRE_RECONSTRUCTION(%s, TOLERANCE_PCT => %f)", sqlLiteral(account), tolerancePct)
-	return c.query(ctx, purpose, sql)
-}
-
-// HawalaTraceOptions configures the optional HawalaTrace tunable. The server
-// (`parse_hawala_trace`) treats MAX_HOPS as optional, defaulting to 6 when
-// omitted (#2319).
-type HawalaTraceOptions struct {
-	// MaxHops caps the trace depth. <= 0 omits the clause (server default 6).
-	MaxHops int
-}
-
-// HawalaTrace traces an informal hawala value-transfer network (FinINT, #2249).
-// opts may be nil to use the server default MAX_HOPS.
-func (c *Client) HawalaTrace(ctx context.Context, purpose, seed string, opts *HawalaTraceOptions) (map[string]any, error) {
-	sql := fmt.Sprintf("HAWALA_TRACE(%s)", sqlLiteral(seed))
-	if opts != nil && opts.MaxHops > 0 {
-		sql = fmt.Sprintf("HAWALA_TRACE(%s, MAX_HOPS => %d)", sqlLiteral(seed), opts.MaxHops)
 	}
 	return c.query(ctx, purpose, sql)
 }

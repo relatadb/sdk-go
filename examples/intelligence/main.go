@@ -1,14 +1,11 @@
-// Command intelligence demonstrates a chained KYC / sanctions sweep across
-// the typed intelligence operators on the Go client (#967).
-//
-// Operators covered:
-//   - SanctionsScreen            — fuzzy match against sanction lists
-//   - BeneficialOwnershipChain   — trace to ultimate beneficial owner
-//   - CryptoTrace                — follow cryptocurrency fund flow
+// Command intelligence demonstrates generic governed-query source retrieval
+// alongside retained typed intelligence helpers. Ownership and transaction
+// graph queries return source rows only; application analysis is caller-owned.
 //   - ConvoyDetect               — find co-travelling entities
 //   - DnsTunnelDetect            — local triage over governed DNS query pages
 //
-// Server-backed operators use governed SQL. DNS tunnel triage composes the
+// The sanctions section fetches governed source rows only; matching and review
+// remain application responsibilities. DNS tunnel triage composes the
 // authenticated schema and query APIs; tenant, purpose, and row ACLs apply to
 // every page fetched.
 //
@@ -23,6 +20,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"log"
 	"time"
 
 	"github.com/relatadb/sdk-go/v2/relata"
@@ -43,68 +41,51 @@ func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
 
-	// ── 1. Sanctions screening ────────────────────────────────────────────
-	fmt.Printf("=== 1. SANCTIONS_SCREEN: %s (threshold=0.85) ===\n", *target)
-	hits, err := client.SanctionsScreen(ctx, "investigation", *target, &relata.SanctionsScreenOptions{Threshold: 0.85})
+	// ── 1. Governed sanctions source rows ──────────────────────────────────
+	fmt.Printf("=== 1. Sanctions source rows for: %s ===\n", *target)
+	people, err := client.QueryWithParams(ctx, "SELECT id, name, dob FROM Person WHERE name = $1 LIMIT 100", []any{*target}, relata.WithPurpose("investigation"))
 	if err != nil {
-		fmt.Printf("  error: %v\n", err)
-		hits = map[string]any{}
+		log.Fatal(err)
 	}
-	hitRows, _ := hits["rows"].([]any)
-	fmt.Printf("  %d potential hit(s)\n", len(hitRows))
-	for i, h := range hitRows {
-		if i >= 5 {
-			break
-		}
-		row, _ := h.(map[string]any)
-		fmt.Printf("    list=%-20v score=%v  match=%v\n",
-			row["list"], row["score"], row["matched_name"])
+	entries, err := client.Query(ctx, "SELECT name, aliases, dob, list_name, program FROM SanctionEntry LIMIT 10000", relata.WithPurpose("investigation"))
+	if err != nil {
+		log.Fatal(err)
 	}
+	fmt.Printf("  fetched %d subject row(s) and %d sanctions-list row(s)\n", len(people.Rows), len(entries.Rows))
+	if people.Truncated || people.NextCursor != nil || entries.Truncated || entries.NextCursor != nil {
+		fmt.Println("  WARNING: source results are incomplete; do not treat this as a completed screen")
+	}
+	fmt.Println("  Apply your organization's documented matching and review policy to these rows.")
 
-	// ── 2. Beneficial ownership chain ─────────────────────────────────────
-	fmt.Printf("\n=== 2. BENEFICIAL_OWNERSHIP_CHAIN: %s (max_depth=5) ===\n", *target)
-	chain, err := client.BeneficialOwnershipChain(ctx, "investigation", *target, 5)
+	// ── 2. Ownership source rows (retrieval only) ───────────────────────
+	fmt.Println("\n=== 2. OwnershipEdge source rows (application analysis required) ===")
+	ownership, err := client.Query(ctx, "SELECT subject, predicate, object, ownership_pct, jurisdiction FROM OwnershipEdge LIMIT 1000", relata.WithPurpose("investigation"))
 	if err != nil {
-		fmt.Printf("  error: %v\n", err)
-		chain = map[string]any{}
+		log.Fatal(err)
 	}
-	layers, _ := chain["rows"].([]any)
-	if layers == nil {
-		layers, _ = chain["layers"].([]any)
+	fmt.Printf("  fetched %d ownership source row(s)\n", len(ownership.Rows))
+	if ownership.Truncated || ownership.NextCursor != nil {
+		fmt.Println("  source result is incomplete; do not treat it as a complete ownership chain")
 	}
-	fmt.Printf("  %d layer(s) to UBO:\n", len(layers))
-	for i, l := range layers {
-		row, _ := l.(map[string]any)
-		share := 0.0
-		if s, ok := row["share"].(float64); ok {
-			share = s * 100
-		}
-		fmt.Printf("    %d. %-30v owns %.2f%%  via %v\n", i+1, row["entity"], share, row["instrument"])
-	}
+	fmt.Println("  apply documented ownership traversal and legal review outside this SDK")
 
-	// ── 3. Crypto trace ───────────────────────────────────────────────────
-	fmt.Printf("\n=== 3. CRYPTO_TRACE: %s ===\n", *target)
-	trace, err := client.CryptoTrace(ctx, "investigation", *target)
+	// ── 3. Transaction source rows (retrieval only) ──────────────────────
+	fmt.Printf("\n=== 3. TransactionGraph source rows for %s (retrieval only) ===\n", *target)
+	transactions, err := client.Query(ctx, "SELECT from_wallet, to_wallet, amount, asset, chain, is_mixer FROM TransactionGraph LIMIT 1000", relata.WithPurpose("investigation"))
 	if err != nil {
-		fmt.Printf("  error: %v\n", err)
-		trace = map[string]any{}
+		log.Fatal(err)
 	}
-	hops, _ := trace["rows"].([]any)
-	fmt.Printf("  %d hop(s) in fund-flow graph\n", len(hops))
-	for i, h := range hops {
-		if i >= 10 {
-			break
-		}
-		row, _ := h.(map[string]any)
-		fmt.Printf("    %2d. %v → %v  amount=%v\n", i+1, row["from"], row["to"], row["amount"])
+	fmt.Printf("  fetched %d transaction source row(s)\n", len(transactions.Rows))
+	if transactions.Truncated || transactions.NextCursor != nil {
+		fmt.Println("  source result is incomplete; do not treat it as a complete transaction trace")
 	}
+	fmt.Println("  apply approved graph-walk and attribution policy outside this SDK")
 
 	// ── 4. Convoy detection ───────────────────────────────────────────────
 	fmt.Println("\n=== 4. CONVOY_DETECT: radius=200m, time_tol=300s, min_points=2 ===")
 	convoys, err := client.ConvoyDetect(ctx, "investigation", &relata.ConvoyDetectOptions{RadiusM: 200.0, TimeTolSecs: 300, MinPoints: 2})
 	if err != nil {
-		fmt.Printf("  error: %v\n", err)
-		convoys = map[string]any{}
+		log.Fatal(err)
 	}
 	cRows, _ := convoys["rows"].([]any)
 	fmt.Printf("  %d convoy(s) detected\n", len(cRows))
@@ -121,8 +102,7 @@ func main() {
 	fmt.Println("\n=== 5. DNS tunnel triage ===")
 	dns, err := client.DnsTunnelDetect(ctx, "investigation", nil)
 	if err != nil {
-		fmt.Printf("  error: %v\n", err)
-		return
+		log.Fatal(err)
 	}
 	fmt.Printf("  %d anomalous DNS pattern(s); complete=%v rows_scanned=%d\n", len(dns.Rows), dns.Complete, dns.RowsScanned)
 	for i, row := range dns.Rows {

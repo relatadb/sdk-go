@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -782,48 +783,7 @@ func TestQuery_ProcessingTimeMs(t *testing.T) {
 
 // #2249 — FinINT trace ops.
 
-func TestWireReconstruction_BuildsSQL(t *testing.T) {
-	var got map[string]any
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		b, _ := io.ReadAll(r.Body)
-		_ = json.Unmarshal(b, &got)
-		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprint(w, `{"query_id":"q1","elapsed_ms":1,"rows":[]}`)
-	}))
-	defer srv.Close()
-
-	c := newTestClient(srv, nil)
-	if _, err := c.WireReconstruction(context.Background(), "finint", "ACC-007", 2.5); err != nil {
-		t.Fatalf("WireReconstruction: %v", err)
-	}
-	if got["purpose"] != "finint" {
-		t.Fatalf("purpose = %v", got["purpose"])
-	}
-	if got["sql"] != "WIRE_RECONSTRUCTION('ACC-007', TOLERANCE_PCT => 2.500000)" {
-		t.Fatalf("sql = %v", got["sql"])
-	}
-}
-
-func TestHawalaTrace_BuildsSQL(t *testing.T) {
-	var got map[string]any
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		b, _ := io.ReadAll(r.Body)
-		_ = json.Unmarshal(b, &got)
-		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprint(w, `{"query_id":"q2","elapsed_ms":1,"rows":[]}`)
-	}))
-	defer srv.Close()
-
-	c := newTestClient(srv, &ClientOptions{DefaultPurpose: "analytics"})
-	if _, err := c.HawalaTrace(context.Background(), "analytics", "SEED-1", &HawalaTraceOptions{MaxHops: 7}); err != nil {
-		t.Fatalf("HawalaTrace: %v", err)
-	}
-	if got["sql"] != "HAWALA_TRACE('SEED-1', MAX_HOPS => 7)" {
-		t.Fatalf("sql = %v", got["sql"])
-	}
-}
-
-// #2319 — GraphPageRank/SanctionsScreen/ConvoyDetect/HawalaTrace
+// #2319 — GraphPageRank/ConvoyDetect
 // used to force server-optional numeric tunables as mandatory positional Go
 // args; a caller passing the Go zero value (or omitting opts entirely) must
 // omit the clause rather than send a literal 0/0.0 that diverges from the
@@ -867,25 +827,9 @@ func TestGraphPageRank_BuildsSQLWhenSet(t *testing.T) {
 	}
 }
 
-func TestSanctionsScreen_OmitsClauseWhenZeroThreshold(t *testing.T) {
-	var got map[string]any
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		b, _ := io.ReadAll(r.Body)
-		_ = json.Unmarshal(b, &got)
-		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprint(w, `{"query_id":"q1","elapsed_ms":1,"rows":[]}`)
-	}))
-	defer srv.Close()
-
-	c := newTestClient(srv, nil)
-	// Zero-value Options{} (or nil) must NOT send a literal THRESHOLD => 0.000000
-	// — that would silently match everything, the opposite of what a sanctions
-	// screen caller wants (#2319).
-	if _, err := c.SanctionsScreen(context.Background(), "p", "Acme Corp", &SanctionsScreenOptions{}); err != nil {
-		t.Fatalf("SanctionsScreen: %v", err)
-	}
-	if got["sql"] != "SANCTIONS_SCREEN('Acme Corp')" {
-		t.Fatalf("sql = %v, want no THRESHOLD clause", got["sql"])
+func TestRetiredSanctionsScreenMethodIsAbsent(t *testing.T) {
+	if _, ok := reflect.TypeOf((*Client)(nil)).MethodByName("SanctionsScreen"); ok {
+		t.Fatal("SanctionsScreen must not be exposed")
 	}
 }
 
@@ -924,25 +868,6 @@ func TestConvoyDetect_BuildsSQLWhenSet(t *testing.T) {
 	}
 	if got["sql"] != "CONVOY(RADIUS => 200.000000, TIME_TOL => 300000000000, MIN_POINTS => 3)" {
 		t.Fatalf("sql = %v", got["sql"])
-	}
-}
-
-func TestHawalaTrace_OmitsClauseWhenOptsNil(t *testing.T) {
-	var got map[string]any
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		b, _ := io.ReadAll(r.Body)
-		_ = json.Unmarshal(b, &got)
-		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprint(w, `{"query_id":"q1","elapsed_ms":1,"rows":[]}`)
-	}))
-	defer srv.Close()
-
-	c := newTestClient(srv, nil)
-	if _, err := c.HawalaTrace(context.Background(), "p", "SEED-1", nil); err != nil {
-		t.Fatalf("HawalaTrace: %v", err)
-	}
-	if got["sql"] != "HAWALA_TRACE('SEED-1')" {
-		t.Fatalf("sql = %v, want no MAX_HOPS clause", got["sql"])
 	}
 }
 

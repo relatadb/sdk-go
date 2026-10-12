@@ -1,15 +1,11 @@
 // Typed decoders for AML / financial-intelligence result shapes (#2255).
 //
-// The server's AML operators (SANCTIONS_SCREEN, BENEFICIAL_OWNERSHIP_CHAIN,
-// CRYPTO_TRACE, WIRE_RECONSTRUCTION, HAWALA_TRACE, RESOLVE_IDENTITY, and the
-// shortest-path / Dijkstra path operators) return generic query-result rows
-// (map[string]any of column → JSON value). This file declares typed structs
-// for each result shape and provides a decoder that maps the generic rows into
-// those structs, so callers can work with strongly-typed objects instead of
-// untyped maps.
+// These decoders map caller-selected generic query-result rows
+// (map[string]any of column → JSON value) into typed structs. They do not
+// invoke or imply a built-in sanctions-screening operation.
 //
-// Field names mirror the exact column names emitted by the server operators
-// (see crates/relata-query/src/finint_operators.rs and investigation_ops.rs).
+// Field names mirror corresponding row shapes; callers choose and alias their
+// own generic query projections.
 //
 // Scope: only the AML / financial-intelligence result shapes are typed here.
 // All other packs (police, evidence, supply-chain, health, cyber, …) continue
@@ -88,7 +84,7 @@ func getInt(row map[string]any, key string) (int64, bool) {
 
 // ── SanctionsHit ─────────────────────────────────────────────────────────────
 
-// SanctionsHit is a single sanctions-list match from SANCTIONS_SCREEN.
+// SanctionsHit is a sanctions-list row decoded from a caller's governed query.
 type SanctionsHit struct {
 	ListName     string  // sanctions list (e.g. "OFAC", "EU")
 	EntryID      string  // server-side entry identifier
@@ -222,7 +218,7 @@ func DecodeWireHops(rows []map[string]any) []WireHop {
 
 // ── HawalaPair ───────────────────────────────────────────────────────────────
 
-// HawalaPair is a matched informal-value-transfer pair from HAWALA_TRACE.
+// HawalaPair decodes the legacy hawala result row shape from generic query rows.
 type HawalaPair struct {
 	Sender          string  // sender identifier
 	Receiver        string  // receiver identifier
