@@ -1075,3 +1075,17 @@ func TestIngestDocumentTaskStatusPreservesUncertainState(t *testing.T) {
 		t.Fatalf("uncertain confirmed outcomes = %+v", status)
 	}
 }
+
+func TestIngestDocumentTaskStatusPreservesDerivedWriteIncomplete(t *testing.T) {
+	var status IngestDocumentTaskStatus
+	data := []byte(`{"task_id":"task-incomplete","status":"incomplete","rows_total":3,"rows_written":2,"rows_dropped":1,"code":"derived-write-incomplete","derived_error":"vector projection failed","retryable":false}`)
+	if err := json.Unmarshal(data, &status); err != nil {
+		t.Fatal(err)
+	}
+	if status.Status != "incomplete" || status.Code != "derived-write-incomplete" || status.DerivedError != "vector projection failed" {
+		t.Fatalf("decoded status = %+v", status)
+	}
+	if status.RowsWritten != 2 || status.RowsDropped != 1 || status.Retryable == nil || *status.Retryable {
+		t.Fatalf("incomplete confirmed outcomes = %+v", status)
+	}
+}

@@ -350,8 +350,9 @@ type IngestDocumentResponse struct {
 
 // IngestDocumentTaskStatus is the generic task response from
 // GET /ingest/tasks/{taskID}. Task status is process-local on the server;
-// pending is nonterminal, while complete, partial, failed, and uncertain are
-// terminal. Uncertain does not mean complete and must not be blindly retried.
+// pending is nonterminal, while complete, partial, failed, uncertain, and
+// incomplete are terminal. Uncertain does not mean complete and must not be
+// blindly retried.
 type IngestDocumentTaskStatus struct {
 	TaskID           string            `json:"task_id"`
 	Status           string            `json:"status"`
@@ -360,6 +361,8 @@ type IngestDocumentTaskStatus struct {
 	RowsDropped      int               `json:"rows_dropped"`
 	DropReasons      []string          `json:"drop_reasons"`
 	OutcomeUncertain bool              `json:"outcome_uncertain,omitempty"`
+	Code             string            `json:"code,omitempty"`
+	DerivedError     string            `json:"derived_error,omitempty"`
 	Retryable        *bool             `json:"retryable,omitempty"`
 	WriteToken       *IngestWriteToken `json:"_relata_write_token"`
 	// Extensions retains fields introduced by newer servers, including future
@@ -380,7 +383,7 @@ func (s *IngestDocumentTaskStatus) UnmarshalJSON(data []byte) error {
 		return err
 	}
 	*s = IngestDocumentTaskStatus(decoded)
-	for _, key := range []string{"task_id", "status", "rows_total", "rows_written", "rows_dropped", "drop_reasons", "outcome_uncertain", "retryable", "_relata_write_token"} {
+	for _, key := range []string{"task_id", "status", "rows_total", "rows_written", "rows_dropped", "drop_reasons", "outcome_uncertain", "code", "derived_error", "retryable", "_relata_write_token"} {
 		delete(fields, key)
 	}
 	if len(fields) > 0 {
