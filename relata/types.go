@@ -654,6 +654,7 @@ func WithWeights(graph, bm25, vector float64) SearchOption {
 
 // AlertSubmitRequest submits an application-owned alert. The server assigns tenant and identity.
 type AlertSubmitRequest struct {
+	MatchedKey     string         `json:"matched_key,omitempty"`
 	IdempotencyKey string         `json:"idempotency_key"`
 	Purpose        string         `json:"purpose"`
 	AlertType      string         `json:"alert_type"`

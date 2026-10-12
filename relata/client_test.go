@@ -1024,14 +1024,14 @@ func TestSubmitAlertPreservesContract(t *testing.T) {
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			t.Fatal(err)
 		}
-		if body["idempotency_key"] != "run-1" || body["matched_row_id"] != "row-1" {
+		if body["matched_key"] != "_pk" || body["idempotency_key"] != "run-1" || body["matched_row_id"] != "row-1" {
 			t.Errorf("payload = %v", body)
 		}
 		fmt.Fprint(w, `{"alert_id":"alert-stable","status":"duplicate","durability":"local_wal_sync"}`)
 	}))
 	defer srv.Close()
 	receipt, err := newTestClient(srv, nil).SubmitAlert(context.Background(), AlertSubmitRequest{
-		IdempotencyKey: "run-1", Purpose: "detection", AlertType: "app-signal", Severity: "high",
+		MatchedKey: "_pk", IdempotencyKey: "run-1", Purpose: "detection", AlertType: "app-signal", Severity: "high",
 		MatchedType: "Event", MatchedRowID: "row-1", Context: map[string]any{"count": 2},
 	})
 	if err != nil {
