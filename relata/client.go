@@ -361,7 +361,7 @@ func (c *Client) RegisterType(ctx context.Context, name string, spec map[string]
 	return resp, nil
 }
 
-// DeregisterType deregisters a custom type. Admin token required.
+// DeregisterType deregisters an empty custom type. Admin token required; types with history or protected data are rejected.
 func (c *Client) DeregisterType(ctx context.Context, name string) (map[string]any, error) {
 	var resp map[string]any
 	if err := c.delete(ctx, "/types/"+pathSegment(name), &resp); err != nil {
