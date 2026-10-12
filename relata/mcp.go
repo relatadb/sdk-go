@@ -949,12 +949,12 @@ func (m *McpClient) CreateRule(ctx context.Context, name, conditionSQL, targetTy
 	return m.CallTool(ctx, "create_rule", args)
 }
 
-// ListJobs lists all registered detection jobs with live status ("list_jobs").
+// ListJobs lists detection jobs registered by this server with live status ("list_jobs").
 func (m *McpClient) ListJobs(ctx context.Context) (map[string]any, error) {
 	return m.CallTool(ctx, "list_jobs", map[string]any{})
 }
 
-// ScheduleJob triggers an immediate run of a named detection job ("schedule_job").
+// ScheduleJob requests an immediate run of a detection job known to this server ("schedule_job").
 func (m *McpClient) ScheduleJob(ctx context.Context, name string) (map[string]any, error) {
 	return m.CallTool(ctx, "schedule_job", map[string]any{"name": name})
 }
