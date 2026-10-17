@@ -200,31 +200,6 @@ func TestAuditClient_FindByRequestID(t *testing.T) {
 	}
 }
 
-func TestAuditClient_ExportPDF(t *testing.T) {
-	var gotPath string
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		gotPath = r.URL.Path
-		w.Header().Set("Content-Type", "application/pdf")
-		w.Write([]byte("%PDF-1.4 binary blob"))
-	}))
-	defer srv.Close()
-
-	c := newTestClient(srv, nil)
-	a := NewAuditClient(c)
-	pdf, err := a.ExportPDF(context.Background(), "case-42", "")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if gotPath != "/report/pdf" {
-		t.Fatalf("path = %q", gotPath)
-	}
-	if len(pdf) == 0 || pdf[0] != '%' {
-		t.Fatalf("pdf = %v", pdf)
-	}
-}
-
-// ---- TenantAdminClient ------------------------------------------------------
-
 func TestTenantAdminClient_CRUD(t *testing.T) {
 	var paths []string
 	var methods []string
@@ -542,12 +517,17 @@ func TestIdentityClient_EraseSubjectCertifyOptIn(t *testing.T) {
 
 func TestStreamingClient_QueryRows(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/query" {
+		if r.URL.Path != "/query/stream" {
 			t.Fatalf("path = %s", r.URL.Path)
 		}
+		if r.Header.Get("Accept") != "application/x-ndjson" {
+			t.Errorf("Accept = %q", r.Header.Get("Accept"))
+		}
 		w.Header().Set("Content-Type", "application/x-ndjson")
+		fmt.Fprintln(w, `{"_meta":{"query_id":"q-1","started_at":1,"columns":["id","name"]}}`)
 		fmt.Fprintln(w, `{"id":1,"name":"A"}`)
 		fmt.Fprintln(w, `{"id":2,"name":"B"}`)
+		fmt.Fprintln(w, `{"_meta":{"processing_time_ms":1,"row_count":2,"truncated":false}}`)
 	}))
 	defer srv.Close()
 

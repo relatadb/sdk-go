@@ -316,7 +316,8 @@ if _, err := io.Copy(out, reader); err != nil {
 The Go SDK does not decode Arrow IPC into a typed table. Its ingest client
 exposes media task status; `McpClient.IngestMedia` calls the MCP media tool
 with its documented payload. There is no raw byte upload method for
-`/ingest/media` in this Go SDK.
+`/ingest/media` in this Go SDK; the separate `FilesClient` below wraps the
+governed `/files/content` API, not media ingestion.
 
 ## `Memory` — governed agent memory
 
@@ -377,6 +378,7 @@ Python `from_client` classmethod. Optional parameters use struct-pointer options
 | `relata.identity` | `NewIdentityClient` | Identity label/uncertainty + lookup tables + `ERASE SUBJECT` |
 | `relata.objects` | `NewObjectClient` | Typed upsert + batch via `/ingest?object_type=` (NDJSON) |
 | `relata.ingest` | `NewIngestClient` | Bulk NDJSON + CSV + media task status; it does not upload raw media bytes |
+| `relata.files` | `NewFilesClient` | Buffered Files `Put`/`Get`/`Delete`; byte content, ETag and content type metadata |
 | `relata.vectors` | `NewVectorClient` | KNN + hybrid search + similar-to (SQL-backed) + `Embed`/`EmbedBatch` (`POST /embed[/batch]`) |
 | `relata.search` (`SearchClient`) | `NewSearchClient` | Typed `POST /search` JSON query door (`rank_by`/`filters`) — separate from the untyped `Client.Search` |
 | `relata.system` | `NewSystemClient` | Generic jobs and operator surfaces; no feed broker routing |
@@ -475,6 +477,14 @@ for it.Next() {
 }
 if err := it.Err(); err != nil { log.Fatal(err) }
 ```
+
+`QueryRows` uses `/query/stream` with NDJSON. It yields data rows and validates
+leading and terminal metadata. Always check `Err()` after iteration: missing,
+truncated, malformed or count-mismatched completion returns
+`*relata.IncompleteQueryStreamError` with `QueryID` and `RowsReceived`. Partial
+rows are not a complete answer, and the iterator never retries automatically.
+`MaxResponseBytes` bounds each NDJSON frame (default 64 MiB), not total stream
+length. Completion, failure and caller `Close()` release the response body.
 
 `Watch(ctx, sql, opts)` and `Alerts(ctx, opts)` return `*SSEIterator` with
 `.Next()` / `.Event()` / `.Close()` and optional exponential-backoff reconnect.
@@ -587,14 +597,48 @@ oc.Upsert(ctx, "AgentTask", "t-1",
 
 For ACL access in strict mode, grant via env var: `RELATA_ACL_GRANT=AgentTask:read+write`.
 
+## Governed Files client — v3.0 candidate, SDK 2.7.1
+
+For the v3.0 candidate (engine source `57e11676c`), version-aligned SDK source
+`8924d6ce8` builds cleanly and Go tests pass in two packages. The five-lane
+Files fixture passes in 10.020s; the prepared-document matrix passes in 37.110s
+across raw HTTP and official TypeScript, Python sync/async, and Go queries. It
+checks synthetic DataGrep and Unstructured JSON citation anchors, bounded ingest
+receipts, auth/tenant behavior and a persistent single-node restart. Citation
+comparison waits for stable index visibility; TypeScript and Python required
+two before/after stabilization attempts for DataGrep, so this does not promise
+immediate parity. See the [Files result](../../scripts/qualification/followup_pr5786_sdk_files_common_live.json)
+and [prepared result](../../scripts/qualification/followup_pr5786_sdk_files_prepared_live.json).
+This candidate-source evidence does not claim package publication, PDF/OCR or
+provider extraction, replicas, throughput, interrupted-task resumption, or
+server-side cancellation. Prepared receipts describe historical local task
+outcomes; volatile profiles remain process-local.
+
+`NewFilesClient(client)` borrows the parent's auth, tenant, timeout and response
+cap. `Put(ctx, key, data, opts)` sends raw bytes to `PUT /files/content` and
+returns current-file metadata; `Get` returns buffered bytes plus ETag/content
+type, and `Delete` acknowledges the exact-key `DELETE /files/content`. A blank
+bucket uses the authenticated tenant default; `FilesOptions` can select a
+bucket and upload content type. The server upload limit is 128 MiB; downloads
+are limited by `ClientOptions.MaxResponseBytes` (64 MiB by default). PUT and
+DELETE are not automatically retried, and uncertain outcomes require caller
+reconciliation. This client does not provide immutable versions, conditional
+writes, ranges, physical-erasure guarantees, or `/ingest/media` upload.
+The caller's `ctx` cancels the client request; it does not promise that server
+work already accepted by the engine is aborted or rolled back. See the
+[HTTP Files contract](../../docs/src/specs/files-api.md) for server behavior.
+This client wraps only `/files/content`; it does not wrap the Files list or
+folder operations.
+
 ## File-ingest limits
 
 The Go SDK exposes `IngestClient.MediaStatus` for polling an existing media
 task. For MCP integrations, `McpClient.IngestMedia` sends the MCP tool's
 base64/payload contract; this is separate from uploading raw bytes to
-`POST /ingest/media`, which the Go SDK does not currently wrap. Use the
-deployment's supported object-store or connector integration for source-file
-transfer.
+`POST /ingest/media`, which the Go SDK does not wrap. `FilesClient` transfers
+opaque tenant-owned content through `/files/content`; it does not invoke media
+processing or document extraction. Use the deployment's supported connector
+integration when source-file transfer must also trigger ingestion.
 
 `ObjectClient.List`/`.Get` (present in the TypeScript SDK) are intentionally **not**
 ported — see the doc comment on `ObjectClient` in `relata/objects.go` for why (the

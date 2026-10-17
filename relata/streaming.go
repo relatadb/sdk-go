@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 // StreamingClient is the synchronous streaming client — NDJSON row streams,
@@ -30,37 +31,143 @@ func NewStreamingClient(c *Client) *StreamingClient {
 // current row; call Close when done (ideally via defer). Err reports any
 // decode or transport error encountered after the stream ends.
 type RowIterator struct {
-	scanner *bufio.Scanner
-	body    io.ReadCloser
-	err     error
-	row     map[string]any
-	ready   bool
-	closed  bool
+	scanner      *bufio.Scanner
+	body         io.ReadCloser
+	err          error
+	row          map[string]any
+	ready        bool
+	closed       bool
+	started      bool
+	terminal     bool
+	queryID      string
+	rowsReceived uint64
+	frameLimit   int
 }
 
-// Next advances the iterator to the next row. It returns false when the stream
-// is exhausted or an error occurred (inspect via Err).
+// IncompleteQueryStreamError means the server did not prove a complete answer.
+// RowsReceived rows may already have been consumed; callers must not silently
+// retry and concatenate them. QueryID is available after valid leading metadata.
+type IncompleteQueryStreamError struct {
+	QueryID      string
+	RowsReceived uint64
+	Reason       string
+}
+
+func (e *IncompleteQueryStreamError) Error() string {
+	return fmt.Sprintf("relata: incomplete query stream (query_id=%q, rows_received=%d): %s", e.QueryID, e.RowsReceived, e.Reason)
+}
+
+func (it *RowIterator) fail(reason string) bool {
+	it.err = &IncompleteQueryStreamError{QueryID: it.queryID, RowsReceived: it.rowsReceived, Reason: reason}
+	_ = it.Close()
+	return false
+}
+
+func streamUnsigned(raw json.RawMessage) (uint64, bool) {
+	var n uint64
+	if len(raw) == 0 || json.Unmarshal(raw, &n) != nil || string(raw) == "null" {
+		return 0, false
+	}
+	return n, true
+}
+
+func queryMetadata(row map[string]any) (map[string]any, bool) {
+	if len(row) != 1 {
+		return nil, false
+	}
+	meta, ok := row["_meta"].(map[string]any)
+	if !ok {
+		return nil, false
+	}
+	for _, key := range []string{"query_id", "started_at", "columns", "processing_time_ms", "row_count", "truncated", "error"} {
+		if _, ok := meta[key]; ok {
+			return meta, true
+		}
+	}
+	return nil, false
+}
+
+// Next yields only row objects. Clean completion requires both metadata frames,
+// an exact terminal row count, and truncated:false without an error. It never
+// retries. EOF and every framing/transport failure close the response body.
 func (it *RowIterator) Next() bool {
 	it.ready = false
 	if it.closed || it.err != nil {
 		return false
 	}
 	for it.scanner.Scan() {
-		line := strings.TrimSpace(it.scanner.Text())
-		if line == "" {
+		raw := it.scanner.Bytes()
+		if len(raw) > it.frameLimit {
+			return it.fail("NDJSON frame exceeds MaxResponseBytes")
+		}
+		if !utf8.Valid(raw) {
+			return it.fail("NDJSON frame contains invalid UTF-8")
+		}
+		line := bytes.TrimSpace(raw)
+		if len(line) == 0 {
 			continue
 		}
-		var m map[string]any
-		if err := json.Unmarshal([]byte(line), &m); err != nil {
-			it.err = fmt.Errorf("relata: decode ndjson row: %w", err)
-			return false
+		var row map[string]any
+		if json.Unmarshal(line, &row) != nil || row == nil {
+			return it.fail("malformed NDJSON object frame")
 		}
-		it.row = m
-		it.ready = true
+		if it.terminal {
+			return it.fail("data after terminal metadata")
+		}
+		if meta, ok := queryMetadata(row); ok {
+			// Decode numeric metadata separately to avoid float64 rounding of counts.
+			var envelope map[string]json.RawMessage
+			var fields map[string]json.RawMessage
+			_ = json.Unmarshal(line, &envelope)
+			_ = json.Unmarshal(envelope["_meta"], &fields)
+			if !it.started {
+				id, idOK := meta["query_id"].(string)
+				columns, columnsOK := meta["columns"].([]any)
+				_, timeOK := streamUnsigned(fields["started_at"])
+				if !idOK || id == "" || !columnsOK || !timeOK {
+					return it.fail("malformed leading metadata")
+				}
+				for _, column := range columns {
+					if _, ok := column.(string); !ok {
+						return it.fail("malformed leading columns")
+					}
+				}
+				it.queryID, it.started = id, true
+				continue
+			}
+			count, countOK := streamUnsigned(fields["row_count"])
+			_, timeOK := streamUnsigned(fields["processing_time_ms"])
+			truncated, truncOK := meta["truncated"].(bool)
+			if !countOK || !timeOK || !truncOK {
+				return it.fail("malformed terminal metadata")
+			}
+			if _, exists := fields["error"]; exists {
+				return it.fail("server reported an incomplete answer")
+			}
+			if truncated {
+				return it.fail("server truncated the answer")
+			}
+			if count != it.rowsReceived {
+				return it.fail("terminal row count differs from received rows")
+			}
+			it.terminal = true
+			continue
+		}
+		if !it.started {
+			return it.fail("missing leading metadata")
+		}
+		it.rowsReceived++
+		it.row, it.ready = row, true
 		return true
 	}
-	if err := it.scanner.Err(); err != nil {
-		it.err = fmt.Errorf("relata: read stream: %w", err)
+	if it.scanner.Err() != nil {
+		return it.fail("NDJSON transport or frame-size failure")
+	}
+	if !it.terminal {
+		return it.fail("missing terminal completion metadata")
+	}
+	if err := it.Close(); err != nil {
+		it.err = err
 	}
 	return false
 }
@@ -97,14 +204,27 @@ func (s *StreamingClient) QueryRows(ctx context.Context, sql string, opts *Strea
 		return nil, err
 	}
 	body, _ := json.Marshal(map[string]any{"purpose": purpose, "sql": sql})
-	rc, err := s.c.openStream(ctx, http.MethodPost, "/query", body, defaultContentType)
+	rc, err := s.c.openStreamAccept(ctx, http.MethodPost, "/query/stream", body, defaultContentType, "application/x-ndjson")
 	if err != nil {
 		return nil, err
 	}
-	return &RowIterator{
-		scanner: bufio.NewScanner(rc),
-		body:    rc,
-	}, nil
+	return newRowIterator(rc, s.c.maxResponseBytes), nil
+}
+
+// MaxResponseBytes is a per-frame cap for query NDJSON (default 64 MiB),
+// not a total-stream cap. Other streaming APIs retain their existing behavior.
+func newRowIterator(body io.ReadCloser, limit int64) *RowIterator {
+	if limit <= 0 {
+		limit = defaultMaxResponseBytes
+	}
+	maxInt := int(^uint(0) >> 1)
+	if limit >= int64(maxInt) {
+		limit = int64(maxInt - 1)
+	}
+	frameLimit := int(limit)
+	scanner := bufio.NewScanner(body)
+	scanner.Buffer(make([]byte, min(64*1024, frameLimit+1)), frameLimit+1)
+	return &RowIterator{scanner: scanner, body: body, frameLimit: frameLimit}
 }
 
 // BytesIterator is the raw Arrow IPC byte-stream iterator from POST /query/arrow.
@@ -385,6 +505,10 @@ func (s *StreamingClient) resolvePurpose(opts *StreamingQueryOptions) (string, e
 // must Close it. Retry is intentionally NOT applied to streaming requests — the
 // body is the response.
 func (c *Client) openStream(ctx context.Context, method, path string, body []byte, contentType string) (io.ReadCloser, error) {
+	return c.openStreamAccept(ctx, method, path, body, contentType, "")
+}
+
+func (c *Client) openStreamAccept(ctx context.Context, method, path string, body []byte, contentType, accept string) (io.ReadCloser, error) {
 	if c.destroyed {
 		return nil, ErrClientClosed
 	}
@@ -404,6 +528,9 @@ func (c *Client) openStream(ctx context.Context, method, path string, body []byt
 		req.Header.Set(headerContentType, contentType)
 	}
 	c.setHeaders(req)
+	if accept != "" {
+		req.Header.Set("Accept", accept)
+	}
 	resp, err := c.http.Do(req)
 	if err != nil {
 		return nil, c.classifyTransportError(ctx, err)

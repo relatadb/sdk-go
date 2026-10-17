@@ -46,7 +46,7 @@ type EraseSubjectOptions struct {
 	// false: CERTIFY is destructive opt-in — omitted or false omits the
 	// keyword and the server refuses the erasure with "CERTIFY keyword
 	// required to confirm irreversible erasure". Only an explicit
-	// Certify=true (with CertifySet) confirms the irreversible crypto-shred.
+	// Certify=true (with CertifySet) opts into the request, not provider key-destruction certification.
 	Certify bool
 	// CertifySet reports whether Certify was explicitly set.
 	CertifySet bool
@@ -146,7 +146,7 @@ func (i *IdentityClient) InvokeLookup(ctx context.Context, name, key string) (ma
 // or false omits the CERTIFY keyword and the server refuses the erasure with
 // "CERTIFY keyword required to confirm irreversible erasure" — matching the
 // engine's own safety rail. Only an explicit Certify=true confirms the
-// irreversible crypto-shred. (Historically the omitted default was true,
+// erasure request with explicit incomplete local receipts. (Historically the omitted default was true,
 // which silently confirmed destruction for callers that never considered
 // the flag.)
 func (i *IdentityClient) EraseSubject(ctx context.Context, subjectIdentity, reason, purpose string, opts *EraseSubjectOptions) (map[string]any, error) {

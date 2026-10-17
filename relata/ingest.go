@@ -47,13 +47,18 @@ type BulkOptions struct {
 }
 
 // Bulk bulk-ingests rows as NDJSON. Returns the server receipt.
+// Local encoding failure rejects the entire request before HTTP and identifies
+// the 1-based row; a valid prefix is never sent as an apparent successful batch.
 func (i *IngestClient) Bulk(ctx context.Context, objectType string, rows []map[string]any, opts *BulkOptions) (map[string]any, error) {
 	if opts != nil && opts.OnConflict != "" {
 		// Route to /ingest/bulk so on_conflict + tenant_id take effect
 		// (the /ingest door doesn't accept them).
 		return i.postBulkTyped(ctx, objectType, rows, opts)
 	}
-	body := rowToNDJSON(rows)
+	body, err := rowToNDJSON(rows)
+	if err != nil {
+		return nil, err
+	}
 	return i.postIngest(ctx, objectType, body, "application/x-ndjson", opts)
 }
 

@@ -762,7 +762,7 @@ type McpEraseSubjectOptions struct {
 	Reason string
 }
 
-// EraseSubject performs a GDPR Art. 17 crypto-shred erasure ("erase_subject").
+// EraseSubject performs a governed erasure ("erase_subject"); local receipts do not certify provider key destruction.
 func (m *McpClient) EraseSubject(ctx context.Context, subject string, opts *McpEraseSubjectOptions) (map[string]any, error) {
 	reason := "gdpr-art17-request"
 	if opts != nil && opts.Reason != "" {

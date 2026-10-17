@@ -353,7 +353,7 @@ type IngestDocumentResponse struct {
 }
 
 // IngestDocumentTaskStatus is the generic task response from
-// GET /ingest/tasks/{taskID}. Task status is process-local on the server;
+// GET /ingest/tasks/{taskID}. Persistent local receipts survive restart; volatile profiles remain process-local;
 // pending is nonterminal, while complete, partial, failed, uncertain, and
 // incomplete are terminal. Uncertain does not mean complete and must not be
 // blindly retried.
@@ -498,12 +498,13 @@ type ClientOptions struct {
 	// https:// / grpcs:// / tls:// transports are always allowed.
 	AllowCleartextBearer bool
 
-	// MaxResponseBytes caps how much of a (non-streaming) response body the
+	// MaxResponseBytes also caps each QueryRows NDJSON frame (not the total stream).
+	// For buffered requests it caps how much of a response body the
 	// client will buffer (#3214). A body larger than this returns
 	// ErrResponseTooLarge instead of being read into memory, so a malicious or
 	// buggy server cannot OOM the client. Zero (the default) applies the
-	// built-in 64 MiB cap. Streaming surfaces (QueryRows / QueryArrowRaw /
-	// GetObjectStream) are not capped — they hand the caller an io.ReadCloser.
+	// built-in 64 MiB cap. QueryRows uses this as a per-frame bound; raw
+	// QueryArrowRaw / GetObjectStream bodies are not capped.
 	MaxResponseBytes int64
 }
 

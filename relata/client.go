@@ -59,7 +59,7 @@ type Client struct {
 	// http:// transport to a non-loopback host (#3217). Default false: such
 	// requests fail closed with ErrCleartextBearerDisallowed.
 	allowCleartextBearer bool
-	// maxResponseBytes caps buffered (non-streaming) response bodies (#3214).
+	// maxResponseBytes caps buffered responses and individual QueryRows frames.
 	maxResponseBytes int64
 	// destroyed marks the client closed via Close(); the bearer token is
 	// zeroized and further requests fail closed (#3214).
@@ -534,7 +534,8 @@ func (c *Client) DetectIdentities(ctx context.Context, purpose, text string) (ma
 	return c.query(ctx, purpose, sql)
 }
 
-// EraseSubject performs GDPR Art. 17 erasure — irreversible.
+// EraseSubject requests scoped GDPR erasure. Destructive steps are irreversible.
+// Controller access revocation is not certified cryptographic erasure; inspect receipt_scope and incomplete copy states.
 func (c *Client) EraseSubject(ctx context.Context, purpose, subject, reason string) (map[string]any, error) {
 	s := escapeSQLString(subject)
 	r := escapeSQLString(reason)
@@ -960,7 +961,9 @@ func (c *Client) Ready(ctx context.Context) (*ReadyReport, error) {
 // IngestDocument queues prepared governed rows through POST /ingest/bulk.
 // Document extraction and mapping belong in application adapters; each row
 // should include _type and a stable _pk. The server admits all types under one
-// process-local task receipt. Queue acceptance is not crash-durable.
+// local task receipt. Queued payloads remain volatile; configured local authority
+// records durable intent and confirmed progress, while volatile profiles keep RAM
+// status. Queue acceptance does not confirm primary writes, indexing or replication.
 func (c *Client) IngestDocument(ctx context.Context, objects []map[string]any, purpose string) (*IngestDocumentResponse, error) {
 	if purpose == "" {
 		purpose = c.defaultPurpose
@@ -977,9 +980,9 @@ func (c *Client) IngestDocument(ctx context.Context, objects []map[string]any, p
 	return &resp, nil
 }
 
-// IngestDocumentStatus reads the current process-local status of an ingest
-// task from GET /ingest/tasks/{taskID}. Unknown or expired tasks return
-// the server's normal not-found error.
+// IngestDocumentStatus reads local receipt evidence for an ingest
+// task from GET /ingest/tasks/{taskID}. Unknown tasks or tenant/origin mismatch
+// return not-found; unavailable complete receipt evidence returns an error.
 func (c *Client) IngestDocumentStatus(ctx context.Context, taskID string) (*IngestDocumentTaskStatus, error) {
 	var resp IngestDocumentTaskStatus
 	if err := c.get(ctx, "/ingest/tasks/"+pathSegment(taskID), &resp); err != nil {
@@ -1254,6 +1257,10 @@ func (c *Client) doRequestWithHeaders(ctx context.Context, method, path string, 
 		}
 
 		if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+			if raw, ok := out.(*rawHTTPResponse); ok {
+				raw.StatusCode, raw.Body, raw.Headers = resp.StatusCode, respBody, resp.Header.Clone()
+				return nil
+			}
 			if out == nil || len(respBody) == 0 {
 				return nil
 			}

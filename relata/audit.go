@@ -2,12 +2,11 @@ package relata
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 )
 
 // AuditClient is the synchronous audit + provenance client. It wraps audit
-// entry listing (filtered/paginated), signed evidence receipts, and PDF export.
+// entry listing (filtered/paginated) and query correlation.
 type AuditClient struct {
 	c *Client
 }
@@ -100,33 +99,4 @@ func (a *AuditClient) FindByRequestID(ctx context.Context, requestID string) (ma
 		return m, nil
 	}
 	return nil, nil
-}
-
-// SignReceipt signs an Art. 17 / evidence receipt. Returns the signed receipt
-// with the server's HMAC signature.
-func (a *AuditClient) SignReceipt(ctx context.Context, payload map[string]any) (map[string]any, error) {
-	var resp map[string]any
-	if err := a.c.postJSON(ctx, "/report/sign", payload, &resp); err != nil {
-		return nil, err
-	}
-	return resp, nil
-}
-
-// ExportPDF exports a court-grade PDF report for a case. Returns the raw PDF
-// bytes. The template selects a server-side report template (default "default").
-func (a *AuditClient) ExportPDF(ctx context.Context, caseID, template string) ([]byte, error) {
-	if template == "" {
-		template = "default"
-	}
-	body, _ := json.Marshal(map[string]any{"case_id": caseID, "template": template})
-	status, data, _, err := a.c.rawHTTPRequest(ctx, "POST", "/report/pdf", body, defaultContentType)
-	if err != nil {
-		return nil, err
-	}
-	if status < 200 || status >= 300 {
-		rid := ""
-		retryAfter := parseRetryAfter("")
-		return nil, errorFromStatus(status, data, rid, retryAfter, "", "")
-	}
-	return data, nil
 }

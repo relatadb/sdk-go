@@ -37,6 +37,9 @@ func (f *FeedBrokerClient) Channels(ctx context.Context) ([]map[string]any, erro
 
 // Publish sends a complete signed FeedEntry. publisherDID must match the
 // body's publisher_id; the broker validates the entry and signature.
+// Durable mode acknowledges manifest selection. Exact replay preserves the
+// original stamp; metadata changes conflict. Storage failures can be uncertain;
+// this non-idempotent POST is not automatically retried.
 func (f *FeedBrokerClient) Publish(ctx context.Context, publisherDID string, entry map[string]any) (map[string]any, error) {
 	if publisherDID == "" {
 		return nil, errors.New("relata: publisherDID is required")

@@ -11,19 +11,15 @@ import (
 // It wraps the universal upsert path POST /ingest?object_type=<Type> so callers
 // do not have to know the ingest envelope shape.
 //
-// # List() — N/A by design (#2758 delta #3)
+// # Read surface
 //
-// The TypeScript reference ships ObjectClient.get()/list() calling
-// GET /objects/{type}/{id} and GET /objects/{type}?limit=&cursor=. Those
-// routes have no GET handler on the server: crates/relata-cli/src/serve.rs's
-// /objects/:type_name(/:row_id) routes are registered DELETE-only (#1212;
-// see delete_object_handler/delete_objects_batch_handler) — there is no
-// list_objects_handler or get_object_handler to call. The Python SDK likewise
-// exposes no get/list on its ObjectClient. Go stays aligned with the server
-// surface rather than adding a client method with no working server
-// backing; adding the server-side route is out of this SDK ticket's scope
-// (see epic #2754's non-goals) and is a candidate for its own ticket if the
-// TS/server gap is closed.
+// This Go client currently exposes only Upsert and BatchUpsert. The current
+// server also supports governed GET /objects/{type}/{id} and GET /objects/{type}
+// (see the TypeScript ObjectClient); their absence here is an SDK surface
+// difference, not a server DELETE-only limitation. Use Client.Query for a
+// governed point lookup or scan until a Go read convenience method is added.
+// BatchUpsert below uses queued POST /ingest, unlike Python/TypeScript's
+// POST /ingest/bulk helper: inspect task completion before relying on visibility.
 type ObjectClient struct {
 	c       *Client
 	purpose string
@@ -63,11 +59,15 @@ func (o *ObjectClient) Upsert(ctx context.Context, objectType, objectID string, 
 	if opts != nil && opts.Source != "" {
 		row["_source"] = opts.Source
 	}
-	body := rowToNDJSON([]map[string]any{row})
+	body, err := rowToNDJSON([]map[string]any{row})
+	if err != nil {
+		return nil, err
+	}
 	return o.postIngest(ctx, objectType, body, "application/x-ndjson", opts)
 }
 
-// BatchUpsert bulk-upserts. Each row must carry its own "id" key. Per-row
+// BatchUpsert bulk-upserts. Local encoding errors reject the entire request
+// before HTTP. Each row must carry its own "id" key. Per-row
 // rejections are reported in the receipt, not as an error — inspect it. Returns
 // the bulk receipt (accepted, rejected, write_seq, queue_depth).
 func (o *ObjectClient) BatchUpsert(ctx context.Context, objectType string, rows []map[string]any, opts *UpsertOptions) (map[string]any, error) {
@@ -83,7 +83,10 @@ func (o *ObjectClient) BatchUpsert(ctx context.Context, objectType string, rows 
 		}
 		rows = annotated
 	}
-	body := rowToNDJSON(rows)
+	body, err := rowToNDJSON(rows)
+	if err != nil {
+		return nil, err
+	}
 	return o.postIngest(ctx, objectType, body, "application/x-ndjson", opts)
 }
 
@@ -118,15 +121,19 @@ func (o *ObjectClient) postIngest(ctx context.Context, objectType, body, content
 // rowToNDJSON serialises rows as newline-delimited JSON — one row per line.
 // json.Encoder.Encode already appends a newline after each row, so the joined
 // output matches Python's "\n".join(json.dumps(r) for r in rows).
-func rowToNDJSON(rows []map[string]any) string {
+// Encoding errors reject the entire local request before any HTTP mutation.
+func rowToNDJSON(rows []map[string]any) (string, error) {
 	var buf bytes.Buffer
 	enc := json.NewEncoder(&buf)
-	for _, r := range rows {
-		_ = enc.Encode(r)
+	for index, r := range rows {
+		if err := enc.Encode(r); err != nil {
+			// Return no prefix: callers must refuse before any HTTP effect.
+			return "", fmt.Errorf("relata: encode NDJSON row %d: %w", index+1, err)
+		}
 	}
 	out := buf.String()
 	if n := len(out); n > 0 && out[n-1] == '\n' {
 		out = out[:n-1]
 	}
-	return out
+	return out, nil
 }
