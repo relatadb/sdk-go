@@ -689,11 +689,11 @@ The SDK reads no environment variables directly — all configuration is explici
 | Variable | Effect |
 |---|---|
 | `RELATA_BEARER_TOKEN` | When unset, the server accepts unauthenticated requests |
-| `RELATA_PROFILE` | `free` / `server` / `cluster` deployment profile |
+| `RELATA_HTTP_BIND` | Bind address; a non-loopback bind makes the node network-facing (token required) |
 | `RELATA_DOMAIN_PROFILE` | `enterprise` / `lea` / `finint` / `security` / `custom` |
 | `RELATA_ACL_GRANT` | `<Type>:read+write` grants for strict-mode ACL |
 
-> `lite` was a silent legacy alias for `free` (ADR-204); it is now rejected outright — startup fails (FATAL) if `RELATA_PROFILE=lite` is set. Use `free` instead.
+> `RELATA_PROFILE` accepts only `free` (the default). `server`, `cluster` and `lite` are rejected at startup (#5809).
 
 ## Testing with an ephemeral server
 
