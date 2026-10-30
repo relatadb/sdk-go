@@ -83,7 +83,7 @@ var (
 
 	// ErrCleartextBearerDisallowed is returned when a request would send the
 	// bearer token over a plaintext transport (http:// base URL to a
-	// non-loopback host, or a grpc:// Flight endpoint) without an explicit
+	// non-loopback host) without an explicit
 	// opt-in. Set ClientOptions.AllowCleartextBearer to override — see #3217.
 	ErrCleartextBearerDisallowed = errors.New("relata: refusing to send bearer token over cleartext transport (set AllowCleartextBearer to opt in)")
 

@@ -492,10 +492,10 @@ type ClientOptions struct {
 
 	// AllowCleartextBearer explicitly opts in to sending the bearer token
 	// over cleartext transports (#3217): an http:// base URL targeting a
-	// non-loopback host, or a plaintext grpc:// Arrow Flight endpoint. By
-	// default both are refused with ErrCleartextBearerDisallowed so the token
-	// can never leak on the wire by accident. Loopback http:// targets and
-	// https:// / grpcs:// / tls:// transports are always allowed.
+	// non-loopback host. By default it is refused with
+	// ErrCleartextBearerDisallowed so the token can never leak on the wire by
+	// accident. Loopback http:// targets and https:// transports are always
+	// allowed.
 	AllowCleartextBearer bool
 
 	// MaxResponseBytes also caps each QueryRows NDJSON frame (not the total stream).
