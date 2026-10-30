@@ -44,14 +44,43 @@ type BulkOptions struct {
 	// TenantID optionally scopes the write to a tenant (forwarded to the
 	// governance layer). Mirrors BulkIngestRequest.tenant_id.
 	TenantID string
+	// IdempotencyKey sets the Idempotency-Key header (#5689): a retry with the
+	// same key and rows replays the recorded response without a second write; a
+	// different body is 409 idempotency-conflict. Routes the call to /ingest/bulk.
+	IdempotencyKey string
+	// Durability "sync" sends X-Relata-Durability: sync (WAL fsynced before the
+	// response).
+	Durability string
+	// SourceCheckpoint asks the server to advance a durable source checkpoint
+	// only after a successful synchronous write (requires Durability "sync").
+	// Routes the call to /ingest/bulk.
+	SourceCheckpoint *SourceCheckpoint
+	// Contract validates rows against a data contract (#5714); invalid rows are
+	// quarantined server-side. Routes the call to /ingest/bulk.
+	Contract *ContractRef
+}
+
+// SourceCheckpoint is the bulk-ingest source_checkpoint member (#5689).
+type SourceCheckpoint struct {
+	Source   string `json:"source"`
+	Position string `json:"position"`
+	// ExpectedPosition is a compare-and-set guard ("" pointer = not sent).
+	ExpectedPosition *string `json:"expected_position,omitempty"`
+}
+
+// ContractRef is the bulk-ingest contract member (#5714).
+type ContractRef struct {
+	Dataset string `json:"dataset"`
+	Version uint32 `json:"version,omitempty"`
 }
 
 // Bulk bulk-ingests rows as NDJSON. Returns the server receipt.
 // Local encoding failure rejects the entire request before HTTP and identifies
 // the 1-based row; a valid prefix is never sent as an apparent successful batch.
 func (i *IngestClient) Bulk(ctx context.Context, objectType string, rows []map[string]any, opts *BulkOptions) (map[string]any, error) {
-	if opts != nil && opts.OnConflict != "" {
-		// Route to /ingest/bulk so on_conflict + tenant_id take effect
+	if opts != nil && (opts.OnConflict != "" || opts.IdempotencyKey != "" ||
+		opts.SourceCheckpoint != nil || opts.Contract != nil) {
+		// Route to /ingest/bulk so on_conflict + tenant_id + the envelope take effect
 		// (the /ingest door doesn't accept them).
 		return i.postBulkTyped(ctx, objectType, rows, opts)
 	}
@@ -484,12 +513,21 @@ func (i *IngestClient) postBulkTyped(ctx context.Context, objectType string, row
 		o["_type"] = objectType
 		objects = append(objects, o)
 	}
-	body := map[string]any{"objects": objects, "on_conflict": opts.OnConflict}
+	body := map[string]any{"objects": objects}
+	if opts.OnConflict != "" {
+		body["on_conflict"] = opts.OnConflict
+	}
 	if purpose != "" {
 		body["purpose"] = purpose
 	}
-	if opts != nil && opts.TenantID != "" {
+	if opts.TenantID != "" {
 		body["tenant_id"] = opts.TenantID
+	}
+	if opts.SourceCheckpoint != nil {
+		body["source_checkpoint"] = opts.SourceCheckpoint
+	}
+	if opts.Contract != nil {
+		body["contract"] = opts.Contract
 	}
 	encoded, err := json.Marshal(body)
 	if err != nil {
@@ -515,8 +553,24 @@ func (i *IngestClient) postBulkTyped(ctx context.Context, objectType string, row
 // detectHeader returns a header map carrying X-Detect-Packs when DetectPacks is
 // set, else nil (no override).
 func (i *IngestClient) detectHeader(opts *BulkOptions) map[string]string {
-	if opts != nil && opts.DetectPacks != "" {
-		return map[string]string{"X-Detect-Packs": opts.DetectPacks}
+	if opts == nil {
+		return nil
 	}
-	return nil
+	var h map[string]string
+	set := func(k, v string) {
+		if h == nil {
+			h = map[string]string{}
+		}
+		h[k] = v
+	}
+	if opts.DetectPacks != "" {
+		set("X-Detect-Packs", opts.DetectPacks)
+	}
+	if opts.IdempotencyKey != "" {
+		set("Idempotency-Key", opts.IdempotencyKey)
+	}
+	if opts.Durability != "" {
+		set("X-Relata-Durability", opts.Durability)
+	}
+	return h
 }

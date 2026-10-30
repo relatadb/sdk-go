@@ -208,3 +208,47 @@ func TestOTLP_PostJSONToRightDoor(t *testing.T) {
 		t.Fatalf("OTLP body not JSON: %v", err)
 	}
 }
+
+func TestBulkEnvelopeOptionsRouteToBulkDoor(t *testing.T) {
+	var gotPath, gotKey, gotDur, gotBody string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		gotKey = r.Header.Get("Idempotency-Key")
+		gotDur = r.Header.Get("X-Relata-Durability")
+		b, _ := io.ReadAll(r.Body)
+		gotBody = string(b)
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"inserted":1,"errors":[]}`)
+	}))
+	defer srv.Close()
+
+	ic := NewIngestClient(newTestClient(srv, &ClientOptions{DefaultPurpose: "analytics"}))
+	expected := ""
+	_, err := ic.Bulk(context.Background(), "OrderEvent", []map[string]any{{"_pk": "k1", "qty": 3}}, &BulkOptions{
+		IdempotencyKey:   "batch-100",
+		Durability:       "sync",
+		SourceCheckpoint: &SourceCheckpoint{Source: "kafka/orders-0", Position: "100", ExpectedPosition: &expected},
+		Contract:         &ContractRef{Dataset: "orders", Version: 2},
+	})
+	if err != nil {
+		t.Fatalf("Bulk: %v", err)
+	}
+	if gotPath != "/ingest/bulk" || gotKey != "batch-100" || gotDur != "sync" {
+		t.Fatalf("path=%q key=%q durability=%q", gotPath, gotKey, gotDur)
+	}
+	var body map[string]any
+	if err := json.Unmarshal([]byte(gotBody), &body); err != nil {
+		t.Fatalf("decode body: %v", err)
+	}
+	cp, _ := body["source_checkpoint"].(map[string]any)
+	ct, _ := body["contract"].(map[string]any)
+	if cp["source"] != "kafka/orders-0" || cp["position"] != "100" || cp["expected_position"] != "" {
+		t.Fatalf("source_checkpoint = %#v", cp)
+	}
+	if ct["dataset"] != "orders" || ct["version"] != float64(2) {
+		t.Fatalf("contract = %#v", ct)
+	}
+	if _, present := body["on_conflict"]; present {
+		t.Fatalf("on_conflict must be omitted when unset: %#v", body)
+	}
+}
