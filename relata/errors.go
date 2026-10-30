@@ -42,6 +42,13 @@ var (
 	// A version or uniqueness conflict occurred.
 	ErrConflict = errors.New("relata: conflict")
 
+	// ErrPreconditionFailed is returned when the server responds with HTTP 412:
+	// a conditional write (If-Match / If-None-Match / a commit bundle's
+	// expectedVersion) lost because the object is not at the version the caller
+	// read. Nothing was written; RelataError.CurrentVersion carries the live
+	// version (nil when the object does not exist).
+	ErrPreconditionFailed = errors.New("relata: precondition failed")
+
 	// ErrValidation is returned when the server responds with HTTP 422.
 	// The request body failed server-side validation.
 	ErrValidation = errors.New("relata: validation error")
@@ -138,6 +145,13 @@ type RelataError struct {
 	RateLimitRemaining int64
 	// RateLimitReset is the X-RateLimit-Reset header (unix seconds). Zero when absent.
 	RateLimitReset int64
+
+	// CurrentVersion is the live object version a failed precondition (HTTP
+	// 412) reports; nil when absent or when the object does not exist (#5766).
+	CurrentVersion *int64
+	// FailedOperation is the index of the failing operation in a commit bundle
+	// on a 412 (0 for a single conditional write); nil otherwise.
+	FailedOperation *int
 }
 
 // Error implements the error interface.
@@ -167,6 +181,9 @@ type problemShape struct {
 	Retryable  bool        `json:"retryable"`
 	RequestID  string      `json:"request_id"`
 	RetryAfter json.Number `json:"retry_after"`
+
+	CurrentVersion  *int64 `json:"current_version"`
+	FailedOperation *int   `json:"failed_operation"`
 }
 
 // isAdminOnlyPath reports whether path is mounted only on the loopbound admin
@@ -235,11 +252,13 @@ func errorFromStatus(
 	contentType string,
 ) *RelataError {
 	var (
-		code      string
-		typeURL   string
-		detail    string
-		retryable bool
-		rid       = requestID
+		code            string
+		typeURL         string
+		detail          string
+		retryable       bool
+		rid             = requestID
+		currentVersion  *int64
+		failedOperation *int
 	)
 
 	var prob problemShape
@@ -248,6 +267,8 @@ func errorFromStatus(
 		code = prob.Code
 		typeURL = prob.Type
 		retryable = prob.Retryable
+		currentVersion = prob.CurrentVersion
+		failedOperation = prob.FailedOperation
 		if prob.Detail != "" {
 			detail = prob.Detail
 		} else if prob.Error != "" {
@@ -288,6 +309,9 @@ func errorFromStatus(
 		Retryable:  retryable,
 		RequestID:  rid,
 		RetryAfter: retryAfter,
+
+		CurrentVersion:  currentVersion,
+		FailedOperation: failedOperation,
 	}
 	switch statusCode {
 	case 401:
@@ -298,6 +322,8 @@ func errorFromStatus(
 		re.Err = ErrNotFound
 	case 409:
 		re.Err = ErrConflict
+	case 412:
+		re.Err = ErrPreconditionFailed
 	case 422:
 		re.Err = ErrValidation
 	case 429:
