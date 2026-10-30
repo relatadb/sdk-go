@@ -11,7 +11,6 @@ import (
 // (#1189). The server executes such patterns with the VF3
 // subgraph-isomorphism engine, falling back to chained BFS when a pattern is
 // outside VF3's supported subset (e.g. unbounded * variable-length paths).
-// The server-wide kill-switch is RELATA_VF3_ENABLED.
 type Matcher string
 
 // Matcher selection values (#1189).
