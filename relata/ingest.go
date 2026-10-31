@@ -58,6 +58,11 @@ type BulkOptions struct {
 	// Contract validates rows against a data contract (#5714); invalid rows are
 	// quarantined server-side. Routes the call to /ingest/bulk.
 	Contract *ContractRef
+	// MediaWorkClaim is the claim_id from MediaWorkClient.Claim, sent as
+	// X-Relata-Claim (0 = not sent). Required when SourceCheckpoint names an
+	// openetl/media/<work_id> source; the server fences stale holders. Routes
+	// the call to /ingest/bulk.
+	MediaWorkClaim uint64
 }
 
 // SourceCheckpoint is the bulk-ingest source_checkpoint member (#5689).
@@ -79,7 +84,7 @@ type ContractRef struct {
 // the 1-based row; a valid prefix is never sent as an apparent successful batch.
 func (i *IngestClient) Bulk(ctx context.Context, objectType string, rows []map[string]any, opts *BulkOptions) (map[string]any, error) {
 	if opts != nil && (opts.OnConflict != "" || opts.IdempotencyKey != "" ||
-		opts.SourceCheckpoint != nil || opts.Contract != nil) {
+		opts.SourceCheckpoint != nil || opts.Contract != nil || opts.MediaWorkClaim != 0) {
 		// Route to /ingest/bulk so on_conflict + tenant_id + the envelope take effect
 		// (the /ingest door doesn't accept them).
 		return i.postBulkTyped(ctx, objectType, rows, opts)
@@ -571,6 +576,9 @@ func (i *IngestClient) detectHeader(opts *BulkOptions) map[string]string {
 	}
 	if opts.Durability != "" {
 		set("X-Relata-Durability", opts.Durability)
+	}
+	if opts.MediaWorkClaim != 0 {
+		set(MediaWorkClaimHeader, strconv.FormatUint(opts.MediaWorkClaim, 10))
 	}
 	return h
 }
