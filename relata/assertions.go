@@ -87,10 +87,22 @@ func (a *AssertionsClient) Revoke(ctx context.Context, id, reason string) (map[s
 }
 
 // Relate calls POST /assertion-relations (#5721): link two assertions with
-// kind "supports", "contradicts" or "derived_from", a rationale and an
+// kind "supports", "contradicts", "derived_from" (or a reviewer's
+// "same_group_as" / "distinct_from"), a rationale and an
 // optional locator ({"evidence_id": ..., "pointer": ...}; nil for none).
 func (a *AssertionsClient) Relate(ctx context.Context, from, kind, to, rationale string, locator map[string]any) (map[string]any, error) {
 	body := map[string]any{"from": from, "to": to, "kind": kind, "rationale": rationale}
+	if locator != nil {
+		body["locator"] = locator
+	}
+	return a.post(ctx, "/assertion-relations", body)
+}
+
+// RelateSimilar calls POST /assertion-relations with kind "similar_to": the
+// score in [0, 1] and method come from the caller's ETL step.
+func (a *AssertionsClient) RelateSimilar(ctx context.Context, from, to, rationale string, score float64, method string, locator map[string]any) (map[string]any, error) {
+	body := map[string]any{"from": from, "to": to, "kind": "similar_to", "rationale": rationale,
+		"similarity": map[string]any{"score": score, "method": method}}
 	if locator != nil {
 		body["locator"] = locator
 	}
@@ -119,6 +131,9 @@ type EvidenceGraphOptions struct {
 	Policy string
 	// PolicyVersion selects a policy version; 0 is the latest.
 	PolicyVersion int
+	// MinSimilarity is the score at which similar_to relations join a group;
+	// nil is the server default (0.8).
+	MinSimilarity *float64
 }
 
 // EvidenceGraph calls GET .../evidence-graph: the bounded, authorized
@@ -136,6 +151,9 @@ func (a *AssertionsClient) EvidenceGraph(ctx context.Context, id string, opts Ev
 		if opts.PolicyVersion > 0 {
 			q.Set("policy_version", strconv.Itoa(opts.PolicyVersion))
 		}
+	}
+	if opts.MinSimilarity != nil {
+		q.Set("min_similarity", strconv.FormatFloat(*opts.MinSimilarity, 'f', -1, 64))
 	}
 	p := "/assertions/" + url.PathEscape(id) + "/evidence-graph"
 	if len(q) > 0 {

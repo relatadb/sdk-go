@@ -207,11 +207,16 @@ type ChangesOptions struct {
 // ChangeEvent is one committed object change. It carries identity, version
 // and kind, never field values.
 type ChangeEvent struct {
-	EventID       string `json:"eventId"`
-	Seq           int64  `json:"seq"`
-	Kind          string `json:"kind"`
+	EventID string `json:"eventId"`
+	Seq     int64  `json:"seq"`
+	Kind    string `json:"kind"`
+	// Entity is "object" for object changes and "link" for graph edges (Type is
+	// then the link name and SourceID/TargetID name the endpoints).
+	Entity        string `json:"entity"`
 	Type          string `json:"type"`
 	ID            string `json:"id"`
+	SourceID      string `json:"sourceId,omitempty"`
+	TargetID      string `json:"targetId,omitempty"`
 	Version       int64  `json:"version"`
 	CommitID      string `json:"commitId"`
 	OpIndex       int    `json:"opIndex"`
@@ -227,6 +232,8 @@ type ChangesPage struct {
 	Head       int64         `json:"head"`
 	Oldest     int64         `json:"oldest"`
 	Withheld   int           `json:"withheld"`
+	// JournalFailures counts events whose durable journal row failed.
+	JournalFailures int `json:"journalFailures"`
 }
 
 // Changes reads one page of the object change feed (GET /object-changes,
@@ -257,6 +264,31 @@ func (o *ObjectClient) Changes(ctx context.Context, opts ChangesOptions) (*Chang
 		return nil, err
 	}
 	return &out, nil
+}
+
+// ChangePages reads successive change-feed pages from opts until the consumer
+// is caught up (the first page with HasMore false), calling handle once per
+// page. Persist page.NextCursor only after handle returned nil for the page.
+// It returns the cursor to resume from. The feed captures every write path
+// (objects, ingest, SQL, links, deletes) and is off unless the server sets
+// RELATA_CHANGE_FEED_ENABLE; a disabled feed returns the API error for
+// 404 change-feed-disabled.
+func (o *ObjectClient) ChangePages(ctx context.Context, opts ChangesOptions, handle func(*ChangesPage) error) (string, error) {
+	cursor := opts.Cursor
+	for {
+		page, err := o.Changes(ctx, opts)
+		if err != nil {
+			return cursor, err
+		}
+		if err := handle(page); err != nil {
+			return cursor, err
+		}
+		cursor = page.NextCursor
+		if !page.HasMore {
+			return cursor, nil
+		}
+		opts.Cursor, opts.Start = cursor, ""
+	}
 }
 
 // Commit atomically applies 1..64 create/update/delete operations
