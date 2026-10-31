@@ -381,6 +381,17 @@ func (c *Client) TypeDetail(ctx context.Context, name string) (map[string]any, e
 	return resp, nil
 }
 
+// TypeLifecycle returns a type's lifecycle progress (#5724): the recent
+// register/alter/deregister outcomes this server process ran for it plus
+// derived-index progress and a freshness token.
+func (c *Client) TypeLifecycle(ctx context.Context, name string) (map[string]any, error) {
+	var resp map[string]any
+	if err := c.get(ctx, "/types/"+pathSegment(name)+"/lifecycle", &resp); err != nil {
+		return nil, err
+	}
+	return resp, nil
+}
+
 // SchemaAlterOptions configures an online schema evolution (#1307).
 type SchemaAlterOptions struct {
 	NewColumn string // rename target (action == "rename")
