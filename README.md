@@ -651,7 +651,6 @@ reference client and Python SDK both lack them too).
 |---|---|
 | [`examples/basic/`](./examples/basic) | Health check + simple SELECT |
 | [`examples/investigation/`](./examples/investigation) | Full FIU investigation workflow (identity → transactions → CDR) |
-| [`examples/face_search/`](./examples/face_search) | Biometric `MATCH_FACE` + identity resolution |
 | [`examples/hybrid_search/`](./examples/hybrid_search) | `VectorClient.HybridSearch` — embed, ingest, BM25-only vs. vector-only vs. fused (RRF) search |
 | [`examples/graph_traversal/`](./examples/graph_traversal) | `PATHS_BETWEEN` Pregel BFS + edge distribution |
 | [`examples/audit/`](./examples/audit) | Daily audit-chain verification + compliance report |
@@ -675,7 +674,6 @@ go run ./sdks/go/examples/investigation \
 | `AS OF 'timestamp'` | Bi-temporal point-in-time read (SPECS §5.5) |
 | `WITH PROVENANCE` | Attach PROV-O lineage columns to every row (SPECS §5.9) |
 | `PATHS_BETWEEN(a, b, max_hops => N)` | Pregel BFS graph traversal (SPECS §5.13) |
-| `MATCH_FACE(ref, top_k => N)` | Biometric face similarity search |
 | `LOOKUP_IDENTITY(id)` | IdentityIndex resolver (SPECS §5.8) |
 | `HYBRID_SCORE(query)` | BM25 + vector combined score (SPECS §5.14) |
 
