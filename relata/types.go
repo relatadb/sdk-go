@@ -44,6 +44,16 @@ type QueryRequest struct {
 	// Params holds positional bind values for $1, $2, … placeholders (#1162).
 	// Omit (nil) when the SQL has no placeholders.
 	Params []any `json:"params,omitempty"`
+
+	// QueryVector is a ready query embedding (at most 8192 floats) for
+	// HYBRID_SEARCH / RAG_RETRIEVE (ADR-0309). When set the server makes no
+	// embedding call.
+	QueryVector []float64 `json:"query_vector,omitempty"`
+
+	// QueryVectorModel is the model tag QueryVector was produced with. A tag
+	// matching none of the type's indexed models is HTTP 409
+	// query-embedding-model-mismatch.
+	QueryVectorModel string `json:"query_vector_model,omitempty"`
 }
 
 // QueryResult is the response from POST /query.

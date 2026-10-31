@@ -62,6 +62,36 @@ func TestQuery_HappyPath(t *testing.T) {
 	}
 }
 
+func TestQuery_QueryVector(t *testing.T) {
+	var gotBody map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		gotBody = nil
+		_ = json.Unmarshal(b, &gotBody)
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"query_id":"q","elapsed_ms":1,"rows":[]}`)
+	}))
+	defer srv.Close()
+	c := newTestClient(srv, &ClientOptions{DefaultPurpose: "analytics"})
+
+	if _, err := c.Query(context.Background(), "SELECT 1", WithQueryVector([]float64{0.25, -1, 3}, "m1")); err != nil {
+		t.Fatalf("Query: %v", err)
+	}
+	if !reflect.DeepEqual(gotBody["query_vector"], []any{0.25, float64(-1), float64(3)}) || gotBody["query_vector_model"] != "m1" {
+		t.Fatalf("payload = %v", gotBody)
+	}
+
+	if _, err := c.Query(context.Background(), "SELECT 1"); err != nil {
+		t.Fatalf("Query: %v", err)
+	}
+	if _, ok := gotBody["query_vector"]; ok {
+		t.Fatalf("query_vector must be omitted by default: %v", gotBody)
+	}
+	if _, ok := gotBody["query_vector_model"]; ok {
+		t.Fatalf("query_vector_model must be omitted by default: %v", gotBody)
+	}
+}
+
 func TestQuery_WireShapeNormalisation_DataArray(t *testing.T) {
 	// Server emits rows-as-int-count + sibling "data" array (the legacy wire shape).
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

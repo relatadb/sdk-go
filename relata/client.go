@@ -163,8 +163,10 @@ func (c *Client) Query(ctx context.Context, sql string, opts ...QueryOption) (*Q
 	}
 
 	payload := QueryRequest{
-		Purpose: cfg.purpose,
-		SQL:     hinted,
+		Purpose:          cfg.purpose,
+		SQL:              hinted,
+		QueryVector:      cfg.queryVector,
+		QueryVectorModel: cfg.queryVectorModel,
 	}
 
 	if cfg.timeout > 0 {

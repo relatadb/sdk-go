@@ -33,6 +33,21 @@ type queryConfig struct {
 	timeout time.Duration
 	dialect string
 	matcher Matcher
+
+	queryVector      []float64
+	queryVectorModel string
+}
+
+// WithQueryVector supplies a ready query embedding for HYBRID_SEARCH /
+// RAG_RETRIEVE (ADR-0309); the server then makes no embedding call. model is
+// the tag the vector was produced with ("" omits it).
+//
+//	client.Query(ctx, sql, relata.WithQueryVector(vec, "text-embedding-3-small"))
+func WithQueryVector(vector []float64, model string) QueryOption {
+	return func(cfg *queryConfig) {
+		cfg.queryVector = vector
+		cfg.queryVectorModel = model
+	}
 }
 
 // WithMatcher sets the subgraph-matcher hint for a single query call (#1189).
