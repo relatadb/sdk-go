@@ -163,8 +163,10 @@ func (c *Client) Query(ctx context.Context, sql string, opts ...QueryOption) (*Q
 	}
 
 	payload := QueryRequest{
-		Purpose: cfg.purpose,
-		SQL:     hinted,
+		Purpose:          cfg.purpose,
+		SQL:              hinted,
+		QueryVector:      cfg.queryVector,
+		QueryVectorModel: cfg.queryVectorModel,
 	}
 
 	if cfg.timeout > 0 {
@@ -384,6 +386,9 @@ type SchemaAlterOptions struct {
 	NewColumn string // rename target (action == "rename")
 	ColType   string // new column type (action == "add" | "retype")
 	Optional  *bool  // nullability override
+	// ExpectedSchemaVersion makes the alter a compare-and-set against the
+	// schema_version from TypeDetail / a prior alter; stale -> 412 (#5724).
+	ExpectedSchemaVersion string
 }
 
 // schemaAlterActions maps SchemaAlter's documented short action verbs to the
@@ -418,6 +423,9 @@ func (c *Client) SchemaAlter(ctx context.Context, name, action, column string, o
 		}
 		if opts.Optional != nil {
 			body["optional"] = *opts.Optional
+		}
+		if opts.ExpectedSchemaVersion != "" {
+			body["expected_schema_version"] = opts.ExpectedSchemaVersion
 		}
 	}
 	var resp map[string]any
