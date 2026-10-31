@@ -183,6 +183,30 @@ func TestAuditClient_Entries(t *testing.T) {
 	}
 }
 
+func TestAuditClient_LogAndSinceUntil(t *testing.T) {
+	var paths, queries []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		paths = append(paths, r.URL.Path)
+		queries = append(queries, r.URL.RawQuery)
+		fmt.Fprint(w, `{"entries":[],"chain_valid":true}`)
+	}))
+	defer srv.Close()
+
+	a := NewAuditClient(newTestClient(srv, nil))
+	if _, err := a.Log(context.Background(), &AuditLogOptions{Limit: 5, Table: "Person", TenantID: "t1"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.Entries(context.Background(), &AuditEntriesOptions{SinceNS: 10, UntilNS: 20}); err != nil {
+		t.Fatal(err)
+	}
+	if paths[0] != "/audit/log" || !contains(queries[0], "limit=5") || !contains(queries[0], "table=Person") || !contains(queries[0], "tenant_id=t1") {
+		t.Fatalf("log = %s?%s", paths[0], queries[0])
+	}
+	if !contains(queries[1], "since=10") || !contains(queries[1], "until=20") || contains(queries[1], "since_ns") {
+		t.Fatalf("entries query = %q", queries[1])
+	}
+}
+
 func TestAuditClient_FindByRequestID(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprint(w, `{"entries":[{"id":1,"request_id":"rid"}],"chain_valid":true}`)
