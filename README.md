@@ -313,11 +313,11 @@ if _, err := io.Copy(out, reader); err != nil {
 }
 ```
 
-The Go SDK does not decode Arrow IPC into a typed table. Its ingest client
-exposes media task status; `McpClient.IngestMedia` calls the MCP media tool
-with its documented payload. There is no raw byte upload method for
-`/ingest/media` in this Go SDK; the separate `FilesClient` below wraps the
-governed `/files/content` API, not media ingestion.
+The Go SDK does not decode Arrow IPC into a typed table. `POST /ingest/media`
+and its status route were removed (#5942, they answer `410 media-ingest-removed`),
+and so were `IngestClient.MediaStatus` and `McpClient.IngestMedia`. Media is
+uploaded through the Files API with `process=true` and followed with
+`MediaWorkClient`; the separate `FilesClient` below wraps `/files/content`.
 
 ## `Memory` — governed agent memory
 
@@ -623,7 +623,7 @@ bucket and upload content type. The server upload limit is 128 MiB; downloads
 are limited by `ClientOptions.MaxResponseBytes` (64 MiB by default). PUT and
 DELETE are not automatically retried, and uncertain outcomes require caller
 reconciliation. This client does not provide immutable versions, conditional
-writes, ranges, physical-erasure guarantees, or `/ingest/media` upload.
+writes, ranges, physical-erasure guarantees, or media processing.
 The caller's `ctx` cancels the client request; it does not promise that server
 work already accepted by the engine is aborted or rolled back. See the
 [HTTP Files contract](../../docs/src/specs/files-api.md) for server behavior.
@@ -632,10 +632,8 @@ folder operations.
 
 ## File-ingest limits
 
-The Go SDK exposes `IngestClient.MediaStatus` for polling an existing media
-task. For MCP integrations, `McpClient.IngestMedia` sends the MCP tool's
-base64/payload contract; this is separate from uploading raw bytes to
-`POST /ingest/media`, which the Go SDK does not wrap. `FilesClient` transfers
+`POST /ingest/media` was removed (#5942); poll OpenETL work items with
+`MediaWorkClient.Get`. `FilesClient` transfers
 opaque tenant-owned content through `/files/content`; it does not invoke media
 processing or document extraction. Use the deployment's supported connector
 integration when source-file transfer must also trigger ingestion.
@@ -651,7 +649,6 @@ reference client and Python SDK both lack them too).
 |---|---|
 | [`examples/basic/`](./examples/basic) | Health check + simple SELECT |
 | [`examples/investigation/`](./examples/investigation) | Full FIU investigation workflow (identity → transactions → CDR) |
-| [`examples/face_search/`](./examples/face_search) | Biometric `MATCH_FACE` + identity resolution |
 | [`examples/hybrid_search/`](./examples/hybrid_search) | `VectorClient.HybridSearch` — embed, ingest, BM25-only vs. vector-only vs. fused (RRF) search |
 | [`examples/graph_traversal/`](./examples/graph_traversal) | `PATHS_BETWEEN` Pregel BFS + edge distribution |
 | [`examples/audit/`](./examples/audit) | Daily audit-chain verification + compliance report |
@@ -675,7 +672,6 @@ go run ./sdks/go/examples/investigation \
 | `AS OF 'timestamp'` | Bi-temporal point-in-time read (SPECS §5.5) |
 | `WITH PROVENANCE` | Attach PROV-O lineage columns to every row (SPECS §5.9) |
 | `PATHS_BETWEEN(a, b, max_hops => N)` | Pregel BFS graph traversal (SPECS §5.13) |
-| `MATCH_FACE(ref, top_k => N)` | Biometric face similarity search |
 | `LOOKUP_IDENTITY(id)` | IdentityIndex resolver (SPECS §5.8) |
 | `HYBRID_SCORE(query)` | BM25 + vector combined score (SPECS §5.14) |
 
