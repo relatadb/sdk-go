@@ -177,3 +177,55 @@ func TestFilesGetCancellationReleasesActiveRequest(t *testing.T) {
 		t.Fatal("server request context remained active")
 	}
 }
+
+func TestFilesUploadResumesAfterTransientFailure(t *testing.T) {
+	payload := []byte("0123456789")
+	var data []byte
+	var failAt = 4
+	var statusReads, chunks int
+	var completed []byte
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		session := func() string {
+			return fmt.Sprintf(`{"upload_id":"u1","bucket":"b","key":"k","size":10,"offset":%d,"complete":%v,"sha256":null,"expires_ns":1,"max_chunk_bytes":4}`, len(data), len(data) == 10)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case r.Method == http.MethodPost && r.URL.Path == "/files/uploads":
+			w.WriteHeader(201)
+			fmt.Fprint(w, session())
+		case r.Method == http.MethodPut:
+			if failAt == len(data) {
+				failAt = -1
+				w.Header().Set("Content-Type", "application/problem+json")
+				w.WriteHeader(503)
+				fmt.Fprint(w, `{"code":"busy","detail":"retry","retryable":true}`)
+				return
+			}
+			if r.URL.Query().Get("offset") != fmt.Sprint(len(data)) || len(r.Header.Get("X-Relata-Chunk-Sha256")) != 64 {
+				t.Errorf("offset/digest: %s %v", r.URL.RawQuery, r.Header)
+			}
+			body, _ := io.ReadAll(r.Body)
+			data = append(data, body...)
+			chunks++
+			fmt.Fprint(w, session())
+		case r.Method == http.MethodGet:
+			statusReads++
+			fmt.Fprint(w, session())
+		case r.Method == http.MethodPost:
+			completed = append([]byte(nil), data...)
+			w.WriteHeader(201)
+			fmt.Fprint(w, `{"bucket":"b","key":"k","row_id":null,"size":10,"etag":"\"h\"","content_type":"x","modified_ns":1,"is_folder":false,"download_url":"/files/content"}`)
+		default:
+			t.Errorf("unexpected %s %s", r.Method, r.URL)
+		}
+	}))
+	defer srv.Close()
+	f := NewFilesClient(newTestClient(srv, nil))
+	meta, err := f.Upload(context.Background(), "k", bytes.NewReader(payload), int64(len(payload)), &UploadOptions{ChunkSize: 4})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if meta.Size != 10 || !bytes.Equal(completed, payload) || statusReads != 1 || chunks != 3 {
+		t.Fatalf("meta=%+v completed=%q statusReads=%d chunks=%d", meta, completed, statusReads, chunks)
+	}
+}
