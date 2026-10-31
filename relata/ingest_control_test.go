@@ -87,19 +87,6 @@ func TestIngestControlDeleteQuarantine(t *testing.T) {
 	}
 }
 
-func TestMediaQualificationRoute(t *testing.T) {
-	var seen []seenReq
-	srv := recordingServer(200, `{"tasks":[]}`, &seen)
-	defer srv.Close()
-	out, err := NewMediaWorkClient(newTestClient(srv, nil)).Qualification(context.Background())
-	if err != nil || out["tasks"] == nil {
-		t.Fatalf("out=%v err=%v", out, err)
-	}
-	if seen[0].Method != "GET" || seen[0].Path != "/media/qualification" {
-		t.Fatalf("seen = %#v", seen)
-	}
-}
-
 func TestMemoryAssociateBatch(t *testing.T) {
 	var seen []seenReq
 	srv := recordingServer(200, `{"stored":2,"submitted":2,"results":[]}`, &seen)

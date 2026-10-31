@@ -190,15 +190,6 @@ func (i *IngestClient) IngestIter(ctx context.Context, objectType string, rows <
 	return total, nil
 }
 
-// MediaStatus polls the status of a multipart media upload.
-func (i *IngestClient) MediaStatus(ctx context.Context, taskID string) (map[string]any, error) {
-	var resp map[string]any
-	if err := i.c.get(ctx, "/ingest/media/"+pathSegment(taskID), &resp); err != nil {
-		return nil, err
-	}
-	return resp, nil
-}
-
 // IngestCDR normalizes CDR aliases and queues canonical CdrRecord rows through
 // the generic POST /ingest task contract. Invalid source rows are returned in
 // the receipt's errors; poll task_id to observe writer completion.

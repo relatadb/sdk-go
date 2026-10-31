@@ -313,11 +313,11 @@ if _, err := io.Copy(out, reader); err != nil {
 }
 ```
 
-The Go SDK does not decode Arrow IPC into a typed table. Its ingest client
-exposes media task status; `McpClient.IngestMedia` calls the MCP media tool
-with its documented payload. There is no raw byte upload method for
-`/ingest/media` in this Go SDK; the separate `FilesClient` below wraps the
-governed `/files/content` API, not media ingestion.
+The Go SDK does not decode Arrow IPC into a typed table. `POST /ingest/media`
+and its status route were removed (#5942, they answer `410 media-ingest-removed`),
+and so were `IngestClient.MediaStatus` and `McpClient.IngestMedia`. Media is
+uploaded through the Files API with `process=true` and followed with
+`MediaWorkClient`; the separate `FilesClient` below wraps `/files/content`.
 
 ## `Memory` — governed agent memory
 
@@ -623,7 +623,7 @@ bucket and upload content type. The server upload limit is 128 MiB; downloads
 are limited by `ClientOptions.MaxResponseBytes` (64 MiB by default). PUT and
 DELETE are not automatically retried, and uncertain outcomes require caller
 reconciliation. This client does not provide immutable versions, conditional
-writes, ranges, physical-erasure guarantees, or `/ingest/media` upload.
+writes, ranges, physical-erasure guarantees, or media processing.
 The caller's `ctx` cancels the client request; it does not promise that server
 work already accepted by the engine is aborted or rolled back. See the
 [HTTP Files contract](../../docs/src/specs/files-api.md) for server behavior.
@@ -632,10 +632,8 @@ folder operations.
 
 ## File-ingest limits
 
-The Go SDK exposes `IngestClient.MediaStatus` for polling an existing media
-task. For MCP integrations, `McpClient.IngestMedia` sends the MCP tool's
-base64/payload contract; this is separate from uploading raw bytes to
-`POST /ingest/media`, which the Go SDK does not wrap. `FilesClient` transfers
+`POST /ingest/media` was removed (#5942); poll OpenETL work items with
+`MediaWorkClient.Get`. `FilesClient` transfers
 opaque tenant-owned content through `/files/content`; it does not invoke media
 processing or document extraction. Use the deployment's supported connector
 integration when source-file transfer must also trigger ingestion.
