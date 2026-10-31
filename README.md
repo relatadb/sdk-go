@@ -158,8 +158,8 @@ one `*http.Client`, like `*sql.DB`).
 `IngestDocument` takes application-prepared governed rows (for example a
 `DocumentSource`, linked `DocumentChunk` rows, and optional evidence rows with
 `_type` and stable `_pk` fields). It does not parse raw documents or datagrep
-extractor files. The former `relata-connectors prepare-document` adapter
-converts extractor JSONL/manifest files to an `objects` array for this method.
+extractor files. Parsing extractor output into an `objects` array is OpenETL's job
+(the former `relata-connectors prepare-document` adapter was removed).
 Queue admission is process-local and not crash-durable; poll
 `IngestDocumentStatus` for terminal complete/partial/failed/uncertain/incomplete state and confirmed written/dropped row counts. `Code` and `DerivedError` can be present while `Status` remains pending; after all primary batches are accounted for, the status becomes incomplete. If the primary outcome is uncertain, uncertain takes precedence. A recorded derived-write failure has `Retryable` false and no completion watermark. Uncertain outcomes are unresolved and must not be blindly retried. The separate MCP
 `ingest_document(source, text, ...)` tool remains a direct application workflow.
@@ -457,8 +457,8 @@ rule, _ := gov.CreateRule(ctx, map[string]any{
 ```
 
 Sigma YAML conversion is an optional application workflow, not an SDK method.
-Use `relata-connectors import-sigma <file.yml> [--broker <url>] [--purpose <p>]`
-for the supported converter, or convert externally and submit prepared rule
+Convert Sigma YAML in OpenETL (the former `relata-connectors import-sigma` was removed),
+or convert externally and submit prepared rule
 JSON with `GovernanceClient.CreateRule`. The v3 SDK no longer sends raw YAML to
 the database listener or MCP `import_sigma` tool.
 
