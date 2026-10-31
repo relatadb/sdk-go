@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"time"
 )
 
 // ObjectClient is the synchronous typed upsert/load client for state objects.
@@ -288,6 +289,109 @@ func (o *ObjectClient) ChangePages(ctx context.Context, opts ChangesOptions, han
 			return cursor, nil
 		}
 		opts.Cursor, opts.Start = cursor, ""
+	}
+}
+
+// FollowOptions tunes ObjectClient.FollowChanges. Zero values take the defaults.
+type FollowOptions struct {
+	// PollInterval is the wait once caught up (default 1s).
+	PollInterval time.Duration
+	// MaxReconnects is the number of consecutive transient failures tolerated
+	// before the error is returned (default 8; negative means none).
+	MaxReconnects int
+	// ReconnectBackoff is the first reconnect delay, doubling per failure
+	// (default 500ms). A server Retry-After longer than this is honoured.
+	ReconnectBackoff time.Duration
+	// MaxBackoff caps one reconnect delay (default 30s).
+	MaxBackoff time.Duration
+}
+
+func transientFeedError(err error) bool {
+	var re *RelataError
+	if !errors.As(err, &re) {
+		return false
+	}
+	switch re.StatusCode {
+	case 0, 429, 500, 502, 503, 504:
+		return true
+	}
+	return false
+}
+
+func sleepCtx(ctx context.Context, d time.Duration) error {
+	if d <= 0 {
+		return ctx.Err()
+	}
+	t := time.NewTimer(d)
+	defer t.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-t.C:
+		return nil
+	}
+}
+
+// FollowChanges follows the change feed until ctx is cancelled or handle
+// returns an error, reconnecting and resuming by cursor. handle is called once
+// per non-empty page; persist page.NextCursor only after handle returned nil
+// for it (the returned cursor is the last one handled, to resume from after a
+// restart: at-least-once, no gap). When caught up it waits PollInterval. A
+// transient failure (network loss, 429, 5xx) is retried from the last handled
+// cursor with exponential backoff; after MaxReconnects consecutive failures
+// the error is returned. Any other error, including 410
+// change-feed-resync-required and 404 change-feed-disabled, is returned at once.
+func (o *ObjectClient) FollowChanges(ctx context.Context, opts ChangesOptions, fo FollowOptions, handle func(*ChangesPage) error) (string, error) {
+	if fo.PollInterval == 0 {
+		fo.PollInterval = time.Second
+	}
+	if fo.MaxReconnects == 0 {
+		fo.MaxReconnects = 8
+	}
+	if fo.ReconnectBackoff == 0 {
+		fo.ReconnectBackoff = 500 * time.Millisecond
+	}
+	if fo.MaxBackoff == 0 {
+		fo.MaxBackoff = 30 * time.Second
+	}
+	cursor := opts.Cursor
+	failures := 0
+	for {
+		if err := ctx.Err(); err != nil {
+			return cursor, err
+		}
+		page, err := o.Changes(ctx, opts)
+		if err != nil {
+			if !transientFeedError(err) || failures >= fo.MaxReconnects {
+				return cursor, err
+			}
+			delay := fo.ReconnectBackoff << uint(min(failures, 20))
+			var re *RelataError
+			if errors.As(err, &re) && re.RetryAfter > delay {
+				delay = re.RetryAfter
+			}
+			if delay > fo.MaxBackoff {
+				delay = fo.MaxBackoff
+			}
+			if err := sleepCtx(ctx, delay); err != nil {
+				return cursor, err
+			}
+			failures++
+			continue
+		}
+		failures = 0
+		if len(page.Events) > 0 {
+			if err := handle(page); err != nil {
+				return cursor, err
+			}
+		}
+		cursor = page.NextCursor
+		opts.Cursor, opts.Start = cursor, ""
+		if !page.HasMore {
+			if err := sleepCtx(ctx, fo.PollInterval); err != nil {
+				return cursor, err
+			}
+		}
 	}
 }
 
