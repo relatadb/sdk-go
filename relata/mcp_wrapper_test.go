@@ -239,17 +239,6 @@ func TestMcpClient_EraseSubject_SendsSubjectAndReason(t *testing.T) {
 	}
 }
 
-func TestMcpClient_IngestMedia_SendsObjectType(t *testing.T) {
-	mcp, gotBody := mcpCapture(t)
-	if _, err := mcp.IngestMedia(context.Background(), "MediaContent", &IngestMediaOptions{BytesB64: "Zm9v"}); err != nil {
-		t.Fatal(err)
-	}
-	args := argsOf(t, gotBody)
-	if args["object_type"] != "MediaContent" || args["bytes_b64"] != "Zm9v" {
-		t.Fatalf("args = %v", args)
-	}
-}
-
 func TestMcpClient_SimilarMultimodal_SendsEntityTypeAndID(t *testing.T) {
 	mcp, gotBody := mcpCapture(t)
 	if _, err := mcp.SimilarMultimodal(context.Background(), "Document", "doc-1", &SimilarMultimodalOptions{TopK: 5}); err != nil {

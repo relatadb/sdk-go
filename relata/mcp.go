@@ -771,50 +771,6 @@ func (m *McpClient) EraseSubject(ctx context.Context, subject string, opts *McpE
 	return m.CallTool(ctx, "erase_subject", map[string]any{"subject": subject, "reason": reason})
 }
 
-// IngestMediaOptions configures IngestMedia.
-type IngestMediaOptions struct {
-	// Modality is the media modality: image, audio, video, or text. Defaults to "image".
-	Modality string
-	// Codec is the MIME/codec of the payload.
-	Codec string
-	// BytesB64 is base64-encoded media bytes. Provide this OR Text.
-	BytesB64 string
-	// Text is a text payload to embed directly. Provide this OR BytesB64.
-	Text string
-	// TenantID is the owning agency/organization id.
-	TenantID string
-	// PartitionKey is an explicit partition key.
-	PartitionKey string
-}
-
-// IngestMedia ingests an image/audio/video (base64) or text payload ("ingest_media").
-func (m *McpClient) IngestMedia(ctx context.Context, objectType string, opts *IngestMediaOptions) (map[string]any, error) {
-	modality := "image"
-	args := map[string]any{"object_type": objectType}
-	if opts != nil {
-		if opts.Modality != "" {
-			modality = opts.Modality
-		}
-		if opts.Codec != "" {
-			args["codec"] = opts.Codec
-		}
-		if opts.BytesB64 != "" {
-			args["bytes_b64"] = opts.BytesB64
-		}
-		if opts.Text != "" {
-			args["text"] = opts.Text
-		}
-		if opts.TenantID != "" {
-			args["tenant_id"] = opts.TenantID
-		}
-		if opts.PartitionKey != "" {
-			args["partition_key"] = opts.PartitionKey
-		}
-	}
-	args["modality"] = modality
-	return m.CallTool(ctx, "ingest_media", args)
-}
-
 // SimilarMultimodalOptions configures SimilarMultimodal.
 type SimilarMultimodalOptions struct {
 	// TopK caps the response. Defaults to 10.
