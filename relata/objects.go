@@ -192,6 +192,73 @@ func (o *ObjectClient) Delete(ctx context.Context, objectType, objectID string, 
 	return out, nil
 }
 
+// ChangesOptions selects a page of the object change feed.
+type ChangesOptions struct {
+	// Cursor is the NextCursor of the previous page (an event id).
+	Cursor string
+	// Limit is events per page, 1 to 1000 (server default 100). Zero: default.
+	Limit int
+	// Type restricts the page to one object type.
+	Type string
+	// Start "latest" with no Cursor skips history.
+	Start string
+}
+
+// ChangeEvent is one committed object change. It carries identity, version
+// and kind, never field values.
+type ChangeEvent struct {
+	EventID       string `json:"eventId"`
+	Seq           int64  `json:"seq"`
+	Kind          string `json:"kind"`
+	Type          string `json:"type"`
+	ID            string `json:"id"`
+	Version       int64  `json:"version"`
+	CommitID      string `json:"commitId"`
+	OpIndex       int    `json:"opIndex"`
+	CommittedAtNs int64  `json:"committedAtNs"`
+}
+
+// ChangesPage is one page of the object change feed.
+type ChangesPage struct {
+	FeedID     string        `json:"feedId"`
+	Events     []ChangeEvent `json:"events"`
+	NextCursor string        `json:"nextCursor"`
+	HasMore    bool          `json:"hasMore"`
+	Head       int64         `json:"head"`
+	Oldest     int64         `json:"oldest"`
+	Withheld   int           `json:"withheld"`
+}
+
+// Changes reads one page of the object change feed (GET /object-changes,
+// #5716). Persist NextCursor only after every event in the page is processed;
+// delivery is at-least-once, so dedupe on EventID. A cursor the server can no
+// longer serve returns an error for 410 (change-feed-resync-required): re-read
+// state, then call again with Start "latest".
+func (o *ObjectClient) Changes(ctx context.Context, opts ChangesOptions) (*ChangesPage, error) {
+	q := url.Values{}
+	if opts.Cursor != "" {
+		q.Set("cursor", opts.Cursor)
+	}
+	if opts.Limit > 0 {
+		q.Set("limit", strconv.Itoa(opts.Limit))
+	}
+	if opts.Type != "" {
+		q.Set("type", opts.Type)
+	}
+	if opts.Start != "" {
+		q.Set("start", opts.Start)
+	}
+	path := "/object-changes"
+	if enc := q.Encode(); enc != "" {
+		path += "?" + enc
+	}
+	var out ChangesPage
+	if err := o.c.get(ctx, path, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
 // Commit atomically applies 1..64 create/update/delete operations
 // (POST /commit, #5767): all of them become durable and visible, or none do,
 // and every ExpectedVersion is checked before anything is written. A failed
