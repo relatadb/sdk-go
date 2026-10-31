@@ -12,7 +12,7 @@ import (
 // retrieval strategy (#4542), Go parity port of
 // sdks/python/relata/structural_navigation.py (#4581, epic #4576).
 //
-// The optional application adapter half of #4542 (apps/relata-connectors/src/document_ingest.rs
+// The optional application adapter half of #4542 (the former relata-connectors document_ingest module (removed, #5932)
 // document_structure_batch) derives a DocumentStructureNode tree from each
 // document's section_path/page_start/page_end — one node per distinct
 // heading-breadcrumb prefix, plus a synthetic root, each carrying a cheap
@@ -121,7 +121,7 @@ func structuralFloatFromAny(v any) float64 {
 // (Client.Query's QueryResult.Rows element).
 //
 // LeafChunkIDs is stored server-side as a JSON array string
-// (apps/relata-connectors/src/document_ingest.rs — no native array
+// (the former relata-connectors document_ingest module (removed, #5932) — no native array
 // CanonicalValue variant); this parses it back into a real slice,
 // defaulting to nil on anything malformed rather than erroring, so a node
 // with no directly-attached chunks (an internal/structural-only node)

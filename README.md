@@ -158,7 +158,7 @@ one `*http.Client`, like `*sql.DB`).
 `IngestDocument` takes application-prepared governed rows (for example a
 `DocumentSource`, linked `DocumentChunk` rows, and optional evidence rows with
 `_type` and stable `_pk` fields). It does not parse raw documents or datagrep
-extractor files. The optional `relata-connectors prepare-document` adapter
+extractor files. The former `relata-connectors prepare-document` adapter
 converts extractor JSONL/manifest files to an `objects` array for this method.
 Queue admission is process-local and not crash-durable; poll
 `IngestDocumentStatus` for terminal complete/partial/failed/uncertain/incomplete state and confirmed written/dropped row counts. `Code` and `DerivedError` can be present while `Status` remains pending; after all primary batches are accounted for, the status becomes incomplete. If the primary outcome is uncertain, uncertain takes precedence. A recorded derived-write failure has `Retryable` false and no completion watermark. Uncertain outcomes are unresolved and must not be blindly retried. The separate MCP
