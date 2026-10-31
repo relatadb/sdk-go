@@ -463,6 +463,29 @@ func (c *Client) CreateLink(ctx context.Context, params map[string]any) (map[str
 	return resp, nil
 }
 
+// CreateLinks bulk-creates up to 5000 edges in one idempotent, durable request
+// (POST /links/batch). Each edge is a map with link_name, source_id,
+// source_type, target_id, target_type and an optional weight. Edges are keyed
+// by (link_name, source_id, target_id) within the tenant: an existing current
+// edge is reported as already_present and never written twice, so a retry
+// after a timeout or crash cannot duplicate. A non-empty idempotencyKey is
+// sent as Idempotency-Key and replays the first response; durability is "sync",
+// "async" or "" for the server default.
+func (c *Client) CreateLinks(ctx context.Context, edges []map[string]any, idempotencyKey, durability string) (map[string]any, error) {
+	headers := map[string]string{}
+	if idempotencyKey != "" {
+		headers["Idempotency-Key"] = idempotencyKey
+	}
+	if durability != "" {
+		headers["X-Relata-Durability"] = durability
+	}
+	var resp map[string]any
+	if err := c.postJSONHeaders(ctx, "/links/batch", map[string]any{"edges": edges}, &resp, headers); err != nil {
+		return nil, err
+	}
+	return resp, nil
+}
+
 // DeleteLink closes matching current native edges in the caller's tenant, retaining history.
 func (c *Client) DeleteLink(ctx context.Context, linkName, sourceID, targetID string) (map[string]any, error) {
 	data, err := json.Marshal(map[string]string{"link_name": linkName, "source_id": sourceID, "target_id": targetID})
