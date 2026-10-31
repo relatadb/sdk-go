@@ -237,6 +237,18 @@ func (i *IngestClient) OTLPMetrics(ctx context.Context, payload map[string]any, 
 	return i.otlp(ctx, "/v1/metrics", payload, opts)
 }
 
+// ImportSTIX imports a STIX 2.1 bundle via POST /v1/ingest/import?format=stix, the
+// mirror image of GET /v1/export?format=stix. Per-type guard failures are
+// reported in the response rather than failing the whole bundle.
+func (i *IngestClient) ImportSTIX(ctx context.Context, bundle map[string]any, opts *BulkOptions) (map[string]any, error) {
+	params := map[string]string{"format": "stix", "purpose": i.effectivePurpose(opts)}
+	var resp map[string]any
+	if err := i.c.postJSON(ctx, encodeGetURL("/v1/ingest/import", params), bundle, &resp); err != nil {
+		return nil, err
+	}
+	return resp, nil
+}
+
 // effectivePurpose resolves a per-call purpose override against the parent default.
 func (i *IngestClient) effectivePurpose(opts *BulkOptions) string {
 	if opts != nil && opts.Purpose != "" {

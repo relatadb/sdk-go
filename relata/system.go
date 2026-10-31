@@ -3,6 +3,7 @@ package relata
 import (
 	"context"
 	"net/url"
+	"strconv"
 )
 
 // SystemClient is the synchronous generic system / runtime client for
@@ -51,6 +52,58 @@ func (s *SystemClient) NotificationRules(ctx context.Context) ([]map[string]any,
 func (s *SystemClient) CreateNotificationRule(ctx context.Context, rule map[string]any) (map[string]any, error) {
 	var resp map[string]any
 	if err := s.c.postJSON(ctx, "/v1/notification-rules", rule, &resp); err != nil {
+		return nil, err
+	}
+	return resp, nil
+}
+
+// UpdateNotificationRule updates fields of a notification rule (PATCH /v1/notification-rules/:id).
+func (s *SystemClient) UpdateNotificationRule(ctx context.Context, id string, patch map[string]any) (map[string]any, error) {
+	var resp map[string]any
+	if err := s.c.patchJSON(ctx, "/v1/notification-rules/"+url.PathEscape(id), patch, &resp); err != nil {
+		return nil, err
+	}
+	return resp, nil
+}
+
+// SystemConfig returns the runtime feature configuration (GET /v1/system/config).
+func (s *SystemClient) SystemConfig(ctx context.Context) (map[string]any, error) {
+	var resp map[string]any
+	if err := s.c.get(ctx, "/v1/system/config", &resp); err != nil {
+		return nil, err
+	}
+	return resp, nil
+}
+
+// SystemSpecs returns the capability specification map (GET /v1/system/specs).
+func (s *SystemClient) SystemSpecs(ctx context.Context) (map[string]any, error) {
+	var resp map[string]any
+	if err := s.c.get(ctx, "/v1/system/specs", &resp); err != nil {
+		return nil, err
+	}
+	return resp, nil
+}
+
+// MCPSessionsOptions filters MCPSessions. Zero values are omitted.
+type MCPSessionsOptions struct {
+	// SessionID filters to a single session.
+	SessionID string
+	// Limit caps the number of sessions returned (server default 20, max 100).
+	Limit int
+}
+
+// MCPSessions lists MCP agent sessions with their tool-call history
+// (GET /v1/mcp/sessions). opts may be nil.
+func (s *SystemClient) MCPSessions(ctx context.Context, opts *MCPSessionsOptions) (map[string]any, error) {
+	params := map[string]string{}
+	if opts != nil {
+		params["session_id"] = opts.SessionID
+		if opts.Limit > 0 {
+			params["limit"] = strconv.Itoa(opts.Limit)
+		}
+	}
+	var resp map[string]any
+	if err := s.c.get(ctx, encodeGetURL("/v1/mcp/sessions", params), &resp); err != nil {
 		return nil, err
 	}
 	return resp, nil

@@ -172,6 +172,38 @@ func (g *GovernanceClient) GetRuleTuning(ctx context.Context, ruleID string) (ma
 	return resp, nil
 }
 
+// GetRule fetches one detection rule by ID (GET /v1/rules/:id).
+func (g *GovernanceClient) GetRule(ctx context.Context, ruleID string) (map[string]any, error) {
+	var resp map[string]any
+	if err := g.c.get(ctx, "/v1/rules/"+pathSegment(ruleID), &resp); err != nil {
+		return nil, err
+	}
+	return resp, nil
+}
+
+// RemoveRuleException removes a tuning exception (DELETE /v1/rules/:id/exceptions/:eid).
+func (g *GovernanceClient) RemoveRuleException(ctx context.Context, ruleID, exceptionID string) (map[string]any, error) {
+	var resp map[string]any
+	if err := g.c.delete(ctx, "/v1/rules/"+pathSegment(ruleID)+"/exceptions/"+pathSegment(exceptionID), &resp); err != nil {
+		return nil, err
+	}
+	return resp, nil
+}
+
+// SetRetentionPolicy sets a retention policy for a type (POST /v1/retention/policies).
+// action is "delete" or "tier:cold"; an empty action defaults to "delete".
+func (g *GovernanceClient) SetRetentionPolicy(ctx context.Context, objectType string, maxAgeDays int, action string) (map[string]any, error) {
+	if action == "" {
+		action = "delete"
+	}
+	body := map[string]any{"object_type": objectType, "max_age_days": maxAgeDays, "action": action}
+	var resp map[string]any
+	if err := g.c.postJSON(ctx, "/v1/retention/policies", body, &resp); err != nil {
+		return nil, err
+	}
+	return resp, nil
+}
+
 // ListRetentionPolicies lists configured retention policies.
 func (g *GovernanceClient) ListRetentionPolicies(ctx context.Context) ([]map[string]any, error) {
 	var resp map[string]any

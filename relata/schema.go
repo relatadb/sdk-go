@@ -19,6 +19,30 @@ func (c *Client) ListEdgeTypes(ctx context.Context) (map[string]any, error) {
 	return out, nil
 }
 
+// ListTypeDetectConfigs lists per-type SmartIngest detector-pack configs
+// (GET /v1/types/detect-config).
+func (c *Client) ListTypeDetectConfigs(ctx context.Context) (map[string]any, error) {
+	var out map[string]any
+	if err := c.get(ctx, "/v1/types/detect-config", &out); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// SetTypeDetectConfig configures SmartIngest detector packs for a type (admin
+// token required). Wraps POST /v1/types/detect-config with {type, packs}; packs
+// takes the RELATA_DETECT_PACKS grammar (["all"], ["none"], [], or pack names).
+func (c *Client) SetTypeDetectConfig(ctx context.Context, typeName string, packs []string) (map[string]any, error) {
+	if packs == nil {
+		packs = []string{}
+	}
+	var out map[string]any
+	if err := c.postJSON(ctx, "/v1/types/detect-config", map[string]any{"type": typeName, "packs": packs}, &out); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // RegisterEdgeType declares a typed named edge for graph traversal (ADR-007).
 // Wraps POST /v1/types/edges with {from_type, to_type, label}.
 func (c *Client) RegisterEdgeType(ctx context.Context, fromType, toType, label string) (map[string]any, error) {

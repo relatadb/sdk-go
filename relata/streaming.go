@@ -488,6 +488,58 @@ func (s *StreamingClient) Alerts(ctx context.Context, opts *AlertsOptions) (*SSE
 	}, nil
 }
 
+// GraphChangesOptions configures StreamingClient.GraphChanges.
+type GraphChangesOptions struct {
+	// Type narrows the stream to one object type.
+	Type string
+	// TenantID must match the caller's authenticated tenant when set.
+	TenantID string
+	// Reconnect enables exponential-backoff reconnect on disconnect. Default true.
+	Reconnect *bool
+}
+
+// GraphChanges opens the SSE consumer for GET /v1/graph/changes (real-time
+// graph change stream). opts may be nil.
+func (s *StreamingClient) GraphChanges(ctx context.Context, opts *GraphChangesOptions) (*SSEIterator, error) {
+	reconnect := true
+	params := map[string]string{}
+	if opts != nil {
+		params["type"] = opts.Type
+		params["tenant_id"] = opts.TenantID
+		if opts.Reconnect != nil {
+			reconnect = *opts.Reconnect
+		}
+	}
+	return s.openSSE(ctx, encodeGetURL("/v1/graph/changes", params), reconnect)
+}
+
+// A2ATaskStream opens the SSE consumer for GET /v1/a2a/tasks/:id/stream (A2A
+// task lifecycle events). A task stream is finite, so reconnect is off unless
+// the caller passes a non-nil true.
+func (s *StreamingClient) A2ATaskStream(ctx context.Context, taskID string, reconnect *bool) (*SSEIterator, error) {
+	rc := reconnect != nil && *reconnect
+	return s.openSSE(ctx, "/v1/a2a/tasks/"+pathSegment(taskID)+"/stream", rc)
+}
+
+// openSSE builds an SSEIterator over GET path with the shared reconnect policy.
+func (s *StreamingClient) openSSE(ctx context.Context, path string, reconnect bool) (*SSEIterator, error) {
+	factory := func() (io.ReadCloser, error) {
+		return s.c.openStream(ctx, http.MethodGet, path, nil, "")
+	}
+	rc, err := factory()
+	if err != nil {
+		return nil, err
+	}
+	return &SSEIterator{
+		scanner:     bufio.NewScanner(rc),
+		body:        rc,
+		reconnect:   reconnect,
+		maxRetries:  5,
+		baseBackoff: time.Second,
+		factory:     factory,
+	}, nil
+}
+
 // resolvePurpose returns the effective purpose, returning ErrPurposeRequired when
 // neither per-call nor default purpose is set.
 func (s *StreamingClient) resolvePurpose(opts *StreamingQueryOptions) (string, error) {
