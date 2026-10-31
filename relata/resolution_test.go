@@ -57,21 +57,21 @@ func TestResolutionRoutesAndBodies(t *testing.T) {
 	jprops := []any{map[string]any{"rule": "m", "a": "x", "b": "y", "score": 0.9}}
 	jpairs := []any{map[string]any{"a": "x", "b": "y", "same": true}}
 	want := [][]any{
-		{"GET", "/resolution/rulesets", "", nb},
-		{"GET", "/resolution/rulesets/people", "", nb},
-		{"GET", "/resolution/rulesets/people", "version=2", nb},
-		{"PUT", "/resolution/rulesets/people", "", map[string]any{"expected_version": float64(1), "definition": d}},
-		{"POST", "/resolution/rulesets/people/run", "", map[string]any{}},
-		{"POST", "/resolution/rulesets/people/run", "", map[string]any{"proposals": jprops}},
-		{"POST", "/resolution/rulesets/people/evaluate", "", map[string]any{"labeled": jpairs}},
-		{"GET", "/resolution/candidates", "", nb},
-		{"GET", "/resolution/candidates", "limit=5&ruleset=people&state=pending", nb},
-		{"GET", "/resolution/candidates/cand_1", "", nb},
-		{"POST", "/resolution/candidates/cand_1/decision", "", map[string]any{"decision": "approve", "reason": "same mailbox"}},
-		{"POST", "/resolution/candidates/cand_2/decision", "", map[string]any{"decision": "reject", "reason": "different people"}},
-		{"POST", "/resolution/candidates/cand_1/decision", "", map[string]any{"decision": "unmerge", "reason": "wrong"}},
-		{"GET", "/resolution/entities/ent_1", "", nb},
-		{"GET", "/resolution/lookup", "id=r+1&type=Person", nb},
+		{"GET", "/v1/resolution/rulesets", "", nb},
+		{"GET", "/v1/resolution/rulesets/people", "", nb},
+		{"GET", "/v1/resolution/rulesets/people", "version=2", nb},
+		{"PUT", "/v1/resolution/rulesets/people", "", map[string]any{"expected_version": float64(1), "definition": d}},
+		{"POST", "/v1/resolution/rulesets/people/run", "", map[string]any{}},
+		{"POST", "/v1/resolution/rulesets/people/run", "", map[string]any{"proposals": jprops}},
+		{"POST", "/v1/resolution/rulesets/people/evaluate", "", map[string]any{"labeled": jpairs}},
+		{"GET", "/v1/resolution/candidates", "", nb},
+		{"GET", "/v1/resolution/candidates", "limit=5&ruleset=people&state=pending", nb},
+		{"GET", "/v1/resolution/candidates/cand_1", "", nb},
+		{"POST", "/v1/resolution/candidates/cand_1/decision", "", map[string]any{"decision": "approve", "reason": "same mailbox"}},
+		{"POST", "/v1/resolution/candidates/cand_2/decision", "", map[string]any{"decision": "reject", "reason": "different people"}},
+		{"POST", "/v1/resolution/candidates/cand_1/decision", "", map[string]any{"decision": "unmerge", "reason": "wrong"}},
+		{"GET", "/v1/resolution/entities/ent_1", "", nb},
+		{"GET", "/v1/resolution/lookup", "id=r+1&type=Person", nb},
 	}
 	// JSON round trip so numbers and nested maps compare like the server saw them.
 	norm := func(v any) any { b, _ := json.Marshal(v); var o any; _ = json.Unmarshal(b, &o); return o }
@@ -93,7 +93,7 @@ func TestResolutionNamesAreQuotedAndConflictsReturned(t *testing.T) {
 	if _, err := o.PublishRuleset(context.Background(), "a/b c", map[string]any{}, 0); err == nil {
 		t.Fatal("a 412 must be returned as an error")
 	}
-	if path != "/resolution/rulesets/a%2Fb%20c" {
+	if path != "/v1/resolution/rulesets/a%2Fb%20c" {
 		t.Fatalf("path not quoted: %s", path)
 	}
 }

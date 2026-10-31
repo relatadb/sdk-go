@@ -186,7 +186,7 @@ func (c *Client) Query(ctx context.Context, sql string, opts ...QueryOption) (*Q
 	}
 
 	var result QueryResult
-	if err := c.postJSONHeaders(ctx, "/query", payload, &result, extraHeaders); err != nil {
+	if err := c.postJSONHeaders(ctx, "/v1/query", payload, &result, extraHeaders); err != nil {
 		return nil, err
 	}
 	return &result, nil
@@ -234,13 +234,13 @@ func (c *Client) QueryWithParams(ctx context.Context, sql string, params []any, 
 	}
 
 	var result QueryResult
-	if err := c.postJSON(ctx, "/query", payload, &result); err != nil {
+	if err := c.postJSON(ctx, "/v1/query", payload, &result); err != nil {
 		return nil, err
 	}
 	return &result, nil
 }
 
-// Search calls POST /search and returns matching documents for the given query
+// Search calls POST /v1/search and returns matching documents for the given query
 // and object type (#670). Optional functional options control limit, facets,
 // highlight, and per-field filters.
 //
@@ -287,7 +287,7 @@ func (c *Client) Search(ctx context.Context, query, objectType string, opts ...S
 		body["weights"] = []float64{p.weights[0], p.weights[1], p.weights[2]}
 	}
 	var resp SearchResponse
-	if err := c.postJSON(ctx, "/search", body, &resp); err != nil {
+	if err := c.postJSON(ctx, "/v1/search", body, &resp); err != nil {
 		return nil, err
 	}
 	return &resp, nil
@@ -297,7 +297,7 @@ func (c *Client) Search(ctx context.Context, query, objectType string, opts ...S
 // Each query is a map with "query", "type", and optional "limit".
 func (c *Client) MultiSearch(ctx context.Context, queries []map[string]any) (map[string]any, error) {
 	var resp map[string]any
-	if err := c.postJSON(ctx, "/multi-search", map[string]any{"queries": queries}, &resp); err != nil {
+	if err := c.postJSON(ctx, "/v1/search/multi", map[string]any{"queries": queries}, &resp); err != nil {
 		return nil, err
 	}
 	return resp, nil
@@ -308,7 +308,7 @@ func (c *Client) MultiSearch(ctx context.Context, queries []map[string]any) (map
 // ListTypes lists all registered object types with row counts.
 func (c *Client) ListTypes(ctx context.Context) (map[string]any, error) {
 	var resp map[string]any
-	if err := c.get(ctx, "/types", &resp); err != nil {
+	if err := c.get(ctx, "/v1/types", &resp); err != nil {
 		return nil, err
 	}
 	return resp, nil
@@ -319,7 +319,7 @@ func (c *Client) ListTypes(ctx context.Context) (map[string]any, error) {
 // any generated statement through Query for server-side authorization and
 // validation.
 func (c *Client) QuerySchema(ctx context.Context, purpose string) (map[string]any, error) {
-	path := "/query/schema"
+	path := "/v1/query/schema"
 	if purpose != "" {
 		path += "?purpose=" + url.QueryEscape(purpose)
 	}
@@ -330,7 +330,7 @@ func (c *Client) QuerySchema(ctx context.Context, purpose string) (map[string]an
 	return resp, nil
 }
 
-// RegisterType registers a custom object type at runtime (POST /types).
+// RegisterType registers a custom object type at runtime (POST /v1/types).
 // spec mirrors the server's full TypeDef body
 // (crates/relata-cli/src/serve/types_routes.rs) and accepts any of:
 //
@@ -357,7 +357,7 @@ func (c *Client) RegisterType(ctx context.Context, name string, spec map[string]
 		body[k] = v
 	}
 	var resp map[string]any
-	if err := c.postJSON(ctx, "/types", body, &resp); err != nil {
+	if err := c.postJSON(ctx, "/v1/types", body, &resp); err != nil {
 		return nil, err
 	}
 	return resp, nil
@@ -366,7 +366,7 @@ func (c *Client) RegisterType(ctx context.Context, name string, spec map[string]
 // DeregisterType deregisters an empty custom type. Admin token required; types with history or protected data are rejected.
 func (c *Client) DeregisterType(ctx context.Context, name string) (map[string]any, error) {
 	var resp map[string]any
-	if err := c.delete(ctx, "/types/"+pathSegment(name), &resp); err != nil {
+	if err := c.delete(ctx, "/v1/types/"+pathSegment(name), &resp); err != nil {
 		return nil, err
 	}
 	return resp, nil
@@ -375,7 +375,7 @@ func (c *Client) DeregisterType(ctx context.Context, name string) (map[string]an
 // TypeDetail gets type detail (properties, owner, row count).
 func (c *Client) TypeDetail(ctx context.Context, name string) (map[string]any, error) {
 	var resp map[string]any
-	if err := c.get(ctx, "/types/"+pathSegment(name), &resp); err != nil {
+	if err := c.get(ctx, "/v1/types/"+pathSegment(name), &resp); err != nil {
 		return nil, err
 	}
 	return resp, nil
@@ -386,7 +386,7 @@ func (c *Client) TypeDetail(ctx context.Context, name string) (map[string]any, e
 // derived-index progress and a freshness token.
 func (c *Client) TypeLifecycle(ctx context.Context, name string) (map[string]any, error) {
 	var resp map[string]any
-	if err := c.get(ctx, "/types/"+pathSegment(name)+"/lifecycle", &resp); err != nil {
+	if err := c.get(ctx, "/v1/types/"+pathSegment(name)+"/lifecycle", &resp); err != nil {
 		return nil, err
 	}
 	return resp, nil
@@ -414,7 +414,7 @@ var schemaAlterActions = map[string]string{
 	"retype": "change_type",
 }
 
-// SchemaAlter applies online schema evolution via PATCH /types/:name/schema
+// SchemaAlter applies online schema evolution via PATCH /v1/types/:name/schema
 // (#1307). action is "add" | "drop" | "rename" | "retype", translated to the
 // server's add_column | remove_column | rename_column | change_type on the
 // wire (#4704); the server's own long-form verbs are also accepted
@@ -440,7 +440,7 @@ func (c *Client) SchemaAlter(ctx context.Context, name, action, column string, o
 		}
 	}
 	var resp map[string]any
-	if err := c.patchJSON(ctx, "/types/"+pathSegment(name)+"/schema", body, &resp); err != nil {
+	if err := c.patchJSON(ctx, "/v1/types/"+pathSegment(name)+"/schema", body, &resp); err != nil {
 		return nil, err
 	}
 	return resp, nil
@@ -449,7 +449,7 @@ func (c *Client) SchemaAlter(ctx context.Context, name, action, column string, o
 // OntologyMigrate applies a SHACL schema migration.
 func (c *Client) OntologyMigrate(ctx context.Context, schema map[string]any) (map[string]any, error) {
 	var resp map[string]any
-	if err := c.postJSON(ctx, "/ontology/migrate", schema, &resp); err != nil {
+	if err := c.postJSON(ctx, "/v1/ontology/migrate", schema, &resp); err != nil {
 		return nil, err
 	}
 	return resp, nil
@@ -458,16 +458,7 @@ func (c *Client) OntologyMigrate(ctx context.Context, schema map[string]any) (ma
 // EnrichmentRules registers identity enrichment rules for SmartIngest.
 func (c *Client) EnrichmentRules(ctx context.Context, rules map[string]any) (map[string]any, error) {
 	var resp map[string]any
-	if err := c.postJSON(ctx, "/ontology/enrichment-rules", rules, &resp); err != nil {
-		return nil, err
-	}
-	return resp, nil
-}
-
-// ListModules lists installed modules / extensions.
-func (c *Client) ListModules(ctx context.Context) (map[string]any, error) {
-	var resp map[string]any
-	if err := c.get(ctx, "/modules", &resp); err != nil {
+	if err := c.postJSON(ctx, "/v1/ontology/enrichment-rules", rules, &resp); err != nil {
 		return nil, err
 	}
 	return resp, nil
@@ -476,14 +467,14 @@ func (c *Client) ListModules(ctx context.Context) (map[string]any, error) {
 // CreateLink creates a typed governed link (edge) between two objects.
 func (c *Client) CreateLink(ctx context.Context, params map[string]any) (map[string]any, error) {
 	var resp map[string]any
-	if err := c.postJSON(ctx, "/links", params, &resp); err != nil {
+	if err := c.postJSON(ctx, "/v1/links", params, &resp); err != nil {
 		return nil, err
 	}
 	return resp, nil
 }
 
 // CreateLinks bulk-creates up to 5000 edges in one idempotent, durable request
-// (POST /links/batch). Each edge is a map with link_name, source_id,
+// (POST /v1/links/batch). Each edge is a map with link_name, source_id,
 // source_type, target_id, target_type and an optional weight. Edges are keyed
 // by (link_name, source_id, target_id) within the tenant: an existing current
 // edge is reported as already_present and never written twice, so a retry
@@ -499,7 +490,7 @@ func (c *Client) CreateLinks(ctx context.Context, edges []map[string]any, idempo
 		headers["X-Relata-Durability"] = durability
 	}
 	var resp map[string]any
-	if err := c.postJSONHeaders(ctx, "/links/batch", map[string]any{"edges": edges}, &resp, headers); err != nil {
+	if err := c.postJSONHeaders(ctx, "/v1/links/batch", map[string]any{"edges": edges}, &resp, headers); err != nil {
 		return nil, err
 	}
 	return resp, nil
@@ -512,14 +503,14 @@ func (c *Client) DeleteLink(ctx context.Context, linkName, sourceID, targetID st
 		return nil, err
 	}
 	var resp map[string]any
-	if err := c.doRequest(ctx, http.MethodDelete, "/links", data, defaultContentType, &resp); err != nil {
+	if err := c.doRequest(ctx, http.MethodDelete, "/v1/links", data, defaultContentType, &resp); err != nil {
 		return nil, err
 	}
 	return resp, nil
 }
 
 // UpsertTyped inserts a typed object (any struct). The struct is JSON-marshalled
-// and sent to /ingest — the Go compiler ensures field-name correctness at build
+// and sent to /v1/ingest — the Go compiler ensures field-name correctness at build
 // time (#967 Tier 2a).
 //
 //	type Person struct {
@@ -539,7 +530,7 @@ func (c *Client) UpsertTyped(ctx context.Context, objectType, pk string, obj any
 	fields["_pk"] = pk
 	ndjson, _ := json.Marshal(fields)
 	status, respBody, _, err := c.rawHTTPRequest(ctx, "POST",
-		encodeGetURL("/ingest", map[string]string{"object_type": objectType, "purpose": "typed-crud"}),
+		encodeGetURL("/v1/ingest", map[string]string{"object_type": objectType, "purpose": "typed-crud"}),
 		ndjson, "application/x-ndjson")
 	if err != nil {
 		return nil, err
@@ -598,81 +589,8 @@ func (c *Client) ExportData(ctx context.Context, objectType, format string) (map
 		format = "json"
 	}
 	var resp map[string]any
-	path := encodeGetURL("/export", map[string]string{"type": objectType, "format": format, "purpose": "export"})
+	path := encodeGetURL("/v1/export", map[string]string{"type": objectType, "format": format, "purpose": "export"})
 	if err := c.get(ctx, path, &resp); err != nil {
-		return nil, err
-	}
-	return resp, nil
-}
-
-// RegisterWebhookOptions carries optional POST /webhooks fields. Secret, when
-// set, is stored server-side (never echoed back by ListWebhooks) and used to
-// sign every delivered payload with HMAC-SHA256 in the X-Webhook-Signature
-// header — the only way to get a signed (verifiable) webhook; leaving it
-// empty registers an unsigned one.
-type RegisterWebhookOptions struct {
-	Secret string
-}
-
-// RegisterWebhook registers a webhook for push notifications (#967 Tier 5b).
-// opts may be nil to omit every optional field (equivalent to the pre-#5395
-// signature). BREAKING (#5395): opts was added as a new trailing parameter,
-// following the *Options precedent #2319 already set for
-// GraphPageRank/ConvoyDetect — the
-// server has supported a signing secret since webhooks shipped, but no Go
-// caller could ever reach it.
-func (c *Client) RegisterWebhook(ctx context.Context, url string, eventTypes []string, opts *RegisterWebhookOptions) (map[string]any, error) {
-	body := map[string]any{"url": url, "event_types": eventTypes}
-	if opts != nil && opts.Secret != "" {
-		body["secret"] = opts.Secret
-	}
-	var resp map[string]any
-	if err := c.postJSON(ctx, "/webhooks", body, &resp); err != nil {
-		return nil, err
-	}
-	return resp, nil
-}
-
-// ListWebhooks lists registered webhooks.
-func (c *Client) ListWebhooks(ctx context.Context) (map[string]any, error) {
-	var resp map[string]any
-	if err := c.get(ctx, "/webhooks", &resp); err != nil {
-		return nil, err
-	}
-	return resp, nil
-}
-
-// DeleteWebhook deletes a webhook.
-func (c *Client) DeleteWebhook(ctx context.Context, id string) (map[string]any, error) {
-	var resp map[string]any
-	if err := c.delete(ctx, "/webhooks/"+pathSegment(id), &resp); err != nil {
-		return nil, err
-	}
-	return resp, nil
-}
-
-// ClusterTopology returns the cluster topology.
-func (c *Client) ClusterTopology(ctx context.Context) (map[string]any, error) {
-	var resp map[string]any
-	if err := c.get(ctx, "/cluster/topology", &resp); err != nil {
-		return nil, err
-	}
-	return resp, nil
-}
-
-// ClusterRebalance triggers a cluster rebalance.
-func (c *Client) ClusterRebalance(ctx context.Context) (map[string]any, error) {
-	var resp map[string]any
-	if err := c.postJSON(ctx, "/cluster/rebalance", map[string]any{}, &resp); err != nil {
-		return nil, err
-	}
-	return resp, nil
-}
-
-// ClusterDrain drains a node for maintenance.
-func (c *Client) ClusterDrain(ctx context.Context, nodeID string) (map[string]any, error) {
-	var resp map[string]any
-	if err := c.postJSON(ctx, "/cluster/drain/"+pathSegment(nodeID), map[string]any{}, &resp); err != nil {
 		return nil, err
 	}
 	return resp, nil
@@ -681,7 +599,7 @@ func (c *Client) ClusterDrain(ctx context.Context, nodeID string) (map[string]an
 // SessionDiff views uncommitted session changes.
 func (c *Client) SessionDiff(ctx context.Context, sessionID string) (map[string]any, error) {
 	var resp map[string]any
-	if err := c.get(ctx, "/session/"+pathSegment(sessionID)+"/diff", &resp); err != nil {
+	if err := c.get(ctx, "/v1/sessions/"+pathSegment(sessionID)+"/diff", &resp); err != nil {
 		return nil, err
 	}
 	return resp, nil
@@ -690,7 +608,7 @@ func (c *Client) SessionDiff(ctx context.Context, sessionID string) (map[string]
 // SessionCommit commits a session's draft writes.
 func (c *Client) SessionCommit(ctx context.Context, sessionID string) (map[string]any, error) {
 	var resp map[string]any
-	if err := c.postJSON(ctx, "/session/"+pathSegment(sessionID)+"/commit", map[string]any{}, &resp); err != nil {
+	if err := c.postJSON(ctx, "/v1/sessions/"+pathSegment(sessionID)+"/commit", map[string]any{}, &resp); err != nil {
 		return nil, err
 	}
 	return resp, nil
@@ -699,7 +617,7 @@ func (c *Client) SessionCommit(ctx context.Context, sessionID string) (map[strin
 // SessionDiscard discards uncommitted session changes.
 func (c *Client) SessionDiscard(ctx context.Context, sessionID string) (map[string]any, error) {
 	var resp map[string]any
-	if err := c.delete(ctx, "/session/"+pathSegment(sessionID)+"/draft", &resp); err != nil {
+	if err := c.delete(ctx, "/v1/sessions/"+pathSegment(sessionID)+"/draft", &resp); err != nil {
 		return nil, err
 	}
 	return resp, nil
@@ -714,7 +632,7 @@ func (c *Client) IdentityCluster(ctx context.Context, purpose, value string) (ma
 }
 
 // SameIdentity is a predicate: do two identifiers resolve to the same entity?
-// It executes `SAME_IDENTITY('<a>', '<b>')` via `POST /query` and decodes the
+// It executes `SAME_IDENTITY('<a>', '<b>')` via `POST /v1/query` and decodes the
 // `match` verdict as a boolean (#2246).
 func (c *Client) SameIdentity(ctx context.Context, purpose, idA, idB string) (bool, error) {
 	sql := fmt.Sprintf("SAME_IDENTITY('%s', '%s')", escapeSQLString(idA), escapeSQLString(idB))
@@ -753,13 +671,13 @@ func (c *Client) GraphDijkstra(ctx context.Context, purpose, objectType, from, t
 	return c.query(ctx, purpose, sql)
 }
 
-// GraphShortestPathOptions configures the governed GET /graph/shortest-path door.
+// GraphShortestPathOptions configures the governed GET /v1/graph/shortest-path door.
 type GraphShortestPathOptions struct {
 	// MaxHops caps the path length. <= 0 omits the param (server default).
 	MaxHops int
 }
 
-// GraphShortestPath finds the shortest path via the governed GET /graph/shortest-path
+// GraphShortestPath finds the shortest path via the governed GET /v1/graph/shortest-path
 // HTTP door (#2344). Unlike GraphDijkstra (a SQL operator), it exposes MaxHops.
 func (c *Client) GraphShortestPath(ctx context.Context, from, to string, opts *GraphShortestPathOptions) (map[string]any, error) {
 	params := map[string]string{"from": from, "to": to}
@@ -767,13 +685,13 @@ func (c *Client) GraphShortestPath(ctx context.Context, from, to string, opts *G
 		params["max_hops"] = strconv.Itoa(opts.MaxHops)
 	}
 	var resp map[string]any
-	if err := c.get(ctx, encodeGetURL("/graph/shortest-path", params), &resp); err != nil {
+	if err := c.get(ctx, encodeGetURL("/v1/graph/shortest-path", params), &resp); err != nil {
 		return nil, err
 	}
 	return resp, nil
 }
 
-// GraphTraverseOptions configures the governed GET /graph/traverse door.
+// GraphTraverseOptions configures the governed GET /v1/graph/traverse door.
 type GraphTraverseOptions struct {
 	// Direction: "out" | "in" | "both" ("" = server default out).
 	Direction string
@@ -783,7 +701,7 @@ type GraphTraverseOptions struct {
 	Limit int
 }
 
-// GraphTraverse runs a breadth-first traversal via GET /graph/traverse.
+// GraphTraverse runs a breadth-first traversal via GET /v1/graph/traverse.
 func (c *Client) GraphTraverse(ctx context.Context, from string, opts *GraphTraverseOptions) (map[string]any, error) {
 	params := map[string]string{"from": from}
 	if opts != nil {
@@ -798,7 +716,7 @@ func (c *Client) GraphTraverse(ctx context.Context, from string, opts *GraphTrav
 		}
 	}
 	var resp map[string]any
-	if err := c.get(ctx, encodeGetURL("/graph/traverse", params), &resp); err != nil {
+	if err := c.get(ctx, encodeGetURL("/v1/graph/traverse", params), &resp); err != nil {
 		return nil, err
 	}
 	return resp, nil
@@ -917,10 +835,10 @@ func (c *Client) Geofence(ctx context.Context, purpose, fence, targetType string
 	return c.query(ctx, purpose, sql)
 }
 
-// query is a helper that posts SQL to /query.
+// query is a helper that posts SQL to /v1/query.
 func (c *Client) query(ctx context.Context, purpose, sql string) (map[string]any, error) {
 	var resp map[string]any
-	if err := c.postJSON(ctx, "/query", map[string]any{"purpose": purpose, "sql": sql}, &resp); err != nil {
+	if err := c.postJSON(ctx, "/v1/query", map[string]any{"purpose": purpose, "sql": sql}, &resp); err != nil {
 		return nil, err
 	}
 	return resp, nil
@@ -935,22 +853,22 @@ func (c *Client) Health(ctx context.Context) (*HealthResponse, error) {
 	return &resp, nil
 }
 
-// Status calls GET /status and returns the node operational status.
+// Status calls GET /v1/system/status and returns the node operational status.
 func (c *Client) Status(ctx context.Context) (*StatusResponse, error) {
 	var resp StatusResponse
-	if err := c.get(ctx, "/status", &resp); err != nil {
+	if err := c.get(ctx, "/v1/system/status", &resp); err != nil {
 		return nil, err
 	}
 	return &resp, nil
 }
 
-// AuditCount calls GET /audit/count and returns the audit log summary.
+// AuditCount calls GET /v1/audit/count and returns the audit log summary.
 // If the returned ChainValid field is false, this method also returns
 // ErrChainCorrupted so that callers who do not inspect the struct still
 // receive an actionable error.
 func (c *Client) AuditCount(ctx context.Context) (*AuditCountResponse, error) {
 	var resp AuditCountResponse
-	if err := c.get(ctx, "/audit/count", &resp); err != nil {
+	if err := c.get(ctx, "/v1/audit/count", &resp); err != nil {
 		return nil, err
 	}
 	if !resp.ChainValid {
@@ -959,21 +877,11 @@ func (c *Client) AuditCount(ctx context.Context) (*AuditCountResponse, error) {
 	return &resp, nil
 }
 
-// ClusterNodes calls GET /cluster/nodes and returns the list of known nodes.
-// On free/server profiles the list contains only the local node.
-func (c *Client) ClusterNodes(ctx context.Context) ([]ClusterNode, error) {
-	var resp ClusterNodesResponse
-	if err := c.get(ctx, "/cluster/nodes", &resp); err != nil {
-		return nil, err
-	}
-	return resp.Nodes, nil
-}
-
-// Stats calls GET /debug/stats and returns engine-wide counts for health
+// Stats calls GET /v1/system/stats and returns engine-wide counts for health
 // dashboards (records, states, snapshot_rows, log_leaves, tokens).
 func (c *Client) Stats(ctx context.Context) (*Stats, error) {
 	var resp Stats
-	if err := c.get(ctx, "/debug/stats", &resp); err != nil {
+	if err := c.get(ctx, "/v1/system/stats", &resp); err != nil {
 		return nil, err
 	}
 	return &resp, nil
@@ -1000,7 +908,7 @@ func (c *Client) Ready(ctx context.Context) (*ReadyReport, error) {
 	return &resp, nil
 }
 
-// IngestDocument queues prepared governed rows through POST /ingest/bulk.
+// IngestDocument queues prepared governed rows through POST /v1/ingest/bulk.
 // Document extraction and mapping belong in application adapters; each row
 // should include _type and a stable _pk. The server admits all types under one
 // local task receipt. Queued payloads remain volatile; configured local authority
@@ -1016,18 +924,18 @@ func (c *Client) IngestDocument(ctx context.Context, objects []map[string]any, p
 		Purpose: purpose,
 	}
 	var resp IngestDocumentResponse
-	if err := c.postJSON(ctx, "/ingest/bulk", payload, &resp); err != nil {
+	if err := c.postJSON(ctx, "/v1/ingest/bulk", payload, &resp); err != nil {
 		return nil, err
 	}
 	return &resp, nil
 }
 
 // IngestDocumentStatus reads local receipt evidence for an ingest
-// task from GET /ingest/tasks/{taskID}. Unknown tasks or tenant/origin mismatch
+// task from GET /v1/ingest/tasks/{taskID}. Unknown tasks or tenant/origin mismatch
 // return not-found; unavailable complete receipt evidence returns an error.
 func (c *Client) IngestDocumentStatus(ctx context.Context, taskID string) (*IngestDocumentTaskStatus, error) {
 	var resp IngestDocumentTaskStatus
-	if err := c.get(ctx, "/ingest/tasks/"+pathSegment(taskID), &resp); err != nil {
+	if err := c.get(ctx, "/v1/ingest/tasks/"+pathSegment(taskID), &resp); err != nil {
 		return nil, err
 	}
 	return &resp, nil
@@ -1039,7 +947,7 @@ func (c *Client) IngestDocumentStatus(ctx context.Context, taskID string) (*Inge
 // and currently rejects cluster mode.
 func (c *Client) AppendEvent(ctx context.Context, req EventAppendRequest) (*EventAppendReceipt, error) {
 	var resp EventAppendReceipt
-	if err := c.postJSON(ctx, "/events/append", req, &resp); err != nil {
+	if err := c.postJSON(ctx, "/v1/ingest/events", req, &resp); err != nil {
 		return nil, err
 	}
 	return &resp, nil
@@ -1060,11 +968,11 @@ func (c *Client) baseURLValue() string { return c.baseURL }
 // the main data-plane listener baseURL usually targets. See ADR-0261 and
 // crates/relata-cli/src/serve/admin_listener.rs (relatadb/RelataDB#2321).
 func isAdminOnlyPath(path string) bool {
-	return strings.HasPrefix(path, "/admin/") || strings.HasPrefix(path, "/platform/")
+	return strings.HasPrefix(path, "/admin/")
 }
 
 // effectiveBaseURL resolves the base URL a request to path should target:
-// adminBaseURL for /admin/*|/platform/* when configured (ClientOptions.
+// adminBaseURL for /admin/* when configured (ClientOptions.
 // AdminBaseURL, #2321), baseURL otherwise — unchanged behaviour when
 // AdminBaseURL is unset.
 func (c *Client) effectiveBaseURL(path string) string {
@@ -1520,7 +1428,7 @@ func (c *Client) GraphQL(ctx context.Context, gqlQuery string, variables map[str
 		Data   any              `json:"data"`
 		Errors []map[string]any `json:"errors"`
 	}
-	if err := c.postJSON(ctx, "/graphql", body, &resp); err != nil {
+	if err := c.postJSON(ctx, "/v1/graphql", body, &resp); err != nil {
 		return nil, err
 	}
 	if len(resp.Errors) > 0 {
@@ -1537,7 +1445,7 @@ func (c *Client) GraphQL(ctx context.Context, gqlQuery string, variables map[str
 // the same identity without republishing best-effort webhook/SSE notifications.
 func (c *Client) SubmitAlert(ctx context.Context, req AlertSubmitRequest) (*AlertSubmitReceipt, error) {
 	var resp AlertSubmitReceipt
-	if err := c.postJSON(ctx, "/alerts/submit", req, &resp); err != nil {
+	if err := c.postJSON(ctx, "/v1/alerts", req, &resp); err != nil {
 		return nil, err
 	}
 	return &resp, nil

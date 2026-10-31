@@ -22,7 +22,7 @@ func NewSystemClient(c *Client) *SystemClient {
 // detectors, MV refresh, embedder worker, orphan-blob sweep, …).
 func (s *SystemClient) JobsStatus(ctx context.Context) (map[string]any, error) {
 	var resp map[string]any
-	if err := s.c.get(ctx, "/jobs", &resp); err != nil {
+	if err := s.c.get(ctx, "/v1/jobs", &resp); err != nil {
 		return nil, err
 	}
 	return resp, nil
@@ -31,7 +31,7 @@ func (s *SystemClient) JobsStatus(ctx context.Context) (map[string]any, error) {
 // JobStatus returns the status of a single background job by name.
 func (s *SystemClient) JobStatus(ctx context.Context, name string) (map[string]any, error) {
 	var resp map[string]any
-	if err := s.c.get(ctx, "/jobs/"+url.PathEscape(name), &resp); err != nil {
+	if err := s.c.get(ctx, "/v1/jobs/"+url.PathEscape(name), &resp); err != nil {
 		return nil, err
 	}
 	return resp, nil
@@ -40,16 +40,17 @@ func (s *SystemClient) JobStatus(ctx context.Context, name string) (map[string]a
 // NotificationRules lists notification rules for the caller's tenant.
 func (s *SystemClient) NotificationRules(ctx context.Context) ([]map[string]any, error) {
 	var resp []map[string]any
-	if err := s.c.get(ctx, "/notifications/rules", &resp); err != nil {
+	if err := s.c.get(ctx, "/v1/notification-rules", &resp); err != nil {
 		return nil, err
 	}
 	return resp, nil
 }
 
-// CreateNotificationRule creates a notification rule.
+// CreateNotificationRule creates a notification rule. A webhook is a delivery
+// channel of a rule: set webhook_url (and optionally webhook_headers) on the rule.
 func (s *SystemClient) CreateNotificationRule(ctx context.Context, rule map[string]any) (map[string]any, error) {
 	var resp map[string]any
-	if err := s.c.postJSON(ctx, "/notifications/rules", rule, &resp); err != nil {
+	if err := s.c.postJSON(ctx, "/v1/notification-rules", rule, &resp); err != nil {
 		return nil, err
 	}
 	return resp, nil
@@ -58,25 +59,7 @@ func (s *SystemClient) CreateNotificationRule(ctx context.Context, rule map[stri
 // DeleteNotificationRule deletes a notification rule by ID.
 func (s *SystemClient) DeleteNotificationRule(ctx context.Context, id string) (map[string]any, error) {
 	var resp map[string]any
-	if err := s.c.delete(ctx, "/notifications/rules/"+url.PathEscape(id), &resp); err != nil {
-		return nil, err
-	}
-	return resp, nil
-}
-
-// ListPipelines lists registered ingest pipelines.
-func (s *SystemClient) ListPipelines(ctx context.Context) ([]map[string]any, error) {
-	var resp []map[string]any
-	if err := s.c.get(ctx, "/pipelines", &resp); err != nil {
-		return nil, err
-	}
-	return resp, nil
-}
-
-// DefinePipeline defines a new ingest pipeline.
-func (s *SystemClient) DefinePipeline(ctx context.Context, definition map[string]any) (map[string]any, error) {
-	var resp map[string]any
-	if err := s.c.postJSON(ctx, "/pipelines", definition, &resp); err != nil {
+	if err := s.c.delete(ctx, "/v1/notification-rules/"+url.PathEscape(id), &resp); err != nil {
 		return nil, err
 	}
 	return resp, nil

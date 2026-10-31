@@ -7,7 +7,7 @@ import (
 )
 
 // EvidenceHeaders returns the headers that record relata.evidence/v1 for a
-// /query, /search, /graphql or MCP read (#5707). retentionDays is 1 to 365;
+// /v1/query, /v1/search, /v1/graphql or MCP read (#5707). retentionDays is 1 to 365;
 // zero leaves the server default (30).
 func EvidenceHeaders(retentionDays int) map[string]string {
 	h := map[string]string{"X-Relata-Record-Evidence": "true"}
@@ -27,10 +27,10 @@ func NewEvidenceClient(c *Client) *EvidenceClient {
 	return &EvidenceClient{c: c}
 }
 
-// List calls GET /evidence: the caller's unexpired records, newest first.
+// List calls GET /v1/evidence: the caller's unexpired records, newest first.
 // limit <= 0 uses the server default.
 func (e *EvidenceClient) List(ctx context.Context, limit int) (map[string]any, error) {
-	path := "/evidence"
+	path := "/v1/evidence"
 	if limit > 0 {
 		path += "?limit=" + strconv.Itoa(limit)
 	}
@@ -41,16 +41,16 @@ func (e *EvidenceClient) List(ctx context.Context, limit int) (map[string]any, e
 	return out, nil
 }
 
-// Get calls GET /evidence/{id}: 404 when unknown, 410 once expired.
+// Get calls GET /v1/evidence/{id}: 404 when unknown, 410 once expired.
 func (e *EvidenceClient) Get(ctx context.Context, id string) (map[string]any, error) {
 	var out map[string]any
-	if err := e.c.get(ctx, "/evidence/"+url.PathEscape(id), &out); err != nil {
+	if err := e.c.get(ctx, "/v1/evidence/"+url.PathEscape(id), &out); err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-// Replay calls POST /evidence/{id}/replay: every citation is re-read under the
+// Replay calls POST /v1/evidence/{id}/replay: every citation is re-read under the
 // caller's current authorization. Ranking is not recomputed.
 func (e *EvidenceClient) Replay(ctx context.Context, id string, includeContent bool) (map[string]any, error) {
 	payload := map[string]any{}
@@ -58,7 +58,7 @@ func (e *EvidenceClient) Replay(ctx context.Context, id string, includeContent b
 		payload["include_content"] = true
 	}
 	var out map[string]any
-	if err := e.c.postJSON(ctx, "/evidence/"+url.PathEscape(id)+"/replay", payload, &out); err != nil {
+	if err := e.c.postJSON(ctx, "/v1/evidence/"+url.PathEscape(id)+"/replay", payload, &out); err != nil {
 		return nil, err
 	}
 	return out, nil

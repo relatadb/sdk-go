@@ -48,7 +48,7 @@ import (
 // Per ADR-0298, RelataDB has no server-side agent loop and orchestration
 // lives in the SDK; sdks/python/relata/rag.go's RagClient stays canonical
 // and this package's RagClient (rag.go) stays a thin pass-through over the
-// frozen /rag/query contract. This file is the SDK-side control flow built
+// frozen /v1/rag/query contract. This file is the SDK-side control flow built
 // on top of that thin pass-through, now shipped here too per epic #4576.
 //
 // This module never calls an LLM itself: every LLM-backed decision point
@@ -124,7 +124,7 @@ const (
 	// from these hits. No LLM call.
 	GateDecisionPass GateDecision = "pass"
 	// GateDecisionRetry: score < HeuristicRetryThreshold — issue another
-	// /rag/query call. No LLM call.
+	// /v1/rag/query call. No LLM call.
 	GateDecisionRetry GateDecision = "retry"
 	// GateDecisionEvaluate: between the two thresholds — proceed to
 	// corrective retrieval grading (GradeHits), the loop's one LLM call
@@ -194,7 +194,7 @@ type HeuristicGateResult struct {
 }
 
 // HeuristicGate is the cheap pre-LLM gate: centroid cosine between
-// queryEmbedding and the top-K /rag/query hits' embeddings, <5ms, no LLM
+// queryEmbedding and the top-K /v1/rag/query hits' embeddings, <5ms, no LLM
 // call either way.
 //
 // Zero hitEmbeddings scores 0.0 and decides GateDecisionRetry — nothing to
@@ -286,7 +286,7 @@ func GradeHits(ctx context.Context, query string, hits []RagHit, graderFn Grader
 // WebSearchFallbackFn is a caller-supplied web-search fallback, invoked when
 // corrective grading's CorrectiveGradingResult.NeedsRequery trips and a
 // fallback is configured. Returns a full *RagQueryResponse-shaped result —
-// the loop does not care whether it came from /rag/query or an external
+// the loop does not care whether it came from /v1/rag/query or an external
 // search API.
 type WebSearchFallbackFn func(ctx context.Context, query string) (*RagQueryResponse, error)
 
@@ -472,7 +472,7 @@ type RunAgenticLoopOptions struct {
 	// negative value is a caller error (see the file doc comment for why
 	// this isn't a pointer field like SmartRagOptions.TopK).
 	MaxIterations int
-	// RagOptions is forwarded to RagClient.Query on every /rag/query call.
+	// RagOptions is forwarded to RagClient.Query on every /v1/rag/query call.
 	RagOptions SmartRagOptions
 }
 
@@ -507,7 +507,7 @@ func RunAgenticLoop(ctx context.Context, ragClient *RagClient, query, objectType
 // ---------------------------------------------------------------------------
 
 // SubAgentStrategy is one parallel retrieval strategy for RunSubagentFanout
-// — a distinct /rag/query parameterization, typically a SearchMode/
+// — a distinct /v1/rag/query parameterization, typically a SearchMode/
 // EmbeddingSlot combination (#4514).
 type SubAgentStrategy struct {
 	// Name is a human-readable label for this strategy, surfaced on
@@ -564,7 +564,7 @@ func validateFanoutStrategies(strategies []SubAgentStrategy) error {
 // subAgentStrategyConfidence computes the deterministic per-strategy
 // confidence: the top hit's RelevanceConfidence (#4520), or 0.0 when there
 // are no hits or the field is unset (server predates #4520). A pure
-// function of the response already returned by /rag/query — no LLM/network
+// function of the response already returned by /v1/rag/query — no LLM/network
 // call.
 func subAgentStrategyConfidence(response *RagQueryResponse) float64 {
 	if response == nil || len(response.Hits) == 0 {
@@ -695,13 +695,13 @@ type RunSubagentFanoutOptions struct {
 	// survivor in as supporting evidence; 0 uses MergeThreshold (the
 	// verified default).
 	MergeThreshold float64
-	// RagOptions is forwarded to every strategy's /rag/query call before
+	// RagOptions is forwarded to every strategy's /v1/rag/query call before
 	// that strategy's own SubAgentStrategy.RagOptions override on top (see
 	// mergeRagOptions).
 	RagOptions SmartRagOptions
 }
 
-// RunSubagentFanout runs strategies (2-5 parallel /rag/query
+// RunSubagentFanout runs strategies (2-5 parallel /v1/rag/query
 // parameterizations, concurrently via goroutines) and deterministically
 // picks + merges a winner.
 //

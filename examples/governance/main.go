@@ -56,9 +56,9 @@ func main() {
 	} else {
 		fmt.Printf("  Audit count: %v\n", count)
 	}
-	entries, err := audit.Entries(ctx, &relata.AuditEntriesOptions{Limit: 5})
+	entries, err := audit.Log(ctx, &relata.AuditLogOptions{Limit: 5})
 	if err != nil {
-		fmt.Printf("  entries error: %v\n", err)
+		fmt.Printf("  log error: %v\n", err)
 	} else {
 		fmt.Printf("  Recent entries: %v\n", entries)
 	}

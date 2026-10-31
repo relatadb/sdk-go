@@ -12,7 +12,7 @@ import (
 const MediaWorkClaimHeader = "X-Relata-Claim"
 
 // MediaWorkClaimHeaders returns the X-Relata-Claim header for a raw
-// POST /ingest/bulk write-back. BulkOptions.MediaWorkClaim sets it for you.
+// POST /v1/ingest/bulk write-back. BulkOptions.MediaWorkClaim sets it for you.
 func MediaWorkClaimHeaders(claimID uint64) map[string]string {
 	return map[string]string{MediaWorkClaimHeader: strconv.FormatUint(claimID, 10)}
 }
@@ -33,7 +33,7 @@ const (
 	MediaWorkPermanent = "permanent"
 )
 
-// MediaWorkClient wraps the /media/work routes used by OpenETL: lease items
+// MediaWorkClient wraps the /v1/media/work routes used by OpenETL: lease items
 // with Claim, keep the lease with Heartbeat, write rows through
 // IngestClient.Bulk with BulkOptions.MediaWorkClaim, then Complete or Fail.
 // Complete succeeds only when the batch and child counts equal what Relata
@@ -48,7 +48,7 @@ func NewMediaWorkClient(c *Client) *MediaWorkClient {
 }
 
 func mediaWorkPath(workID, suffix string) string {
-	return "/media/work/" + url.PathEscape(workID) + suffix
+	return "/v1/media/work/" + url.PathEscape(workID) + suffix
 }
 
 // MediaWorkClaimOptions tunes Claim. Zero values use the server defaults
@@ -58,7 +58,7 @@ type MediaWorkClaimOptions struct {
 	LeaseMs  int
 }
 
-// List calls GET /media/work. state "" returns every state; limit <= 0 uses
+// List calls GET /v1/media/work. state "" returns every state; limit <= 0 uses
 // the server default.
 func (m *MediaWorkClient) List(ctx context.Context, state string, limit int) (map[string]any, error) {
 	q := url.Values{}
@@ -74,7 +74,7 @@ func (m *MediaWorkClient) List(ctx context.Context, state string, limit int) (ma
 	if limit > 0 {
 		q.Set("limit", strconv.Itoa(limit))
 	}
-	path := "/media/work"
+	path := "/v1/media/work"
 	if enc := q.Encode(); enc != "" {
 		path += "?" + enc
 	}
@@ -85,7 +85,7 @@ func (m *MediaWorkClient) List(ctx context.Context, state string, limit int) (ma
 	return out, nil
 }
 
-// Get calls GET /media/work/{id}: durable status; 404 when unknown.
+// Get calls GET /v1/media/work/{id}: durable status; 404 when unknown.
 func (m *MediaWorkClient) Get(ctx context.Context, workID string) (map[string]any, error) {
 	var out map[string]any
 	if err := m.c.get(ctx, mediaWorkPath(workID, ""), &out); err != nil {
@@ -94,7 +94,7 @@ func (m *MediaWorkClient) Get(ctx context.Context, workID string) (map[string]an
 	return out, nil
 }
 
-// Claim calls POST /media/work/claim. The result is {"items": [...]}; an empty
+// Claim calls POST /v1/media/work/claim. The result is {"items": [...]}; an empty
 // list means nothing is deliverable now (no long poll).
 func (m *MediaWorkClient) Claim(ctx context.Context, claimant string, opts *MediaWorkClaimOptions) (map[string]any, error) {
 	body := map[string]any{"claimant": claimant}
@@ -107,13 +107,13 @@ func (m *MediaWorkClient) Claim(ctx context.Context, claimant string, opts *Medi
 		}
 	}
 	var out map[string]any
-	if err := m.c.postJSON(ctx, "/media/work/claim", body, &out); err != nil {
+	if err := m.c.postJSON(ctx, "/v1/media/work/claim", body, &out); err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-// Heartbeat calls POST /media/work/{id}/heartbeat (409 once the lease lapsed).
+// Heartbeat calls POST /v1/media/work/{id}/heartbeat (409 once the lease lapsed).
 // leaseMs <= 0 uses the server default.
 func (m *MediaWorkClient) Heartbeat(ctx context.Context, workID string, claimID uint64, leaseMs int) (map[string]any, error) {
 	body := map[string]any{"claim_id": claimID}
@@ -127,7 +127,7 @@ func (m *MediaWorkClient) Heartbeat(ctx context.Context, workID string, claimID 
 	return out, nil
 }
 
-// Complete calls POST /media/work/{id}/complete: 409 when batches/children
+// Complete calls POST /v1/media/work/{id}/complete: 409 when batches/children
 // differ from what Relata durably holds.
 func (m *MediaWorkClient) Complete(ctx context.Context, workID string, claimID uint64, producerVersion string, batches, children int) (map[string]any, error) {
 	body := map[string]any{
@@ -143,7 +143,7 @@ func (m *MediaWorkClient) Complete(ctx context.Context, workID string, claimID u
 	return out, nil
 }
 
-// Fail calls POST /media/work/{id}/fail. class is MediaWorkRetryable
+// Fail calls POST /v1/media/work/{id}/fail. class is MediaWorkRetryable
 // (redelivered with back-off) or MediaWorkPermanent (dead-lettered). code and
 // detail are optional.
 func (m *MediaWorkClient) Fail(ctx context.Context, workID string, claimID uint64, class, code, detail string) (map[string]any, error) {
@@ -159,6 +159,16 @@ func (m *MediaWorkClient) Fail(ctx context.Context, workID string, claimID uint6
 	}
 	var out map[string]any
 	if err := m.c.postJSON(ctx, mediaWorkPath(workID, "/fail"), body, &out); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// Requeue calls POST /v1/media/work/{id}/requeue: puts a dead-lettered or
+// cancelled item back on the queue.
+func (m *MediaWorkClient) Requeue(ctx context.Context, workID string) (map[string]any, error) {
+	var out map[string]any
+	if err := m.c.postJSON(ctx, mediaWorkPath(workID, "/requeue"), map[string]any{}, &out); err != nil {
 		return nil, err
 	}
 	return out, nil

@@ -160,7 +160,7 @@ func queryUsageInventory(ctx context.Context, baseURL, token, tenant, sql string
 	if err != nil {
 		return nil, err
 	}
-	request, err := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimRight(baseURL, "/")+"/query", bytes.NewReader(body))
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimRight(baseURL, "/")+"/v1/query", bytes.NewReader(body))
 	if err != nil {
 		return nil, err
 	}

@@ -22,7 +22,7 @@ func TestTypedQueryParamsWireAndIndexedError(t *testing.T) {
 			var got map[string]any
 			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				requests++
-				if r.Method != "POST" || r.URL.Path != "/query" {
+				if r.Method != "POST" || r.URL.Path != "/v1/query" {
 					t.Errorf("unexpected route: %s %s", r.Method, r.URL.Path)
 				}
 				if err := json.NewDecoder(r.Body).Decode(&got); err != nil {

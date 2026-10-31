@@ -168,10 +168,10 @@ func validateMetric(metric string) error {
 
 // HybridSearch performs a hybrid BM25 + vector search via the HYBRID_SEARCH
 // operator. Executes "HYBRID_SEARCH FROM <type> QUERY '<text>' LIMIT <k>"
-// through the governed /query door so PURPOSE / ACL / cell-masking / tenant
+// through the governed /v1/query door so PURPOSE / ACL / cell-masking / tenant
 // isolation apply identically to a hand-written query. The server embeds
 // queryText server-side; caller-supplied embeddings are NOT accepted by the
-// /query SQL surface (no vector-literal grammar — use Embed() for text→vector
+// /v1/query SQL surface (no vector-literal grammar — use Embed() for text→vector
 // instead).
 func (v *VectorClient) HybridSearch(ctx context.Context, objectType, queryText string, opts *HybridSearchOptions) ([]map[string]any, error) {
 	if queryText == "" {
@@ -254,7 +254,7 @@ func (v *VectorClient) queryWithParams(ctx context.Context, sql string, params [
 	return v.c.QueryWithParams(ctx, sql, params, WithPurpose(eff))
 }
 
-// EmbedResponse is the body of POST /embed (#1172).
+// EmbedResponse is the body of POST /v1/embed (#1172).
 type EmbedResponse struct {
 	Embedding []float64 `json:"embedding"`
 	Model     string    `json:"model"`
@@ -264,7 +264,7 @@ type EmbedResponse struct {
 	Dim      int  `json:"dim"`
 }
 
-// EmbedBatchResponse is the body of POST /embed/batch (#1172).
+// EmbedBatchResponse is the body of POST /v1/embed with {"texts": [...]} (#1172).
 type EmbedBatchResponse struct {
 	Embeddings [][]float64 `json:"embeddings"`
 	Model      string      `json:"model"`
@@ -275,7 +275,7 @@ type EmbedBatchResponse struct {
 	Count    int  `json:"count"`
 }
 
-// Embed embeds a single text string via POST /embed. Uses the server's
+// Embed embeds a single text string via POST /v1/embed. Uses the server's
 // built-in CPU lexical embedder when no sidecar is configured, or the
 // external embedding sidecar (RELATA_EMBED_URL / RELATA_ACCEL_ENDPOINT) when set. model is an optional model hint
 // passed through to the server; pass "" to omit it.
@@ -285,13 +285,13 @@ func (v *VectorClient) Embed(ctx context.Context, text, model string) (*EmbedRes
 		body["model"] = model
 	}
 	var out EmbedResponse
-	if err := v.c.postJSON(ctx, "/embed", body, &out); err != nil {
+	if err := v.c.postJSON(ctx, "/v1/embed", body, &out); err != nil {
 		return nil, err
 	}
 	return &out, nil
 }
 
-// EmbedBatch embeds multiple texts in one call via POST /embed/batch. model
+// EmbedBatch embeds multiple texts in one call via POST /v1/embed with {"texts": [...]}. model
 // is an optional model hint passed through to the server; pass "" to omit it.
 func (v *VectorClient) EmbedBatch(ctx context.Context, texts []string, model string) (*EmbedBatchResponse, error) {
 	body := map[string]any{"texts": texts}
@@ -299,49 +299,8 @@ func (v *VectorClient) EmbedBatch(ctx context.Context, texts []string, model str
 		body["model"] = model
 	}
 	var out EmbedBatchResponse
-	if err := v.c.postJSON(ctx, "/embed/batch", body, &out); err != nil {
+	if err := v.c.postJSON(ctx, "/v1/embed", body, &out); err != nil {
 		return nil, err
 	}
 	return &out, nil
-}
-
-// ── #2444 (ADR-0276): per-modality data-plane media embed routes ───────────
-
-// embedMedia POSTs {"bytes_b64": ..., "model": ...} to /embed/{modality} and
-// decodes the shared {embedding, model, dim} response shape.
-func (v *VectorClient) embedMedia(ctx context.Context, modality, bytesB64, model string) (*EmbedResponse, error) {
-	body := map[string]any{"bytes_b64": bytesB64}
-	if model != "" {
-		body["model"] = model
-	}
-	var out EmbedResponse
-	if err := v.c.postJSON(ctx, "/embed/"+modality, body, &out); err != nil {
-		return nil, err
-	}
-	return &out, nil
-}
-
-// EmbedImage embeds a single image via POST /embed/image (#2444, ADR-0276).
-// bytesB64 is the base64-encoded image. Uses the server's configured
-// embedder's sidecar (RELATA_ACCEL_ENDPOINT, ADR-177); returns an error (503)
-// when the active embedder does not support media. model is an optional
-// model hint; pass "" to omit it.
-func (v *VectorClient) EmbedImage(ctx context.Context, bytesB64, model string) (*EmbedResponse, error) {
-	return v.embedMedia(ctx, "image", bytesB64, model)
-}
-
-// EmbedFace embeds a single face crop via POST /embed/face (#2444, ADR-0276).
-func (v *VectorClient) EmbedFace(ctx context.Context, bytesB64, model string) (*EmbedResponse, error) {
-	return v.embedMedia(ctx, "face", bytesB64, model)
-}
-
-// EmbedAudio embeds a single audio clip via POST /embed/audio (#2444, ADR-0276).
-func (v *VectorClient) EmbedAudio(ctx context.Context, bytesB64, model string) (*EmbedResponse, error) {
-	return v.embedMedia(ctx, "audio", bytesB64, model)
-}
-
-// EmbedVideo embeds a single video clip/keyframe via POST /embed/video
-// (#2444, ADR-0276).
-func (v *VectorClient) EmbedVideo(ctx context.Context, bytesB64, model string) (*EmbedResponse, error) {
-	return v.embedMedia(ctx, "video", bytesB64, model)
 }

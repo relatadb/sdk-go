@@ -25,7 +25,7 @@ func NewGovernanceClient(c *Client) *GovernanceClient {
 type PlaceLegalHoldOptions struct {
 	// Field scopes the hold to rows where Field equals Value; set both
 	// together, or leave both empty for a type-wide hold. The server's
-	// POST /retention/holds only reads case_id/object_type/field/value —
+	// POST /v1/retention/holds only reads case_id/object_type/field/value —
 	// any other key is silently ignored (#2465), so Field/Value is the
 	// only supported row-scoping mechanism.
 	Field string
@@ -61,7 +61,7 @@ type SubmitDSAROptions struct {
 
 // ListRules lists detection rules. A non-empty objectType filters to one type.
 func (g *GovernanceClient) ListRules(ctx context.Context, objectType string) ([]map[string]any, error) {
-	path := "/rules"
+	path := "/v1/rules"
 	if objectType != "" {
 		path += "?object_type=" + objectType
 	}
@@ -96,7 +96,7 @@ func (g *GovernanceClient) resolvePurpose(override string) (string, error) {
 // action are optional. Returns the created rule
 // record including its server-assigned id.
 //
-// purpose is mandatory server-side (POST /rules?purpose=<p>) — pass it via
+// purpose is mandatory server-side (POST /v1/rules?purpose=<p>) — pass it via
 // opts.Purpose or set DefaultPurpose on the parent client.
 func (g *GovernanceClient) CreateRule(ctx context.Context, rule map[string]any, opts *CreateRuleOptions) (map[string]any, error) {
 	override := ""
@@ -108,7 +108,7 @@ func (g *GovernanceClient) CreateRule(ctx context.Context, rule map[string]any, 
 		return nil, err
 	}
 	var resp map[string]any
-	path := "/rules?purpose=" + url.QueryEscape(purpose)
+	path := "/v1/rules?purpose=" + url.QueryEscape(purpose)
 	if err := g.c.postJSON(ctx, path, rule, &resp); err != nil {
 		return nil, err
 	}
@@ -118,7 +118,7 @@ func (g *GovernanceClient) CreateRule(ctx context.Context, rule map[string]any, 
 // DisableRule disables (logically deletes) a rule by id.
 func (g *GovernanceClient) DisableRule(ctx context.Context, ruleID string) (map[string]any, error) {
 	var resp map[string]any
-	if err := g.c.delete(ctx, "/rules/"+pathSegment(ruleID), &resp); err != nil {
+	if err := g.c.delete(ctx, "/v1/rules/"+pathSegment(ruleID), &resp); err != nil {
 		return nil, err
 	}
 	return resp, nil
@@ -127,7 +127,7 @@ func (g *GovernanceClient) DisableRule(ctx context.Context, ruleID string) (map[
 // SnoozeRule temporarily disables a rule for durationSecs (#967).
 func (g *GovernanceClient) SnoozeRule(ctx context.Context, ruleID string, durationSecs int) (map[string]any, error) {
 	var resp map[string]any
-	if err := g.c.postJSON(ctx, "/rules/"+pathSegment(ruleID)+"/snooze", map[string]any{"duration_secs": durationSecs}, &resp); err != nil {
+	if err := g.c.postJSON(ctx, "/v1/rules/"+pathSegment(ruleID)+"/snooze", map[string]any{"duration_secs": durationSecs}, &resp); err != nil {
 		return nil, err
 	}
 	return resp, nil
@@ -148,7 +148,7 @@ func (g *GovernanceClient) SuppressRule(ctx context.Context, ruleID, entityID st
 		body["condition"] = opts.Condition
 	}
 	var resp map[string]any
-	if err := g.c.postJSON(ctx, "/rules/"+pathSegment(ruleID)+"/suppress", body, &resp); err != nil {
+	if err := g.c.postJSON(ctx, "/v1/rules/"+pathSegment(ruleID)+"/suppress", body, &resp); err != nil {
 		return nil, err
 	}
 	return resp, nil
@@ -157,7 +157,7 @@ func (g *GovernanceClient) SuppressRule(ctx context.Context, ruleID, entityID st
 // AddRuleException adds an exception so specific matches are ignored (#967).
 func (g *GovernanceClient) AddRuleException(ctx context.Context, ruleID string, exception map[string]any) (map[string]any, error) {
 	var resp map[string]any
-	if err := g.c.postJSON(ctx, "/rules/"+pathSegment(ruleID)+"/exceptions", exception, &resp); err != nil {
+	if err := g.c.postJSON(ctx, "/v1/rules/"+pathSegment(ruleID)+"/exceptions", exception, &resp); err != nil {
 		return nil, err
 	}
 	return resp, nil
@@ -166,7 +166,7 @@ func (g *GovernanceClient) AddRuleException(ctx context.Context, ruleID string, 
 // GetRuleTuning retrieves the tuning state (snoozes, suppressions, exceptions) (#967).
 func (g *GovernanceClient) GetRuleTuning(ctx context.Context, ruleID string) (map[string]any, error) {
 	var resp map[string]any
-	if err := g.c.get(ctx, "/rules/"+pathSegment(ruleID)+"/tuning", &resp); err != nil {
+	if err := g.c.get(ctx, "/v1/rules/"+pathSegment(ruleID)+"/tuning", &resp); err != nil {
 		return nil, err
 	}
 	return resp, nil
@@ -175,7 +175,7 @@ func (g *GovernanceClient) GetRuleTuning(ctx context.Context, ruleID string) (ma
 // ListRetentionPolicies lists configured retention policies.
 func (g *GovernanceClient) ListRetentionPolicies(ctx context.Context) ([]map[string]any, error) {
 	var resp map[string]any
-	if err := g.c.get(ctx, "/retention/policies", &resp); err != nil {
+	if err := g.c.get(ctx, "/v1/retention/policies", &resp); err != nil {
 		return nil, err
 	}
 	return unwrapList(resp, "policies"), nil
@@ -184,7 +184,7 @@ func (g *GovernanceClient) ListRetentionPolicies(ctx context.Context) ([]map[str
 // ListLegalHolds lists active legal holds.
 func (g *GovernanceClient) ListLegalHolds(ctx context.Context) ([]map[string]any, error) {
 	var resp map[string]any
-	if err := g.c.get(ctx, "/retention/holds", &resp); err != nil {
+	if err := g.c.get(ctx, "/v1/retention/holds", &resp); err != nil {
 		return nil, err
 	}
 	return unwrapList(resp, "holds"), nil
@@ -206,7 +206,7 @@ func (g *GovernanceClient) PlaceLegalHold(ctx context.Context, caseID, objectTyp
 		}
 	}
 	var resp map[string]any
-	if err := g.c.postJSON(ctx, "/retention/holds", payload, &resp); err != nil {
+	if err := g.c.postJSON(ctx, "/v1/retention/holds", payload, &resp); err != nil {
 		return nil, err
 	}
 	return resp, nil
@@ -215,7 +215,7 @@ func (g *GovernanceClient) PlaceLegalHold(ctx context.Context, caseID, objectTyp
 // LiftLegalHold lifts (removes) a legal hold by case id.
 func (g *GovernanceClient) LiftLegalHold(ctx context.Context, caseID string) (map[string]any, error) {
 	var resp map[string]any
-	if err := g.c.delete(ctx, "/retention/holds/"+pathSegment(caseID), &resp); err != nil {
+	if err := g.c.delete(ctx, "/v1/retention/holds/"+pathSegment(caseID), &resp); err != nil {
 		return nil, err
 	}
 	return resp, nil
@@ -224,7 +224,7 @@ func (g *GovernanceClient) LiftLegalHold(ctx context.Context, caseID string) (ma
 // ListWormPolicies lists WORM (write-once-read-many) retention policies.
 func (g *GovernanceClient) ListWormPolicies(ctx context.Context) ([]map[string]any, error) {
 	var resp map[string]any
-	if err := g.c.get(ctx, "/retention/worm", &resp); err != nil {
+	if err := g.c.get(ctx, "/v1/retention/worm", &resp); err != nil {
 		return nil, err
 	}
 	return unwrapList(resp, "policies"), nil
@@ -234,7 +234,7 @@ func (g *GovernanceClient) ListWormPolicies(ctx context.Context) ([]map[string]a
 // or purged until retentionSecs elapses from their system_from.
 func (g *GovernanceClient) SetWormPolicy(ctx context.Context, objectType string, retentionSecs int) (map[string]any, error) {
 	var resp map[string]any
-	if err := g.c.postJSON(ctx, "/retention/worm/"+pathSegment(objectType), map[string]any{"retention_secs": retentionSecs}, &resp); err != nil {
+	if err := g.c.postJSON(ctx, "/v1/retention/worm/"+pathSegment(objectType), map[string]any{"retention_secs": retentionSecs}, &resp); err != nil {
 		return nil, err
 	}
 	return resp, nil
@@ -256,7 +256,7 @@ func (g *GovernanceClient) ListAlerts(ctx context.Context, opts *ListAlertsOptio
 		}
 	}
 	var resp map[string]any
-	if err := g.c.get(ctx, encodeGetURL("/alerts/list", params), &resp); err != nil {
+	if err := g.c.get(ctx, encodeGetURL("/v1/alerts", params), &resp); err != nil {
 		return nil, err
 	}
 	return unwrapList(resp, "alerts"), nil
@@ -277,7 +277,7 @@ func (g *GovernanceClient) UpdateAlert(ctx context.Context, alertID string, opts
 		}
 	}
 	var resp map[string]any
-	if err := g.c.patchJSON(ctx, "/alerts/update/"+pathSegment(alertID), payload, &resp); err != nil {
+	if err := g.c.patchJSON(ctx, "/v1/alerts/"+pathSegment(alertID), payload, &resp); err != nil {
 		return nil, err
 	}
 	return resp, nil
@@ -298,7 +298,61 @@ func (g *GovernanceClient) SubmitDSAR(ctx context.Context, subjectIdentity, reas
 		stringParams[k] = fmt.Sprintf("%v", v)
 	}
 	var resp map[string]any
-	if err := g.c.get(ctx, encodeGetURL("/gdpr/dsar", stringParams), &resp); err != nil {
+	if err := g.c.get(ctx, encodeGetURL("/v1/gdpr/dsar", stringParams), &resp); err != nil {
+		return nil, err
+	}
+	return resp, nil
+}
+
+// EraseOptions configures GovernanceClient.Erase.
+type EraseOptions struct {
+	// Reason is recorded on the erasure receipt.
+	Reason string
+	// TenantID names the tenant to erase from (unscoped admin callers only; an
+	// attributed caller's own tenant always wins).
+	TenantID string
+	// Physical requests physical erasure in addition to the logical tombstone.
+	Physical bool
+}
+
+// Erase files a GDPR erasure for subjectID (POST /v1/gdpr/erase) and returns
+// the decoded receipt / operation response.
+func (g *GovernanceClient) Erase(ctx context.Context, subjectID string, opts *EraseOptions) (map[string]any, error) {
+	payload := map[string]any{"subject_id": subjectID}
+	if opts != nil {
+		if opts.Reason != "" {
+			payload["reason"] = opts.Reason
+		}
+		if opts.TenantID != "" {
+			payload["tenant_id"] = opts.TenantID
+		}
+		if opts.Physical {
+			payload["physical"] = true
+		}
+	}
+	var resp map[string]any
+	if err := g.c.postJSON(ctx, "/v1/gdpr/erase", payload, &resp); err != nil {
+		return nil, err
+	}
+	return resp, nil
+}
+
+// DeletionStatus returns the progress of a deletion operation
+// (GET /v1/gdpr/deletions/{operation_id}).
+func (g *GovernanceClient) DeletionStatus(ctx context.Context, operationID string) (map[string]any, error) {
+	var resp map[string]any
+	if err := g.c.get(ctx, "/v1/gdpr/deletions/"+pathSegment(operationID), &resp); err != nil {
+		return nil, err
+	}
+	return resp, nil
+}
+
+// VerifyReceipt verifies a signed erasure receipt (POST /v1/gdpr/verify-receipt).
+// receipt carries receipt_id, subject, erased_at, rows_shredded and
+// receipt_signature exactly as returned by Erase.
+func (g *GovernanceClient) VerifyReceipt(ctx context.Context, receipt map[string]any) (map[string]any, error) {
+	var resp map[string]any
+	if err := g.c.postJSON(ctx, "/v1/gdpr/verify-receipt", receipt, &resp); err != nil {
 		return nil, err
 	}
 	return resp, nil

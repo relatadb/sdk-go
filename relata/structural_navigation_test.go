@@ -15,7 +15,7 @@ import (
 // port of sdks/python/tests/test_structural_navigation.py (#4581).
 
 // queuedNavServer returns one JSON response body (as {"data": rows, ...})
-// per POST /query call, in order. Extra calls beyond len(responses) get an
+// per POST /v1/query call, in order. Extra calls beyond len(responses) get an
 // empty row set. sentSQL captures every request's "sql" field in order.
 func queuedNavServer(responses [][]map[string]any) (*httptest.Server, *[]string) {
 	sentSQL := make([]string, 0, len(responses))

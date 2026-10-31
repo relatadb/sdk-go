@@ -136,12 +136,12 @@ func TestIntentDetectors(t *testing.T) {
 	}
 }
 
-// ── smart_rag_query — the different /rag/query call shape it produces ──────
+// ── smart_rag_query — the different /v1/rag/query call shape it produces ──────
 
 func TestSmartRagQuery_ConjunctionRequestsExpandWindow(t *testing.T) {
 	var captured map[string]any
 	srv := routedServer(t, map[string]func(http.ResponseWriter, *http.Request){
-		"/rag/query": func(w http.ResponseWriter, r *http.Request) {
+		"/v1/rag/query": func(w http.ResponseWriter, r *http.Request) {
 			captured = decodeBody(t, r)
 			writeJSON(w, 200, map[string]any{"hits": []any{}})
 		},
@@ -161,7 +161,7 @@ func TestSmartRagQuery_ConjunctionRequestsExpandWindow(t *testing.T) {
 func TestSmartRagQuery_EnumerationWidensTopK(t *testing.T) {
 	var captured map[string]any
 	srv := routedServer(t, map[string]func(http.ResponseWriter, *http.Request){
-		"/rag/query": func(w http.ResponseWriter, r *http.Request) {
+		"/v1/rag/query": func(w http.ResponseWriter, r *http.Request) {
 			captured = decodeBody(t, r)
 			writeJSON(w, 200, map[string]any{"hits": []any{}})
 		},
@@ -181,7 +181,7 @@ func TestSmartRagQuery_EnumerationWidensTopK(t *testing.T) {
 func TestSmartRagQuery_EnumerationNeverShrinksExplicitLargerTopK(t *testing.T) {
 	var captured map[string]any
 	srv := routedServer(t, map[string]func(http.ResponseWriter, *http.Request){
-		"/rag/query": func(w http.ResponseWriter, r *http.Request) {
+		"/v1/rag/query": func(w http.ResponseWriter, r *http.Request) {
 			captured = decodeBody(t, r)
 			writeJSON(w, 200, map[string]any{"hits": []any{}})
 		},
@@ -205,7 +205,7 @@ func TestSmartRagQuery_EnumerationNeverShrinksExplicitLargerTopK(t *testing.T) {
 func TestSmartRagQuery_SimpleShapeLeavesRequestAlone(t *testing.T) {
 	var captured map[string]any
 	srv := routedServer(t, map[string]func(http.ResponseWriter, *http.Request){
-		"/rag/query": func(w http.ResponseWriter, r *http.Request) {
+		"/v1/rag/query": func(w http.ResponseWriter, r *http.Request) {
 			captured = decodeBody(t, r)
 			writeJSON(w, 200, map[string]any{"hits": []any{}})
 		},
@@ -281,7 +281,7 @@ func TestSmartRagQuery_NumericIntentSkipsHyde(t *testing.T) {
 	var captured map[string]any
 	var hydeCalls []string
 	srv := routedServer(t, map[string]func(http.ResponseWriter, *http.Request){
-		"/rag/query": func(w http.ResponseWriter, r *http.Request) {
+		"/v1/rag/query": func(w http.ResponseWriter, r *http.Request) {
 			captured = decodeBody(t, r)
 			writeJSON(w, 200, map[string]any{"hits": []any{}})
 		},
@@ -386,12 +386,12 @@ func TestRrfMerge_DedupesAndOrders(t *testing.T) {
 
 func TestSmartRagQuery_DecompositionMergesWithAutoScaledK(t *testing.T) {
 	// atomic.Int64, not a plain int: SmartRagQuery fans decomposed sub-queries
-	// out to /rag/query concurrently, and net/http serves each request on its
+	// out to /v1/rag/query concurrently, and net/http serves each request on its
 	// own goroutine, so a plain `callCount++` here is a real data race
 	// (caught by `go test -race`, not by a plain `go test` run).
 	var callCount atomic.Int64
 	srv := routedServer(t, map[string]func(http.ResponseWriter, *http.Request){
-		"/rag/query": func(w http.ResponseWriter, r *http.Request) {
+		"/v1/rag/query": func(w http.ResponseWriter, r *http.Request) {
 			callCount.Add(1)
 			body := decodeBody(t, r)
 			q, _ := body["query"].(string)
@@ -422,7 +422,7 @@ func TestSmartRagQuery_DecompositionMergesWithAutoScaledK(t *testing.T) {
 
 func TestSmartRagQuery_NoDecompositionSkipsMerge(t *testing.T) {
 	srv := routedServer(t, map[string]func(http.ResponseWriter, *http.Request){
-		"/rag/query": func(w http.ResponseWriter, r *http.Request) {
+		"/v1/rag/query": func(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, 200, map[string]any{"hits": []any{hitJSON("c1")}})
 		},
 	})
@@ -484,7 +484,7 @@ func TestCheckContentSafety_DoesNotRefuseBenignLookalikes(t *testing.T) {
 func TestSmartRagQuery_RefusedBeforeAnyHTTPCall(t *testing.T) {
 	called := false
 	srv := routedServer(t, map[string]func(http.ResponseWriter, *http.Request){
-		"/rag/query": func(w http.ResponseWriter, r *http.Request) {
+		"/v1/rag/query": func(w http.ResponseWriter, r *http.Request) {
 			called = true
 			writeJSON(w, 200, map[string]any{"hits": []any{}})
 		},
@@ -545,7 +545,7 @@ func TestExtractAttributeFilters_EmptyForNonAttributeQuery(t *testing.T) {
 func TestRouteAttributeFilterQuery_ReturnsSQLFilteredRows(t *testing.T) {
 	var captured map[string]any
 	srv := routedServer(t, map[string]func(http.ResponseWriter, *http.Request){
-		"/query": func(w http.ResponseWriter, r *http.Request) {
+		"/v1/query": func(w http.ResponseWriter, r *http.Request) {
 			captured = decodeBody(t, r)
 			writeJSON(w, 200, map[string]any{
 				"data":       []any{map[string]any{"name": "Ahmad Akhtar", "height": 182.9, "facial_hair": "moustache"}},
@@ -604,11 +604,11 @@ func TestRouteAttributeFilterQuery_FallsBackWhenKnownFieldsDontMatch(t *testing.
 func TestSmartRagQuery_RoutesAttributeFilterToSQLNotRetrieval(t *testing.T) {
 	ragCalled := false
 	srv := routedServer(t, map[string]func(http.ResponseWriter, *http.Request){
-		"/rag/query": func(w http.ResponseWriter, r *http.Request) {
+		"/v1/rag/query": func(w http.ResponseWriter, r *http.Request) {
 			ragCalled = true
 			writeJSON(w, 200, map[string]any{"hits": []any{hitJSON("c1")}})
 		},
-		"/query": func(w http.ResponseWriter, r *http.Request) {
+		"/v1/query": func(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, 200, map[string]any{
 				"data":     []any{map[string]any{"name": "Ahmad Akhtar", "height": 182.9}},
 				"columns":  []any{"name", "height"},
@@ -624,7 +624,7 @@ func TestSmartRagQuery_RoutesAttributeFilterToSQLNotRetrieval(t *testing.T) {
 		t.Fatalf("SmartRagQuery: %v", err)
 	}
 	if ragCalled {
-		t.Fatal("/rag/query called for an attribute-filter shape")
+		t.Fatal("/v1/rag/query called for an attribute-filter shape")
 	}
 	if !result.IsSQLRouted() {
 		t.Fatal("IsSQLRouted() = false")
@@ -639,7 +639,7 @@ func TestSmartRagQuery_RoutesAttributeFilterToSQLNotRetrieval(t *testing.T) {
 
 func TestSmartRagQuery_AttributeFilterFallsBackWithLowConfidence(t *testing.T) {
 	srv := routedServer(t, map[string]func(http.ResponseWriter, *http.Request){
-		"/rag/query": func(w http.ResponseWriter, r *http.Request) {
+		"/v1/rag/query": func(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, 200, map[string]any{"hits": []any{hitJSON("c1")}})
 		},
 	})
@@ -698,7 +698,7 @@ func TestExtractKeywordFilters_DedupeFieldsOffKeepsBothMatches(t *testing.T) {
 func TestRouteAggregationQuery_BareCountNeedsNoFieldMap(t *testing.T) {
 	var captured map[string]any
 	srv := routedServer(t, map[string]func(http.ResponseWriter, *http.Request){
-		"/query": func(w http.ResponseWriter, r *http.Request) {
+		"/v1/query": func(w http.ResponseWriter, r *http.Request) {
 			captured = decodeBody(t, r)
 			writeJSON(w, 200, map[string]any{"data": []any{map[string]any{"count": 42}}, "columns": []any{"count"}, "query_id": "q1"})
 		},
@@ -749,7 +749,7 @@ func TestRouteNegationQuery_NilWithoutFieldMap(t *testing.T) {
 func TestRouteNegationQuery_BuildsNotIlikePredicate(t *testing.T) {
 	var captured map[string]any
 	srv := routedServer(t, map[string]func(http.ResponseWriter, *http.Request){
-		"/query": func(w http.ResponseWriter, r *http.Request) {
+		"/v1/query": func(w http.ResponseWriter, r *http.Request) {
 			captured = decodeBody(t, r)
 			writeJSON(w, 200, map[string]any{"data": []any{map[string]any{"name": "Bilal Hassan", "status": "at_large"}}, "columns": []any{"name", "status"}, "query_id": "q1"})
 		},
@@ -775,7 +775,7 @@ func TestRouteNegationQuery_BuildsNotIlikePredicate(t *testing.T) {
 func TestRouteBooleanQuery_JoinsPredicatesWithAndOr(t *testing.T) {
 	var captured map[string]any
 	srv := routedServer(t, map[string]func(http.ResponseWriter, *http.Request){
-		"/query": func(w http.ResponseWriter, r *http.Request) {
+		"/v1/query": func(w http.ResponseWriter, r *http.Request) {
 			captured = decodeBody(t, r)
 			writeJSON(w, 200, map[string]any{"data": []any{}, "columns": []any{}, "query_id": "q1"})
 		},
@@ -836,7 +836,7 @@ func TestRouteBooleanQuery_NilWhenFewerThanTwoPredicatesResolve(t *testing.T) {
 func TestRouteRankingQuery_BuildsOrderByLimit(t *testing.T) {
 	var captured map[string]any
 	srv := routedServer(t, map[string]func(http.ResponseWriter, *http.Request){
-		"/query": func(w http.ResponseWriter, r *http.Request) {
+		"/v1/query": func(w http.ResponseWriter, r *http.Request) {
 			captured = decodeBody(t, r)
 			writeJSON(w, 200, map[string]any{"data": []any{map[string]any{"name": "Zahid Iqbal", "activity_count": 91}}, "columns": []any{"name", "activity_count"}, "query_id": "q1"})
 		},
@@ -861,7 +861,7 @@ func TestRouteRankingQuery_BuildsOrderByLimit(t *testing.T) {
 func TestRouteRankingQuery_DefaultsLimitAndGoesAscendingForLowest(t *testing.T) {
 	var captured map[string]any
 	srv := routedServer(t, map[string]func(http.ResponseWriter, *http.Request){
-		"/query": func(w http.ResponseWriter, r *http.Request) {
+		"/v1/query": func(w http.ResponseWriter, r *http.Request) {
 			captured = decodeBody(t, r)
 			writeJSON(w, 200, map[string]any{"data": []any{}, "columns": []any{}, "query_id": "q1"})
 		},
@@ -902,7 +902,7 @@ func TestRouteRankingQuery_FallsBackWhenKnownFieldsDontMatch(t *testing.T) {
 func TestRouteEnumerationQuery_ReturnsInlineResultWhenSmall(t *testing.T) {
 	var captured map[string]any
 	srv := routedServer(t, map[string]func(http.ResponseWriter, *http.Request){
-		"/rag/export": func(w http.ResponseWriter, r *http.Request) {
+		"/v1/rag/export": func(w http.ResponseWriter, r *http.Request) {
 			captured = decodeBody(t, r)
 			writeJSON(w, 202, map[string]any{"operation_id": "op-1", "status": "running"})
 		},
@@ -937,7 +937,7 @@ func TestRouteEnumerationQuery_ReturnsInlineResultWhenSmall(t *testing.T) {
 
 func TestRouteEnumerationQuery_IsFileBackedWhenLarge(t *testing.T) {
 	srv := routedServer(t, map[string]func(http.ResponseWriter, *http.Request){
-		"/rag/export": func(w http.ResponseWriter, r *http.Request) {
+		"/v1/rag/export": func(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, 202, map[string]any{"operation_id": "op-2", "status": "running"})
 		},
 		"/v1/operations/op-2": func(w http.ResponseWriter, r *http.Request) {
@@ -997,7 +997,7 @@ func TestRouteEnumerationQuery_FallsBackWhenKnownFieldsDontMatch(t *testing.T) {
 
 func TestRouteEnumerationQuery_TimesOutWhenNeverCompletes(t *testing.T) {
 	srv := routedServer(t, map[string]func(http.ResponseWriter, *http.Request){
-		"/rag/export": func(w http.ResponseWriter, r *http.Request) {
+		"/v1/rag/export": func(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, 202, map[string]any{"operation_id": "op-3", "status": "running"})
 		},
 		"/v1/operations/op-3": func(w http.ResponseWriter, r *http.Request) {
@@ -1020,11 +1020,11 @@ func TestRouteEnumerationQuery_TimesOutWhenNeverCompletes(t *testing.T) {
 func TestSmartRagQuery_RoutesAggregationToCountNotEnumeration(t *testing.T) {
 	ragCalled := false
 	srv := routedServer(t, map[string]func(http.ResponseWriter, *http.Request){
-		"/rag/query": func(w http.ResponseWriter, r *http.Request) {
+		"/v1/rag/query": func(w http.ResponseWriter, r *http.Request) {
 			ragCalled = true
 			writeJSON(w, 200, map[string]any{"hits": []any{hitJSON("c1")}})
 		},
-		"/query": func(w http.ResponseWriter, r *http.Request) {
+		"/v1/query": func(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, 200, map[string]any{"data": []any{map[string]any{"count": 1234}}, "columns": []any{"count"}, "query_id": "q1"})
 		},
 	})
@@ -1036,7 +1036,7 @@ func TestSmartRagQuery_RoutesAggregationToCountNotEnumeration(t *testing.T) {
 		t.Fatalf("SmartRagQuery: %v", err)
 	}
 	if ragCalled {
-		t.Fatal("/rag/query called for an aggregation shape")
+		t.Fatal("/v1/rag/query called for an aggregation shape")
 	}
 	if !result.IsSQLRouted() {
 		t.Fatal("IsSQLRouted() = false")
@@ -1051,7 +1051,7 @@ func TestSmartRagQuery_RoutesAggregationToCountNotEnumeration(t *testing.T) {
 
 func TestSmartRagQuery_NonStructuredQuestionRoutesToRetrieval(t *testing.T) {
 	srv := routedServer(t, map[string]func(http.ResponseWriter, *http.Request){
-		"/rag/query": func(w http.ResponseWriter, r *http.Request) {
+		"/v1/rag/query": func(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, 200, map[string]any{"hits": []any{hitJSON("c1")}})
 		},
 	})
@@ -1072,7 +1072,7 @@ func TestSmartRagQuery_NonStructuredQuestionRoutesToRetrieval(t *testing.T) {
 
 func TestSmartRagQuery_RoutesBooleanToSQL(t *testing.T) {
 	srv := routedServer(t, map[string]func(http.ResponseWriter, *http.Request){
-		"/query": func(w http.ResponseWriter, r *http.Request) {
+		"/v1/query": func(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, 200, map[string]any{"data": []any{map[string]any{"name": "Bilal Hassan", "organization": "SIMI"}}, "columns": []any{"name", "organization"}, "query_id": "q1"})
 		},
 	})
@@ -1096,7 +1096,7 @@ func TestSmartRagQuery_RoutesBooleanToSQL(t *testing.T) {
 
 func TestSmartRagQuery_NegationFallsBackWithLowConfidence(t *testing.T) {
 	srv := routedServer(t, map[string]func(http.ResponseWriter, *http.Request){
-		"/rag/query": func(w http.ResponseWriter, r *http.Request) {
+		"/v1/rag/query": func(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, 200, map[string]any{"hits": []any{hitJSON("c1")}})
 		},
 	})

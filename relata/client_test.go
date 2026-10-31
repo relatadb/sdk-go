@@ -45,7 +45,7 @@ func TestQuery_HappyPath(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Query: %v", err)
 	}
-	if gotMethod != "POST" || gotPath != "/query" {
+	if gotMethod != "POST" || gotPath != "/v1/query" {
 		t.Fatalf("method/path = %s %s", gotMethod, gotPath)
 	}
 	if gotBody["purpose"] != "analytics" || gotBody["sql"] != "SELECT * FROM Person LIMIT 2" {
@@ -445,7 +445,7 @@ func TestSentinelMapping(t *testing.T) {
 
 func TestStats(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/debug/stats" {
+		if r.URL.Path != "/v1/system/stats" {
 			t.Fatalf("path = %s", r.URL.Path)
 		}
 		fmt.Fprint(w, `{"records":10,"states":200,"snapshot_rows":50,"log_leaves":7,"tokens":3,"extra":"x"}`)
@@ -506,7 +506,7 @@ func TestReady(t *testing.T) {
 func TestIngestDocument(t *testing.T) {
 	var gotBody map[string]any
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/ingest/bulk" {
+		if r.URL.Path != "/v1/ingest/bulk" {
 			t.Fatalf("path = %s", r.URL.Path)
 		}
 		b, _ := io.ReadAll(r.Body)
@@ -534,7 +534,7 @@ func TestIngestDocument(t *testing.T) {
 
 func TestIngestDocumentStatus(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.EscapedPath() != "/ingest/tasks/task%2Fone" {
+		if r.URL.EscapedPath() != "/v1/ingest/tasks/task%2Fone" {
 			t.Fatalf("escaped path = %s", r.URL.EscapedPath())
 		}
 		fmt.Fprint(w, `{"task_id":"task/one","status":"partial","rows_total":3,"rows_written":2,"rows_dropped":1,"drop_reasons":["write-failed"],"_relata_write_token":{"wall_ns":123,"counter":0},"error":{"code":"partial_write","retryable":false},"partial_result":{"accepted_ids":["chunk-1"]}}`)
@@ -565,7 +565,7 @@ func TestIngestDocumentStatus(t *testing.T) {
 func TestAppendEventUsesGenericContractAndMapsReceipt(t *testing.T) {
 	var gotBody map[string]any
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost || r.URL.Path != "/events/append" {
+		if r.Method != http.MethodPost || r.URL.Path != "/v1/ingest/events" {
 			t.Fatalf("method/path = %s %s", r.Method, r.URL.Path)
 		}
 		body, err := io.ReadAll(r.Body)
@@ -690,7 +690,7 @@ func TestNewRequestID(t *testing.T) {
 func TestSearch_HappyPath(t *testing.T) {
 	// #670 — verify Search() maps the wire shape to SearchResponse.
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/search" {
+		if r.URL.Path != "/v1/search" {
 			t.Errorf("unexpected path %q", r.URL.Path)
 		}
 		w.Header().Set("Content-Type", "application/json")
@@ -1047,7 +1047,7 @@ func TestIngestDocumentTaskStatusPreservesDerivedWriteIncomplete(t *testing.T) {
 
 func TestSubmitAlertPreservesContract(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost || r.URL.Path != "/alerts/submit" {
+		if r.Method != http.MethodPost || r.URL.Path != "/v1/alerts" {
 			t.Errorf("unexpected request %s %s", r.Method, r.URL.Path)
 		}
 		var body map[string]any

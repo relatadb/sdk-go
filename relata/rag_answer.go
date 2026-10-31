@@ -136,7 +136,7 @@ type RunRagAnswerOptions struct {
 	// explicit 0ms duration (a valid value) is distinguishable from "not
 	// given" — same convention as BuildReasoningTraceOptions.DurationMs.
 	DurationMs *int
-	// RagOptions is forwarded to every /rag/query call made by
+	// RagOptions is forwarded to every /v1/rag/query call made by
 	// RunAgenticLoop or RunSubagentFanout.
 	RagOptions SmartRagOptions
 }

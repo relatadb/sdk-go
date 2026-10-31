@@ -9,15 +9,15 @@ import (
 	"testing"
 )
 
-// #2321 (ADR-0261): /admin/* and /platform/* are mounted ONLY on the
+// #2321 (ADR-0261): /admin/* is mounted ONLY on the
 // loopbound admin control-plane listener, never the main data-plane
 // listener. These tests pin two things:
 //
-//  1. ClientOptions.AdminBaseURL, when set, routes admin/platform-only
+//  1. ClientOptions.AdminBaseURL, when set, routes admin-only
 //     requests to the admin listener instead of BaseURL (spot-checked through
-//     the real BackupClient/TenantAdminClient typed wrappers, not just the
+//     the real BackupClient typed wrapper, not just the
 //     raw Client).
-//  2. A bare, detail-free 404 against an admin/platform-only path — the
+//  2. A bare, detail-free 404 against an admin-only path — the
 //     shape the server's own RFC 7807 normalisation leaves behind for a
 //     request that matched no route on the listener that answered — surfaces
 //     a "you're probably pointed at the wrong port" hint instead of an
@@ -29,10 +29,10 @@ func TestIsAdminOnlyPath(t *testing.T) {
 		want bool
 	}{
 		{"/admin/backup", true},
-		{"/platform/tenants", true},
-		{"/platform/tenants/acme/tier", true},
-		{"/query", false},
-		{"/tenants/me", false},
+		{"/admin/restore/r1", true},
+		{"/platform/tenants", false},
+		{"/v1/query", false},
+		{"/v1/tenants/me", false},
 		{"/administer", false}, // no trailing slash after "admin"
 	}
 	for _, tc := range cases {
@@ -54,20 +54,16 @@ func TestEffectiveBaseURL_RoutesAdminPathsWhenConfigured(t *testing.T) {
 	if got := c.effectiveBaseURL("/admin/backup"); got != "http://localhost:9091" {
 		t.Errorf("effectiveBaseURL(/admin/backup) = %q, want admin listener", got)
 	}
-	if got := c.effectiveBaseURL("/platform/tenants"); got != "http://localhost:9091" {
-		t.Errorf("effectiveBaseURL(/platform/tenants) = %q, want admin listener", got)
-	}
-	if got := c.effectiveBaseURL("/query"); got != "http://localhost:9090" {
-		t.Errorf("effectiveBaseURL(/query) = %q, want data-plane base_url unaffected", got)
+	if got := c.effectiveBaseURL("/v1/query"); got != "http://localhost:9090" {
+		t.Errorf("effectiveBaseURL(/v1/query) = %q, want data-plane base_url unaffected", got)
 	}
 }
 
-// TestAdminBaseURL_BackupAndTenantAdminClientsRouteToAdminListener spot-checks
-// (issue acceptance criterion) that BackupClient and TenantAdminClient — both
-// thin wrappers around *Client — actually reach the admin listener for their
-// admin/platform-only routes once AdminBaseURL is configured, using two real
+// TestAdminBaseURL_BackupClientRoutesToAdminListener spot-checks
+// (issue acceptance criterion) that BackupClient — a thin wrapper around
+// *Client — actually reaches the admin listener for its admin-only routes once AdminBaseURL is configured, using two real
 // httptest servers to stand in for the two listeners.
-func TestAdminBaseURL_BackupAndTenantAdminClientsRouteToAdminListener(t *testing.T) {
+func TestAdminBaseURL_BackupClientRoutesToAdminListener(t *testing.T) {
 	var dataPlaneHit, adminHit bool
 
 	dataPlane := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -82,8 +78,6 @@ func TestAdminBaseURL_BackupAndTenantAdminClientsRouteToAdminListener(t *testing
 		switch r.URL.Path {
 		case "/admin/backups":
 			w.Write([]byte(`{"backups":[]}`))
-		case "/platform/usage":
-			w.Write([]byte(`{"usage":{}}`))
 		default:
 			w.WriteHeader(http.StatusNotFound)
 		}
@@ -98,15 +92,6 @@ func TestAdminBaseURL_BackupAndTenantAdminClientsRouteToAdminListener(t *testing
 	}
 	if !adminHit || dataPlaneHit {
 		t.Fatalf("BackupClient.List: adminHit=%v dataPlaneHit=%v, want admin listener only", adminHit, dataPlaneHit)
-	}
-
-	adminHit, dataPlaneHit = false, false
-	tenants := NewTenantAdminClient(c)
-	if _, err := tenants.PlatformUsage(context.Background()); err != nil {
-		t.Fatalf("TenantAdminClient.PlatformUsage: %v", err)
-	}
-	if !adminHit || dataPlaneHit {
-		t.Fatalf("TenantAdminClient.PlatformUsage: adminHit=%v dataPlaneHit=%v, want admin listener only", adminHit, dataPlaneHit)
 	}
 }
 
@@ -145,7 +130,7 @@ func TestAdminListenerHint_NotAddedForRealBusiness404(t *testing.T) {
 
 	c := New(srv.URL, nil)
 	var out map[string]any
-	err := c.get(context.Background(), "/platform/tenants/acme", &out)
+	err := c.get(context.Background(), "/admin/restore/r1", &out)
 	if err == nil {
 		t.Fatal("expected an error")
 	}
@@ -173,6 +158,6 @@ func TestAdminListenerHint_NotAddedForDataPlanePath(t *testing.T) {
 		t.Fatal("expected an error")
 	}
 	if strings.Contains(err.Error(), "RELATA_ADMIN_BIND") {
-		t.Fatalf("hint must only fire for /admin/* and /platform/* paths: %v", err)
+		t.Fatalf("hint must only fire for /admin/* paths: %v", err)
 	}
 }

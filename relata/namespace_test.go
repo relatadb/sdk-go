@@ -24,7 +24,7 @@ func TestNamespace_BoundHandle(t *testing.T) {
 func TestNamespace_Query_DelegatesToSearch(t *testing.T) {
 	var gotBody map[string]any
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/search" {
+		if r.URL.Path != "/v1/search" {
 			t.Fatalf("path = %s", r.URL.Path)
 		}
 		b, _ := io.ReadAll(r.Body)
@@ -80,7 +80,7 @@ func TestNamespace_Write_PostsToIngestAuto(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if gotPath != "/ingest/auto" {
+	if gotPath != "/v1/ingest/auto" {
 		t.Fatalf("path = %s", gotPath)
 	}
 	if gotBody["object_type"] != "Document" {
@@ -168,11 +168,11 @@ func TestNamespace_DeleteAll_Tombstones(t *testing.T) {
 	var paths []string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		paths = append(paths, r.URL.Path)
-		if r.URL.Path == "/query" {
+		if r.URL.Path == "/v1/query" {
 			fmt.Fprint(w, `{"rows":[{"id":"d1"},{"id":"d2"}],"columns":["id"]}`)
 			return
 		}
-		// /ingest/auto — assert tombstones
+		// /v1/ingest/auto — assert tombstones
 		var body map[string]any
 		b, _ := io.ReadAll(r.Body)
 		_ = json.Unmarshal(b, &body)
@@ -195,7 +195,7 @@ func TestNamespace_DeleteAll_Tombstones(t *testing.T) {
 	if out["deleted"].(int) != 2 {
 		t.Fatalf("out = %v", out)
 	}
-	wantPaths := []string{"/query", "/ingest/auto"}
+	wantPaths := []string{"/v1/query", "/v1/ingest/auto"}
 	for i, p := range wantPaths {
 		if paths[i] != p {
 			t.Fatalf("path[%d] = %s, want %s", i, paths[i], p)
@@ -219,35 +219,8 @@ func TestNamespace_DeleteAll_EmptyIsNoop(t *testing.T) {
 	if out["deleted"].(int) != 0 {
 		t.Fatalf("out = %v", out)
 	}
-	if len(paths) != 1 || paths[0] != "/query" {
+	if len(paths) != 1 || paths[0] != "/v1/query" {
 		t.Fatalf("paths = %v", paths)
-	}
-}
-
-func TestNamespace_BranchFrom(t *testing.T) {
-	var gotPath string
-	var gotBody map[string]any
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		gotPath = r.URL.Path
-		b, _ := io.ReadAll(r.Body)
-		_ = json.Unmarshal(b, &gotBody)
-		fmt.Fprint(w, `{"branched":true,"name":"Draft"}`)
-	}))
-	defer srv.Close()
-
-	c := newTestClient(srv, nil)
-	out, err := c.Namespace("Draft").BranchFrom(context.Background(), "Document", nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if gotPath != "/v1/namespaces/Draft/branch" {
-		t.Fatalf("path = %s", gotPath)
-	}
-	if gotBody["from"] != "Document" {
-		t.Fatalf("body = %v", gotBody)
-	}
-	if out["branched"] != true {
-		t.Fatalf("out = %v", out)
 	}
 }
 
@@ -267,7 +240,7 @@ func TestListEdgeTypes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if gotMethod != "GET" || gotPath != "/types/edges" {
+	if gotMethod != "GET" || gotPath != "/v1/types/edges" {
 		t.Fatalf("method/path = %s %s", gotMethod, gotPath)
 	}
 	edges, _ := out["edges"].([]any)
@@ -293,7 +266,7 @@ func TestRegisterEdgeType(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if gotMethod != "POST" || gotPath != "/types/edges" {
+	if gotMethod != "POST" || gotPath != "/v1/types/edges" {
 		t.Fatalf("method/path = %s %s", gotMethod, gotPath)
 	}
 	if gotBody["from_type"] != "Person" || gotBody["to_type"] != "Org" || gotBody["label"] != "DIRECTOR_OF" {
@@ -321,7 +294,7 @@ func TestCreateSchemaBranch(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if gotMethod != "POST" || gotPath != "/schema/branches/exp-branch" {
+	if gotMethod != "POST" || gotPath != "/v1/schema/branches/exp-branch" {
 		t.Fatalf("method/path = %s %s", gotMethod, gotPath)
 	}
 	if gotBody["from"] != "main" {
@@ -346,7 +319,7 @@ func TestDeleteSchemaBranch(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if gotMethod != "DELETE" || gotPath != "/schema/branches/exp-branch" {
+	if gotMethod != "DELETE" || gotPath != "/v1/schema/branches/exp-branch" {
 		t.Fatalf("method/path = %s %s", gotMethod, gotPath)
 	}
 	if out["deleted"] != true {

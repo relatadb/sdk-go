@@ -10,10 +10,10 @@ import (
 // coref.go — Session-scoped coreference (anaphora) resolution — RAG epic
 // (#4530). Port of sdks/python/relata/coref.py (#4580, TS/Go parity).
 //
-// Multi-turn conversational callers of /rag/query (#4514) lose their
+// Multi-turn conversational callers of /v1/rag/query (#4514) lose their
 // subject across turns: "What is India's capital?" then "Where is it
 // located?" has no resolvable antecedent for "it" once the second query
-// reaches retrieval in isolation, because /rag/query is deliberately
+// reaches retrieval in isolation, because /v1/rag/query is deliberately
 // stateless and LLM-free per ADR-0299 — that contract does not change here.
 //
 // This module is the SDK-side fix: a bounded state object, not a replayed
@@ -23,8 +23,8 @@ import (
 // CorefResolver.Resolve, which only pays a network cost when a cheap
 // regex-level anaphora check trips.
 //
-// Storage is a governed MemoryItem via POST /memory/remember /
-// POST /memory/consolidate (Memory) keyed by session id — not an SDK-local
+// Storage is a governed MemoryItem via POST /v1/memory/remember /
+// POST /v1/memory/consolidate (Memory) keyed by session id — not an SDK-local
 // cache of the subject value itself, so a second process picking up the
 // same session id still resolves correctly. RelataDB's bi-temporal
 // supersession means each new subject naturally supersedes the last via
@@ -137,7 +137,7 @@ func corefRewriteWithSubject(query, subject string) string {
 }
 
 // SubjectFromHit extracts the resolved-subject candidate from a winning
-// POST /rag/query hit.
+// POST /v1/rag/query hit.
 //
 // Per the mechanism (#4530 step 1): the hit's first EntityIDs entry
 // (already in #4514's frozen response contract — no new field needed)
@@ -156,7 +156,7 @@ func SubjectFromHit(hit RagHit) (string, bool) {
 // Two calls drive the whole lifecycle:
 //
 //   - RememberSubject — call after a turn resolves a subject.
-//   - Resolve — call before the next turn's /rag/query call; rewrites an
+//   - Resolve — call before the next turn's /v1/rag/query call; rewrites an
 //     unresolved pronoun using the last remembered subject, or returns the
 //     query unchanged when nothing trips.
 //

@@ -13,7 +13,7 @@ import (
 // Tests for coref.go — session-scoped coreference resolution (RAG epic,
 // #4530). Mirrors sdks/python/tests/test_coref.py (#4580 TS/Go parity).
 //
-// fakeMemoryServer is a minimal in-process fake reproducing the /memory/*
+// fakeMemoryServer is a minimal in-process fake reproducing the /v1/memory/*
 // contract this module depends on: remember inserts, consolidate supersedes
 // (pop old id, insert new — mirroring the server's bi-temporal
 // retract+re-insert), and recall filters by exact session_id match.
@@ -55,7 +55,7 @@ func mcpEnvelopeBytes(inner map[string]any) []byte {
 
 func (f *fakeMemoryServer) handle(w http.ResponseWriter, r *http.Request) {
 	switch r.URL.Path {
-	case "/memory/remember":
+	case "/v1/memory/remember":
 		f.rememberCalls++
 		b, _ := io.ReadAll(r.Body)
 		var body map[string]any
@@ -65,7 +65,7 @@ func (f *fakeMemoryServer) handle(w http.ResponseWriter, r *http.Request) {
 		content, _ := body["content"].(string)
 		f.rows[id] = fakeMemoryRow{Content: content, SessionID: sessionID}
 		w.Write(mcpEnvelopeBytes(map[string]any{"id": id, "session_id": sessionID}))
-	case "/memory/consolidate":
+	case "/v1/memory/consolidate":
 		f.consolidateCalls++
 		b, _ := io.ReadAll(r.Body)
 		var body map[string]any
@@ -81,9 +81,12 @@ func (f *fakeMemoryServer) handle(w http.ResponseWriter, r *http.Request) {
 		content, _ := body["content"].(string)
 		f.rows[newID] = fakeMemoryRow{Content: content, SessionID: sessionID}
 		w.Write(mcpEnvelopeBytes(map[string]any{"new_id": newID}))
-	case "/memory/recall":
+	case "/v1/memory/recall":
 		f.recallCalls++
-		sid := r.URL.Query().Get("session_id")
+		rb, _ := io.ReadAll(r.Body)
+		var recallBody map[string]any
+		_ = json.Unmarshal(rb, &recallBody)
+		sid, _ := recallBody["session_id"].(string)
 		rows := []map[string]any{}
 		for id, row := range f.rows {
 			if row.SessionID == sid {

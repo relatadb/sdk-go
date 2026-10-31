@@ -14,7 +14,7 @@ import (
 
 // IngestClient exposes the generic row-ingest APIs and media-upload status
 // polling. Client.IngestDocument sends prepared document rows as a queued
-// mixed-type request to /ingest/bulk; document extraction and source-format
+// mixed-type request to /v1/ingest/bulk; document extraction and source-format
 // mapping belong in an application adapter.
 type IngestClient struct {
 	c       *Client
@@ -38,7 +38,7 @@ type BulkOptions struct {
 	// packs. Requires the IngestDetectOverride ACL grant server-side.
 	DetectPacks string
 	// OnConflict sets the conflict-resolution strategy when set, routing the
-	// call to POST /ingest/bulk (mixed-type JSON) instead of /ingest. One of
+	// call to POST /v1/ingest/bulk (mixed-type JSON) instead of /v1/ingest. One of
 	// "upsert" | "skip" | "error". Empty = default server behaviour.
 	OnConflict string
 	// TenantID optionally scopes the write to a tenant (forwarded to the
@@ -46,22 +46,22 @@ type BulkOptions struct {
 	TenantID string
 	// IdempotencyKey sets the Idempotency-Key header (#5689): a retry with the
 	// same key and rows replays the recorded response without a second write; a
-	// different body is 409 idempotency-conflict. Routes the call to /ingest/bulk.
+	// different body is 409 idempotency-conflict. Routes the call to /v1/ingest/bulk.
 	IdempotencyKey string
 	// Durability "sync" sends X-Relata-Durability: sync (WAL fsynced before the
 	// response).
 	Durability string
 	// SourceCheckpoint asks the server to advance a durable source checkpoint
 	// only after a successful synchronous write (requires Durability "sync").
-	// Routes the call to /ingest/bulk.
+	// Routes the call to /v1/ingest/bulk.
 	SourceCheckpoint *SourceCheckpoint
 	// Contract validates rows against a data contract (#5714); invalid rows are
-	// quarantined server-side. Routes the call to /ingest/bulk.
+	// quarantined server-side. Routes the call to /v1/ingest/bulk.
 	Contract *ContractRef
 	// MediaWorkClaim is the claim_id from MediaWorkClient.Claim, sent as
 	// X-Relata-Claim (0 = not sent). Required when SourceCheckpoint names an
 	// openetl/media/<work_id> source; the server fences stale holders. Routes
-	// the call to /ingest/bulk.
+	// the call to /v1/ingest/bulk.
 	MediaWorkClaim uint64
 }
 
@@ -85,8 +85,8 @@ type ContractRef struct {
 func (i *IngestClient) Bulk(ctx context.Context, objectType string, rows []map[string]any, opts *BulkOptions) (map[string]any, error) {
 	if opts != nil && (opts.OnConflict != "" || opts.IdempotencyKey != "" ||
 		opts.SourceCheckpoint != nil || opts.Contract != nil || opts.MediaWorkClaim != 0) {
-		// Route to /ingest/bulk so on_conflict + tenant_id + the envelope take effect
-		// (the /ingest door doesn't accept them).
+		// Route to /v1/ingest/bulk so on_conflict + tenant_id + the envelope take effect
+		// (the /v1/ingest door doesn't accept them).
 		return i.postBulkTyped(ctx, objectType, rows, opts)
 	}
 	body, err := rowToNDJSON(rows)
@@ -101,7 +101,7 @@ func (i *IngestClient) BulkCSV(ctx context.Context, objectType, csvText string, 
 	return i.postIngest(ctx, objectType, csvText, "text/csv", opts)
 }
 
-// AutoOptions configures schemaless ingest (POST /ingest/auto, T6 #1988).
+// AutoOptions configures schemaless ingest (POST /v1/ingest/auto, T6 #1988).
 type AutoOptions struct {
 	// Purpose overrides the parent client's default purpose.
 	Purpose string
@@ -112,7 +112,7 @@ type AutoOptions struct {
 }
 
 // IngestAuto is a schemaless ingest — the type is auto-created on first write
-// with inferred fields (T6, #1988). Wraps POST /ingest/auto. The response
+// with inferred fields (T6, #1988). Wraps POST /v1/ingest/auto. The response
 // carries type_created + inferred_schema.
 func (i *IngestClient) IngestAuto(ctx context.Context, objectType string, rows []map[string]any, opts *AutoOptions) (map[string]any, error) {
 	purpose := i.purpose
@@ -135,7 +135,7 @@ func (i *IngestClient) IngestAuto(ctx context.Context, objectType string, rows [
 	if err != nil {
 		return nil, fmt.Errorf("relata: encode ingest/auto body: %w", err)
 	}
-	status, data, _, err := i.c.rawHTTPRequest(ctx, "POST", "/ingest/auto", encoded, "application/json")
+	status, data, _, err := i.c.rawHTTPRequest(ctx, "POST", "/v1/ingest/auto", encoded, "application/json")
 	if err != nil {
 		return nil, err
 	}
@@ -152,10 +152,10 @@ func (i *IngestClient) IngestAuto(ctx context.Context, objectType string, rows [
 	return resp, nil
 }
 
-// IngestIter streams rows from an iterator channel into batched POST /ingest
+// IngestIter streams rows from an iterator channel into batched POST /v1/ingest
 // calls with backpressure. Memory is O(batchSize). The count is input rows in
 // batches whose request returned without an SDK error, not a writer-confirmed
-// count: /ingest is queued. This helper discards batch receipts/task IDs and
+// count: /v1/ingest is queued. This helper discards batch receipts/task IDs and
 // does not inspect row-level errors in successful responses. Call Bulk per
 // batch and poll each task when completion or per-row error accounting is
 // required. On error, the returned count covers only earlier successful HTTP
@@ -191,7 +191,7 @@ func (i *IngestClient) IngestIter(ctx context.Context, objectType string, rows <
 }
 
 // IngestCDR normalizes CDR aliases and queues canonical CdrRecord rows through
-// the generic POST /ingest task contract. Invalid source rows are returned in
+// the generic POST /v1/ingest task contract. Invalid source rows are returned in
 // the receipt's errors; poll task_id to observe writer completion.
 func (i *IngestClient) IngestCDR(ctx context.Context, rows []map[string]any, opts *BulkOptions) (map[string]any, error) {
 	normalized, rowErrors := normalizeCDRRows(rows)
@@ -199,8 +199,8 @@ func (i *IngestClient) IngestCDR(ctx context.Context, rows []map[string]any, opt
 	var err error
 	if len(normalized) > 0 {
 		if opts != nil && opts.OnConflict != "" {
-			// Preserve Bulk's /ingest/bulk contract when callers request conflict
-			// handling. The plain /ingest JSON-array path has no such option.
+			// Preserve Bulk's /v1/ingest/bulk contract when callers request conflict
+			// handling. The plain /v1/ingest JSON-array path has no such option.
 			resp, err = i.Bulk(ctx, "CdrRecord", normalized, opts)
 		} else {
 			body, encodeErr := json.Marshal(normalized)
@@ -464,7 +464,7 @@ func cdrDigits(value any) string {
 	return digits.String()
 }
 
-// postIngest sends a raw body to /ingest?object_type=… and decodes the receipt.
+// postIngest sends a raw body to /v1/ingest?object_type=… and decodes the receipt.
 // It honours BulkOptions.DetectPacks via the X-Detect-Packs header.
 func (i *IngestClient) postIngest(ctx context.Context, objectType, body, contentType string, opts *BulkOptions) (map[string]any, error) {
 	purpose := i.purpose
@@ -475,7 +475,7 @@ func (i *IngestClient) postIngest(ctx context.Context, objectType, body, content
 	if purpose != "" {
 		params["purpose"] = purpose
 	}
-	status, data, _, err := i.c.rawHTTPRequest(ctx, "POST", encodeGetURL("/ingest", params), []byte(body), contentType, i.detectHeader(opts))
+	status, data, _, err := i.c.rawHTTPRequest(ctx, "POST", encodeGetURL("/v1/ingest", params), []byte(body), contentType, i.detectHeader(opts))
 	if err != nil {
 		return nil, err
 	}
@@ -492,8 +492,8 @@ func (i *IngestClient) postIngest(ctx context.Context, objectType, body, content
 	return resp, nil
 }
 
-// postBulkTyped sends rows to POST /ingest/bulk so that OnConflict + TenantID
-// (only honoured on the /ingest/bulk door) take effect. Each row is tagged with
+// postBulkTyped sends rows to POST /v1/ingest/bulk so that OnConflict + TenantID
+// (only honoured on the /v1/ingest/bulk door) take effect. Each row is tagged with
 // `_type` = objectType as the server's BulkIngestRequest expects.
 func (i *IngestClient) postBulkTyped(ctx context.Context, objectType string, rows []map[string]any, opts *BulkOptions) (map[string]any, error) {
 	purpose := i.purpose
@@ -529,7 +529,7 @@ func (i *IngestClient) postBulkTyped(ctx context.Context, objectType string, row
 	if err != nil {
 		return nil, fmt.Errorf("relata: encode bulk body: %w", err)
 	}
-	status, data, _, err := i.c.rawHTTPRequest(ctx, "POST", "/ingest/bulk", encoded, "application/json", i.detectHeader(opts))
+	status, data, _, err := i.c.rawHTTPRequest(ctx, "POST", "/v1/ingest/bulk", encoded, "application/json", i.detectHeader(opts))
 	if err != nil {
 		return nil, err
 	}

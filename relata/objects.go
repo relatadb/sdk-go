@@ -12,13 +12,13 @@ import (
 )
 
 // ObjectClient is the synchronous typed upsert/load client for state objects.
-// It wraps the universal upsert path POST /ingest?object_type=<Type> so callers
+// It wraps the universal upsert path POST /v1/ingest?object_type=<Type> so callers
 // do not have to know the ingest envelope shape.
 //
 // # Read surface
 //
 // Get reads one object (with its monotonic "_version") through governed
-// GET /objects/{type}/{id}. The current server also supports GET /objects/{type}
+// GET /v1/objects/{type}/{id}. The current server also supports GET /v1/objects/{type}
 // (see the TypeScript ObjectClient); its absence here is an SDK surface
 // difference. Use Client.Query for a governed scan until a Go list method is
 // added.
@@ -28,8 +28,8 @@ import (
 // Upsert with UpsertOptions.ExpectedVersion / IfAbsent, Delete with
 // DeleteOptions.ExpectedVersion, and Commit are atomic, durable-before-ack and
 // fail with ErrPreconditionFailed (RelataError.CurrentVersion) on a lost race.
-// BatchUpsert below uses queued POST /ingest, unlike Python/TypeScript's
-// POST /ingest/bulk helper: inspect task completion before relying on visibility.
+// BatchUpsert below uses queued POST /v1/ingest, unlike Python/TypeScript's
+// POST /v1/ingest/bulk helper: inspect task completion before relying on visibility.
 type ObjectClient struct {
 	c       *Client
 	purpose string
@@ -52,7 +52,7 @@ type UpsertOptions struct {
 	// ExpectedVersion (#5766) makes Upsert a conditional replace: it succeeds
 	// only if the object is at this version (If-Match), otherwise it returns an
 	// error wrapping ErrPreconditionFailed. Switches Upsert to the atomic
-	// PUT /objects/{type}/{id} door; the result carries the new "version".
+	// PUT /v1/objects/{type}/{id} door; the result carries the new "version".
 	ExpectedVersion *int64
 	// IfAbsent (#5766) makes Upsert create-only (If-None-Match: *). Mutually
 	// exclusive with ExpectedVersion.
@@ -106,7 +106,7 @@ type CommitResult struct {
 // Upsert upserts a single state object. The objectID becomes the row's primary
 // key; re-upserting with the same id supersedes bi-temporally.
 //
-// A schema rejection is NOT returned as an error: POST /ingest is an
+// A schema rejection is NOT returned as an error: POST /v1/ingest is an
 // asynchronous queue-ack, so a rejected row yields a nil error and a payload
 // like {"rows_queued":0,"rows_rejected":1,"errors":["Type.field: minCount 1
 // not met"]}. Callers MUST check rows_rejected / errors on every call. Returns
@@ -131,7 +131,7 @@ func (o *ObjectClient) Upsert(ctx context.Context, objectType, objectID string, 
 	return o.postIngest(ctx, objectType, body, "application/x-ndjson", opts)
 }
 
-// putConditional is the atomic PUT /objects/{type}/{id} door (#5766).
+// putConditional is the atomic PUT /v1/objects/{type}/{id} door (#5766).
 func (o *ObjectClient) putConditional(ctx context.Context, objectType, objectID string, fields map[string]any, opts *UpsertOptions) (map[string]any, error) {
 	headers, err := preconditionHeaders(opts.ExpectedVersion, opts.IfAbsent)
 	if err != nil {
@@ -156,7 +156,7 @@ func (o *ObjectClient) putConditional(ctx context.Context, objectType, objectID 
 }
 
 // Get fetches one object, including its monotonic "_version" (the value
-// ExpectedVersion names), via GET /objects/{type}/{id}. It returns (nil, nil)
+// ExpectedVersion names), via GET /v1/objects/{type}/{id}. It returns (nil, nil)
 // when the object does not exist.
 func (o *ObjectClient) Get(ctx context.Context, objectType, objectID string) (map[string]any, error) {
 	var out map[string]any
@@ -169,7 +169,7 @@ func (o *ObjectClient) Get(ctx context.Context, objectType, objectID string) (ma
 	return out, nil
 }
 
-// Delete tombstones an object via DELETE /objects/{type}/{id}. With
+// Delete tombstones an object via DELETE /v1/objects/{type}/{id}. With
 // DeleteOptions.ExpectedVersion it is conditional (If-Match, #5766): a
 // different live version returns an error wrapping ErrPreconditionFailed and
 // deletes nothing.
@@ -236,7 +236,7 @@ type ChangesPage struct {
 	JournalFailures int `json:"journalFailures"`
 }
 
-// Changes reads one page of the object change feed (GET /object-changes,
+// Changes reads one page of the object change feed (GET /v1/changes,
 // #5716). Persist NextCursor only after every event in the page is processed;
 // delivery is at-least-once, so dedupe on EventID. A cursor the server can no
 // longer serve returns an error for 410 (change-feed-resync-required): re-read
@@ -255,7 +255,7 @@ func (o *ObjectClient) Changes(ctx context.Context, opts ChangesOptions) (*Chang
 	if opts.Start != "" {
 		q.Set("start", opts.Start)
 	}
-	path := "/object-changes"
+	path := "/v1/changes"
 	if enc := q.Encode(); enc != "" {
 		path += "?" + enc
 	}
@@ -292,7 +292,7 @@ func (o *ObjectClient) ChangePages(ctx context.Context, opts ChangesOptions, han
 }
 
 // Commit atomically applies 1..64 create/update/delete operations
-// (POST /commit, #5767): all of them become durable and visible, or none do,
+// (POST /v1/commit, #5767): all of them become durable and visible, or none do,
 // and every ExpectedVersion is checked before anything is written. A failed
 // precondition returns an error wrapping ErrPreconditionFailed
 // (RelataError.CurrentVersion, RelataError.FailedOperation). A retry with the
@@ -317,7 +317,7 @@ func (c *Client) Commit(ctx context.Context, operations []CommitOperation, opts 
 		payload["purpose"] = purpose
 	}
 	var out CommitResult
-	if err := c.postJSON(ctx, "/commit", payload, &out); err != nil {
+	if err := c.postJSON(ctx, "/v1/commit", payload, &out); err != nil {
 		return nil, err
 	}
 	return &out, nil
@@ -331,7 +331,7 @@ func (o *ObjectClient) resolvePurpose(override string) string {
 }
 
 func objectPath(objectType, objectID, purpose string) string {
-	path := "/objects/" + url.PathEscape(objectType) + "/" + url.PathEscape(objectID)
+	path := "/v1/objects/" + url.PathEscape(objectType) + "/" + url.PathEscape(objectID)
 	if purpose != "" {
 		path += "?purpose=" + url.QueryEscape(purpose)
 	}
@@ -375,7 +375,7 @@ func (o *ObjectClient) BatchUpsert(ctx context.Context, objectType string, rows 
 	return o.postIngest(ctx, objectType, body, "application/x-ndjson", opts)
 }
 
-// postIngest sends a raw body to /ingest?object_type=… with the resolved
+// postIngest sends a raw body to /v1/ingest?object_type=… with the resolved
 // purpose, and decodes the JSON receipt.
 func (o *ObjectClient) postIngest(ctx context.Context, objectType, body, contentType string, opts *UpsertOptions) (map[string]any, error) {
 	purpose := o.purpose
@@ -386,7 +386,7 @@ func (o *ObjectClient) postIngest(ctx context.Context, objectType, body, content
 	if purpose != "" {
 		params["purpose"] = purpose
 	}
-	status, data, _, err := o.c.rawHTTPRequest(ctx, "POST", encodeGetURL("/ingest", params), []byte(body), contentType)
+	status, data, _, err := o.c.rawHTTPRequest(ctx, "POST", encodeGetURL("/v1/ingest", params), []byte(body), contentType)
 	if err != nil {
 		return nil, err
 	}

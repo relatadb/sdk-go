@@ -19,7 +19,7 @@ import (
 //  1. Inline citation injection — the synthesis LLM call is prompted to
 //     attach a `[chunk_id]` marker to each claim as it writes it (not
 //     appended afterward as a separate pass), grounded in the
-//     citation-grade fields /rag/query (#4514, ADR-0299) already returns on
+//     citation-grade fields /v1/rag/query (#4514, ADR-0299) already returns on
 //     every RagHit: ChunkID, SectionPath, PageStart/PageEnd. Every marker in
 //     the raw completion is resolved against the actual hit set the answer
 //     was synthesized from — a marker that doesn't match a real ChunkID is
@@ -290,7 +290,7 @@ func (o SynthesizeOptions) faithfulnessCheckEnabled() bool {
 }
 
 // Synthesize synthesizes a governed, citation-injected answer from a
-// /rag/query response (#4514), then faithfulness-checks it (#4527).
+// /v1/rag/query response (#4514), then faithfulness-checks it (#4527).
 func Synthesize(query string, response RagQueryResponse, opts SynthesizeOptions) (*SynthesisResult, error) {
 	if opts.LLM == nil {
 		return nil, fmt.Errorf("relata: Synthesize requires SynthesizeOptions.LLM")

@@ -56,26 +56,26 @@ func TestOntologyDefinitionsRoutesAndBodies(t *testing.T) {
 	}
 	nb := map[string]any(nil)
 	want := [][]any{
-		{"GET", "/ontology/definitions", "", nb},
-		{"POST", "/ontology/definitions", "", map[string]any{"name": "crm", "definition": d}},
-		{"GET", "/ontology/definitions/crm", "", nb},
-		{"PUT", "/ontology/definitions/crm/draft", "", map[string]any{"definition": d}},
-		{"POST", "/ontology/definitions/crm/validate", "", map[string]any{}},
-		{"POST", "/ontology/definitions/crm/validate", "", map[string]any{"definition": d}},
-		{"GET", "/ontology/definitions/crm/compare", "from=1&to=draft", nb},
-		{"GET", "/ontology/definitions/crm/compare", "", nb},
-		{"POST", "/ontology/definitions/crm/publish", "", map[string]any{"expected_version": float64(1), "accept_migration": true, "from_version": float64(1)}},
-		{"POST", "/ontology/definitions/crm/publish", "", map[string]any{"expected_version": float64(0)}},
-		{"GET", "/ontology/definitions/crm/versions/2", "", nb},
-		{"GET", "/ontology/definitions/crm/status", "", nb},
-		{"GET", "/ontology/definitions/crm/migrations/2", "", nb},
-		{"POST", "/ontology/definitions/crm/migrations/2/run", "", map[string]any{"max_rows": float64(10), "retry_failed": true}},
-		{"POST", "/ontology/definitions/crm/migrations/2/run", "", map[string]any{}},
+		{"GET", "/v1/ontology/definitions", "", nb},
+		{"POST", "/v1/ontology/definitions", "", map[string]any{"name": "crm", "definition": d}},
+		{"GET", "/v1/ontology/definitions/crm", "", nb},
+		{"PUT", "/v1/ontology/definitions/crm/draft", "", map[string]any{"definition": d}},
+		{"POST", "/v1/ontology/definitions/crm/validate", "", map[string]any{}},
+		{"POST", "/v1/ontology/definitions/crm/validate", "", map[string]any{"definition": d}},
+		{"GET", "/v1/ontology/definitions/crm/compare", "from=1&to=draft", nb},
+		{"GET", "/v1/ontology/definitions/crm/compare", "", nb},
+		{"POST", "/v1/ontology/definitions/crm/publish", "", map[string]any{"expected_version": float64(1), "accept_migration": true, "from_version": float64(1)}},
+		{"POST", "/v1/ontology/definitions/crm/publish", "", map[string]any{"expected_version": float64(0)}},
+		{"GET", "/v1/ontology/definitions/crm/versions/2", "", nb},
+		{"GET", "/v1/ontology/definitions/crm/status", "", nb},
+		{"GET", "/v1/ontology/definitions/crm/migrations/2", "", nb},
+		{"POST", "/v1/ontology/definitions/crm/migrations/2/run", "", map[string]any{"max_rows": float64(10), "retry_failed": true}},
+		{"POST", "/v1/ontology/definitions/crm/migrations/2/run", "", map[string]any{}},
 	}
 	if !reflect.DeepEqual(seen, want) {
 		t.Fatalf("got %#v\nwant %#v", seen, want)
 	}
-	if _, err := o.Get(ctx, "a/b c"); err != nil || seen[len(seen)-1][1] != "/ontology/definitions/a%2Fb%20c" {
+	if _, err := o.Get(ctx, "a/b c"); err != nil || seen[len(seen)-1][1] != "/v1/ontology/definitions/a%2Fb%20c" {
 		t.Fatalf("name not path-escaped: %v %v", seen[len(seen)-1], err)
 	}
 	status = http.StatusPreconditionFailed

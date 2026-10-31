@@ -4,11 +4,11 @@
 // HYBRID_SEARCH is the operator that makes Relata more than "yet another
 // vector DB" or "yet another BM25 engine": the server embeds queryText
 // itself and fuses the BM25 + vector rankings via reciprocal rank fusion
-// (ADR-175) — the /query SQL surface has no caller-supplied-embedding
+// (ADR-175) — the /v1/query SQL surface has no caller-supplied-embedding
 // grammar, so HybridSearch only accepts queryText (see HybridSearch's doc
 // comment in relata/vectors.go).
 //
-// This walkthrough embeds a few short texts (POST /embed, #1172), ingests
+// This walkthrough embeds a few short texts (POST /v1/embed, #1172), ingests
 // them into a Document type with the embedding pre-computed in the
 // _emb_text slot (the caller-supplied convention, see
 // docs/src/end-users/search.md), then runs three searches side by side:

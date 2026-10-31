@@ -163,7 +163,7 @@ func (m *McpClient) Initialize(ctx context.Context, opts *McpInitializeOptions) 
 		}
 	}
 	var resp map[string]any
-	if err := m.c.postJSON(ctx, "/mcp/initialize", map[string]any{"client_id": clientID, "version": version}, &resp); err != nil {
+	if err := m.c.postJSON(ctx, "/v1/mcp/initialize", map[string]any{"client_id": clientID, "version": version}, &resp); err != nil {
 		return nil, err
 	}
 	return unwrapMCP(resp), nil
@@ -172,7 +172,7 @@ func (m *McpClient) Initialize(ctx context.Context, opts *McpInitializeOptions) 
 // ListTools lists every MCP tool the server exposes (30+).
 func (m *McpClient) ListTools(ctx context.Context) ([]map[string]any, error) {
 	var resp map[string]any
-	if err := m.c.get(ctx, "/mcp/tools", &resp); err != nil {
+	if err := m.c.get(ctx, "/v1/mcp/tools", &resp); err != nil {
 		return nil, err
 	}
 	inner := unwrapMCP(resp)
@@ -186,7 +186,7 @@ func (m *McpClient) CallTool(ctx context.Context, name string, arguments map[str
 		payload["arguments"] = arguments
 	}
 	var resp map[string]any
-	if err := m.c.postJSON(ctx, "/mcp/tools/call", payload, &resp); err != nil {
+	if err := m.c.postJSON(ctx, "/v1/mcp/tools/call", payload, &resp); err != nil {
 		return nil, err
 	}
 	return unwrapMCP(resp), nil
@@ -885,7 +885,7 @@ type McpCreateRuleOptions struct {
 
 // CreateRule creates a detection rule (ADR-162, "create_rule").
 //
-// targetType is required: the underlying POST /rules handler
+// targetType is required: the underlying POST /v1/rules handler
 // (crates/relata-cli/src/serve/rules.rs) 400s with "missing required field
 // 'target_type'" when it is absent, and this wrapper never sent it (#4663, same
 // treatment as the already-fixed TS #4656). Description is intentionally not

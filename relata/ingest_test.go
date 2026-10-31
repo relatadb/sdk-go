@@ -45,7 +45,7 @@ func TestIngestCDR_NormalizesAliasesAndUsesGenericTaskContract(t *testing.T) {
 	if rows2, _ := out["rows_queued"].(float64); rows2 != 1 {
 		t.Fatalf("rows_queued = %v", out["rows_queued"])
 	}
-	if gotPath != "/ingest" {
+	if gotPath != "/v1/ingest" {
 		t.Fatalf("path = %q", gotPath)
 	}
 	if gotCT != "application/json" {
@@ -102,8 +102,8 @@ func TestIngestCDR_PreservesOnConflictBulkRoute(t *testing.T) {
 	if err != nil {
 		t.Fatalf("IngestCDR: %v", err)
 	}
-	if gotPath != "/ingest/bulk" {
-		t.Fatalf("path = %q, want /ingest/bulk", gotPath)
+	if gotPath != "/v1/ingest/bulk" {
+		t.Fatalf("path = %q, want /v1/ingest/bulk", gotPath)
 	}
 	if gotCT != "application/json" {
 		t.Fatalf("content-type = %q, want application/json", gotCT)
@@ -233,7 +233,7 @@ func TestBulkEnvelopeOptionsRouteToBulkDoor(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Bulk: %v", err)
 	}
-	if gotPath != "/ingest/bulk" || gotKey != "batch-100" || gotDur != "sync" {
+	if gotPath != "/v1/ingest/bulk" || gotKey != "batch-100" || gotDur != "sync" {
 		t.Fatalf("path=%q key=%q durability=%q", gotPath, gotKey, gotDur)
 	}
 	var body map[string]any

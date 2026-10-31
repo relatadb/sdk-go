@@ -11,7 +11,7 @@ import (
 	"testing"
 )
 
-// Tests for the typed /rag/query client — RAG epic foundational SDK ticket
+// Tests for the typed /v1/rag/query client — RAG epic foundational SDK ticket
 // (#4523, wraps #4514's ADR-0299 contract). This is the thin pass-through
 // mandated by ADR-0298 (canonical implementation lives in sdks/python).
 
@@ -53,8 +53,8 @@ func TestRagClient_Query_PostsFullContract(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Query: %v", err)
 	}
-	if gotPath != "/rag/query" {
-		t.Fatalf("path = %q, want /rag/query", gotPath)
+	if gotPath != "/v1/rag/query" {
+		t.Fatalf("path = %q, want /v1/rag/query", gotPath)
 	}
 	if gotMethod != http.MethodPost {
 		t.Fatalf("method = %q, want POST", gotMethod)

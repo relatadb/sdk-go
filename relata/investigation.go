@@ -6,15 +6,15 @@ import (
 	"strconv"
 )
 
-// InvestigationClient wraps /alerts/{id}/{evidence,timeline,pivot} and
-// /searches/saved (#5702). AlertEvidence returns the source events behind an
+// InvestigationClient wraps /v1/alerts/{id}/{evidence,timeline,pivot} and
+// /v1/search/saved (#5702). AlertEvidence returns the source events behind an
 // alert with a reproduction query, completeness report and SHA-256.
 // AlertTimeline orders the same facts (window, events, firing, triage changes)
 // and lists the entities to pivot on. Pivot follows one of those entities into
 // the caller's other readable records; the value must come from evidence the
 // caller could read, and unreadable types and rows are omitted without a
 // count. The saved-search methods keep a named SQL query (versioned, per
-// tenant, durable); RunSavedSearch runs it through the governed POST /query
+// tenant, durable); RunSavedSearch runs it through the governed POST /v1/query
 // path with the caller's own read policy, so saving a query grants nothing.
 type InvestigationClient struct {
 	c *Client
@@ -61,15 +61,15 @@ func (b EvidenceBounds) query() string {
 	return "?" + q.Encode()
 }
 
-// AlertEvidence calls GET /alerts/{id}/evidence.
+// AlertEvidence calls GET /v1/alerts/{id}/evidence.
 func (i *InvestigationClient) AlertEvidence(ctx context.Context, alertID string, b EvidenceBounds) (map[string]any, error) {
-	return i.get(ctx, "/alerts/"+url.PathEscape(alertID)+"/evidence"+b.query())
+	return i.get(ctx, "/v1/alerts/"+url.PathEscape(alertID)+"/evidence"+b.query())
 }
 
-// AlertTimeline calls GET /alerts/{id}/timeline: ordered entries, unplaced ids
+// AlertTimeline calls GET /v1/alerts/{id}/timeline: ordered entries, unplaced ids
 // and the entities to pivot on.
 func (i *InvestigationClient) AlertTimeline(ctx context.Context, alertID string, b EvidenceBounds) (map[string]any, error) {
-	return i.get(ctx, "/alerts/"+url.PathEscape(alertID)+"/timeline"+b.query())
+	return i.get(ctx, "/v1/alerts/"+url.PathEscape(alertID)+"/timeline"+b.query())
 }
 
 // PivotRequest selects the entity to follow; zero values are omitted. Value is
@@ -83,7 +83,7 @@ type PivotRequest struct {
 	DeadlineMs  int
 }
 
-// Pivot calls POST /alerts/{id}/pivot: other readable records for one evidence
+// Pivot calls POST /v1/alerts/{id}/pivot: other readable records for one evidence
 // entity, reported as partial when a bound was hit.
 func (i *InvestigationClient) Pivot(ctx context.Context, alertID string, r PivotRequest) (map[string]any, error) {
 	body := map[string]any{}
@@ -105,7 +105,7 @@ func (i *InvestigationClient) Pivot(ctx context.Context, alertID string, r Pivot
 	if r.DeadlineMs > 0 {
 		body["deadline_ms"] = r.DeadlineMs
 	}
-	return i.post(ctx, "/alerts/"+url.PathEscape(alertID)+"/pivot", body)
+	return i.post(ctx, "/v1/alerts/"+url.PathEscape(alertID)+"/pivot", body)
 }
 
 // SavedSearch is a saved-search definition; empty optional fields are omitted.
@@ -134,13 +134,13 @@ func (s SavedSearch) body(expectedVersion int) map[string]any {
 	return b
 }
 
-// CreateSavedSearch calls POST /searches/saved; a taken name is 409
+// CreateSavedSearch calls POST /v1/search/saved; a taken name is 409
 // saved-search-exists.
 func (i *InvestigationClient) CreateSavedSearch(ctx context.Context, s SavedSearch) (map[string]any, error) {
-	return i.post(ctx, "/searches/saved", s.body(0))
+	return i.post(ctx, "/v1/search/saved", s.body(0))
 }
 
-// ListSavedSearches calls GET /searches/saved: {items, total} ordered by name.
+// ListSavedSearches calls GET /v1/search/saved: {items, total} ordered by name.
 // An empty q and a zero limit are omitted.
 func (i *InvestigationClient) ListSavedSearches(ctx context.Context, q string, limit int) (map[string]any, error) {
 	v := url.Values{}
@@ -150,44 +150,44 @@ func (i *InvestigationClient) ListSavedSearches(ctx context.Context, q string, l
 	if limit > 0 {
 		v.Set("limit", strconv.Itoa(limit))
 	}
-	p := "/searches/saved"
+	p := "/v1/search/saved"
 	if len(v) > 0 {
 		p += "?" + v.Encode()
 	}
 	return i.get(ctx, p)
 }
 
-// GetSavedSearch calls GET /searches/saved/{id}.
+// GetSavedSearch calls GET /v1/search/saved/{id}.
 func (i *InvestigationClient) GetSavedSearch(ctx context.Context, id string) (map[string]any, error) {
-	return i.get(ctx, "/searches/saved/"+url.PathEscape(id))
+	return i.get(ctx, "/v1/search/saved/"+url.PathEscape(id))
 }
 
-// UpdateSavedSearch calls PUT /searches/saved/{id}. A positive expectedVersion
+// UpdateSavedSearch calls PUT /v1/search/saved/{id}. A positive expectedVersion
 // makes the update conditional (409 saved-search-version-conflict).
 func (i *InvestigationClient) UpdateSavedSearch(ctx context.Context, id string, s SavedSearch, expectedVersion int) (map[string]any, error) {
 	var out map[string]any
-	if err := i.c.putJSON(ctx, "/searches/saved/"+url.PathEscape(id), s.body(expectedVersion), &out); err != nil {
+	if err := i.c.putJSON(ctx, "/v1/search/saved/"+url.PathEscape(id), s.body(expectedVersion), &out); err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-// DeleteSavedSearch calls DELETE /searches/saved/{id}: it leaves listings and
+// DeleteSavedSearch calls DELETE /v1/search/saved/{id}: it leaves listings and
 // the store keeps the history.
 func (i *InvestigationClient) DeleteSavedSearch(ctx context.Context, id string) (map[string]any, error) {
 	var out map[string]any
-	if err := i.c.delete(ctx, "/searches/saved/"+url.PathEscape(id), &out); err != nil {
+	if err := i.c.delete(ctx, "/v1/search/saved/"+url.PathEscape(id), &out); err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-// RunSavedSearch calls POST /searches/saved/{id}/run and returns the POST
-// /query response for the stored SQL. A nil params keeps the stored bindings.
+// RunSavedSearch calls POST /v1/search/saved/{id}/run and returns the POST
+// /v1/query response for the stored SQL. A nil params keeps the stored bindings.
 func (i *InvestigationClient) RunSavedSearch(ctx context.Context, id string, params []any) (map[string]any, error) {
 	body := map[string]any{}
 	if params != nil {
 		body["params"] = params
 	}
-	return i.post(ctx, "/searches/saved/"+url.PathEscape(id)+"/run", body)
+	return i.post(ctx, "/v1/search/saved/"+url.PathEscape(id)+"/run", body)
 }

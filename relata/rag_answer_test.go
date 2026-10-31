@@ -53,11 +53,11 @@ func TestRunRagAnswer_ComposesTheFullChain(t *testing.T) {
 	var traceCalls []map[string]any
 
 	srv := routedServer(t, map[string]func(w http.ResponseWriter, r *http.Request){
-		"/rag/query": func(w http.ResponseWriter, r *http.Request) {
+		"/v1/rag/query": func(w http.ResponseWriter, r *http.Request) {
 			ragCalls++
 			writeJSON(w, 200, map[string]any{"hits": []any{hitJSON("chunk-1")}, "total": 1})
 		},
-		"/mcp/tools/call": func(w http.ResponseWriter, r *http.Request) {
+		"/v1/mcp/tools/call": func(w http.ResponseWriter, r *http.Request) {
 			body := decodeBody(t, r)
 			traceCalls = append(traceCalls, body)
 			result := `{"stored":"RagAnswer","source_rows":1,"has_iteration_trace":true,"evidence_gap_count":0}`
@@ -147,7 +147,7 @@ func TestRunRagAnswer_ContentSafetyRefusalShortCircuits(t *testing.T) {
 
 func TestRunRagAnswer_SQLRoutableShapeShortCircuits(t *testing.T) {
 	srv := routedServer(t, map[string]func(w http.ResponseWriter, r *http.Request){
-		"/query": func(w http.ResponseWriter, r *http.Request) {
+		"/v1/query": func(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, 200, map[string]any{
 				"rows": []map[string]any{{"count": 42}}, "columns": []string{"count"}, "row_count": 1,
 			})
@@ -182,7 +182,7 @@ func TestRunRagAnswer_FanoutStrategiesPathStillProducesAFullTrace(t *testing.T) 
 	var traceCalls []map[string]any
 
 	srv := routedServer(t, map[string]func(w http.ResponseWriter, r *http.Request){
-		"/rag/query": func(w http.ResponseWriter, r *http.Request) {
+		"/v1/rag/query": func(w http.ResponseWriter, r *http.Request) {
 			body := decodeBody(t, r)
 			slot, _ := body["embedding_slot"].(string)
 			if slot == "" {
@@ -197,7 +197,7 @@ func TestRunRagAnswer_FanoutStrategiesPathStillProducesAFullTrace(t *testing.T) 
 				"total": 1,
 			})
 		},
-		"/mcp/tools/call": func(w http.ResponseWriter, r *http.Request) {
+		"/v1/mcp/tools/call": func(w http.ResponseWriter, r *http.Request) {
 			body := decodeBody(t, r)
 			traceCalls = append(traceCalls, body)
 			result := `{"stored":"RagAnswer"}`

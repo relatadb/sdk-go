@@ -44,13 +44,13 @@ func TestMediaWorkRoutesAndBodies(t *testing.T) {
 	}
 	n := func(v float64) any { return v }
 	want := [][]any{
-		{"POST", "/media/work/claim", "", map[string]any{"claimant": "etl-1", "max_items": n(2), "lease_ms": n(5000)}},
-		{"GET", "/media/work", "limit=3&state=queued", map[string]any(nil)},
-		{"GET", "/media/work", "", map[string]any(nil)},
-		{"GET", "/media/work/w%2F1", "", map[string]any(nil)},
-		{"POST", "/media/work/w%2F1/heartbeat", "", map[string]any{"claim_id": n(7), "lease_ms": n(9000)}},
-		{"POST", "/media/work/w%2F1/complete", "", map[string]any{"claim_id": n(7), "producer_version": "v1", "batches": n(2), "children": n(5)}},
-		{"POST", "/media/work/w%2F1/fail", "", map[string]any{"claim_id": n(7), "class": "permanent", "code": "bad", "detail": "corrupt"}},
+		{"POST", "/v1/media/work/claim", "", map[string]any{"claimant": "etl-1", "max_items": n(2), "lease_ms": n(5000)}},
+		{"GET", "/v1/media/work", "limit=3&state=queued", map[string]any(nil)},
+		{"GET", "/v1/media/work", "", map[string]any(nil)},
+		{"GET", "/v1/media/work/w%2F1", "", map[string]any(nil)},
+		{"POST", "/v1/media/work/w%2F1/heartbeat", "", map[string]any{"claim_id": n(7), "lease_ms": n(9000)}},
+		{"POST", "/v1/media/work/w%2F1/complete", "", map[string]any{"claim_id": n(7), "producer_version": "v1", "batches": n(2), "children": n(5)}},
+		{"POST", "/v1/media/work/w%2F1/fail", "", map[string]any{"claim_id": n(7), "class": "permanent", "code": "bad", "detail": "corrupt"}},
 	}
 	if !reflect.DeepEqual(seen, want) {
 		t.Fatalf("got %#v\nwant %#v", seen, want)
@@ -81,7 +81,7 @@ func TestBulkWriteBackSendsClaimHeader(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if path != "/ingest/bulk" || claim != "7" {
+	if path != "/v1/ingest/bulk" || claim != "7" {
 		t.Fatalf("path=%q claim=%q", path, claim)
 	}
 	if h := MediaWorkClaimHeaders(7); h["X-Relata-Claim"] != "7" {

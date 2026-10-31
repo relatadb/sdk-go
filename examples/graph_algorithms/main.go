@@ -8,7 +8,7 @@
 //   - GraphCycles          — cyclic flow (e.g. money-laundering loops)
 //   - GraphTriangleCount   — triadic closure (co-offending networks)
 //
-// Each operator translates to a governed SQL TVF call (POST /query) with the
+// Each operator translates to a governed SQL TVF call (POST /v1/query) with the
 // caller's purpose recorded in the audit log.
 //
 // Usage:

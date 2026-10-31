@@ -30,12 +30,12 @@ func TestQueryInNaturalLanguageUsesVisibleSchemaAndGovernedQuery(t *testing.T) {
 	var querySQL string
 	httpClient := &http.Client{Transport: naturalLanguageRoundTripper(func(r *http.Request) (*http.Response, error) {
 		switch r.URL.Path {
-		case "/query/schema":
+		case "/v1/query/schema":
 			if r.URL.Query().Get("purpose") != "analytics" {
 				t.Errorf("schema purpose = %q", r.URL.Query().Get("purpose"))
 			}
 			return naturalLanguageJSONResponse(r, `{"purpose":"analytics","object_types":["Person"],"link_types":["Knows"]}`), nil
-		case "/query":
+		case "/v1/query":
 			var body map[string]any
 			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 				return nil, err
@@ -83,10 +83,10 @@ func TestQueryInNaturalLanguageUsesVisibleSchemaAndGovernedQuery(t *testing.T) {
 func TestQueryInNaturalLanguageProviderFailureAndInvalidSQLDoNotQuery(t *testing.T) {
 	queryCalls := 0
 	httpClient := &http.Client{Transport: naturalLanguageRoundTripper(func(r *http.Request) (*http.Response, error) {
-		if r.URL.Path == "/query/schema" {
+		if r.URL.Path == "/v1/query/schema" {
 			return naturalLanguageJSONResponse(r, `{"purpose":"analytics","object_types":["Person"],"link_types":[]}`), nil
 		}
-		if r.URL.Path == "/query" {
+		if r.URL.Path == "/v1/query" {
 			queryCalls++
 			return naturalLanguageJSONResponse(r, `{"query_id":"unexpected","rows":[]}`), nil
 		}
@@ -122,10 +122,10 @@ func TestQueryInNaturalLanguageProviderFailureAndInvalidSQLDoNotQuery(t *testing
 
 func TestQueryInNaturalLanguageHonorsPerQueryTimeout(t *testing.T) {
 	httpClient := &http.Client{Transport: naturalLanguageRoundTripper(func(r *http.Request) (*http.Response, error) {
-		if r.URL.Path == "/query/schema" {
+		if r.URL.Path == "/v1/query/schema" {
 			return naturalLanguageJSONResponse(r, `{"purpose":"analytics","object_types":["Person"],"link_types":[]}`), nil
 		}
-		if r.URL.Path == "/query" {
+		if r.URL.Path == "/v1/query" {
 			select {
 			case <-r.Context().Done():
 				return nil, r.Context().Err()

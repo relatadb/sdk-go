@@ -22,7 +22,7 @@ func TestAppPrimitives_ClaimCompleteAndListShapes(t *testing.T) {
 		_ = json.Unmarshal(b, &body)
 		calls = append(calls, call{r.URL.Path, r.URL.RawQuery, body})
 		w.Header().Set("Content-Type", "application/json")
-		if r.URL.Path == "/queues/q/claim" {
+		if r.URL.Path == "/v1/queues/q/claim" {
 			fmt.Fprint(w, `{"jobs":[{"jobId":"j1","fencingToken":7}]}`)
 			return
 		}
@@ -45,10 +45,10 @@ func TestAppPrimitives_ClaimCompleteAndListShapes(t *testing.T) {
 	if calls[0].body["workerId"] != "w1" || calls[0].body["leaseMs"] != float64(1000) {
 		t.Fatalf("claim body: %v", calls[0].body)
 	}
-	if calls[1].path != "/jobs/j1/complete" || calls[1].body["fencingToken"] != float64(7) {
+	if calls[1].path != "/v1/jobs/j1/complete" || calls[1].body["fencingToken"] != float64(7) {
 		t.Fatalf("complete call: %+v", calls[1])
 	}
-	if calls[2].path != "/queues/q/jobs" || calls[2].query != "limit=5&state=dead" {
+	if calls[2].path != "/v1/queues/q/jobs" || calls[2].query != "limit=5&state=dead" {
 		t.Fatalf("list call: %+v", calls[2])
 	}
 }

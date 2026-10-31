@@ -11,7 +11,7 @@ func TestChangesSendsQueryAndDecodesPage(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if seen.method != "GET" || seen.path != "/object-changes" || seen.query != "cursor=f%3A2&limit=50&type=Doc" {
+	if seen.method != "GET" || seen.path != "/v1/changes" || seen.query != "cursor=f%3A2&limit=50&type=Doc" {
 		t.Fatalf("request = %s %s?%s", seen.method, seen.path, seen.query)
 	}
 	if page.NextCursor != "f:3" || len(page.Events) != 1 || page.Events[0].Kind != "delete" || page.Events[0].Version != 9 {

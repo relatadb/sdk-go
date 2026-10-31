@@ -24,7 +24,7 @@ func TestSystemClient_JobStatus(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if gotPath != "/jobs/c2_beacon" || gotMethod != "GET" {
+	if gotPath != "/v1/jobs/c2_beacon" || gotMethod != "GET" {
 		t.Fatalf("path=%q method=%q", gotPath, gotMethod)
 	}
 	if got["status"] != "Running" {

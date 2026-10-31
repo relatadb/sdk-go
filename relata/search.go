@@ -10,7 +10,7 @@ type SearchFilter struct {
 	Value any    `json:"value"`
 }
 
-// SearchRequest is the typed POST /search body (the governed JSON query door).
+// SearchRequest is the typed POST /v1/search body (the governed JSON query door).
 // From is the object type; Text is BM25 shorthand (compiles to
 // rank_by=["bm25", MatchColumn, Text]); RankBy overrides Text with an explicit
 // directive (["bm25"|"text", column, query], ["field_weight",
@@ -34,7 +34,7 @@ type SearchRequest struct {
 	MatchColumn string `json:"-"`
 }
 
-// SearchClient is the typed client for the `/search` JSON query door (#1983,
+// SearchClient is the typed client for the `/v1/search` JSON query door (#1983,
 // #2169). It is a separate type from *Client because the untyped
 // [Client.Search] (query/objectType/opts, #670) already owns that method
 // name; this mirrors the Python/TS SDKs, which likewise expose the typed
@@ -50,7 +50,7 @@ func NewSearchClient(c *Client) *SearchClient {
 }
 
 // Query runs a typed search against req.From (an object type) through the
-// governed /search door and returns the governed query result. PURPOSE / ACL /
+// governed /v1/search door and returns the governed query result. PURPOSE / ACL /
 // cell-masking / tenant isolation apply identically to a hand-written query —
 // no SQL is constructed on the client side.
 //
@@ -88,7 +88,7 @@ func (s *SearchClient) Query(ctx context.Context, req SearchRequest) (*QueryResu
 		body.RankBy = []any{"bm25", col, req.Text}
 	}
 	var qr QueryResult
-	if err := s.c.postJSON(ctx, "/search", body, &qr); err != nil {
+	if err := s.c.postJSON(ctx, "/v1/search", body, &qr); err != nil {
 		return nil, err
 	}
 	return &qr, nil

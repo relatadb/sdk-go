@@ -42,7 +42,7 @@ func TestUpsertIfAbsentUsesPutWithIfNoneMatch(t *testing.T) {
 	if out["version"] != float64(7) {
 		t.Fatalf("version = %v", out["version"])
 	}
-	if seen.method != "PUT" || seen.path != "/objects/Doc/a" || seen.query != "purpose=audit" {
+	if seen.method != "PUT" || seen.path != "/v1/objects/Doc/a" || seen.query != "purpose=audit" {
 		t.Fatalf("request = %s %s?%s", seen.method, seen.path, seen.query)
 	}
 	if seen.headers.Get("If-None-Match") != "*" || seen.headers.Get("If-Match") != "" {
@@ -87,7 +87,7 @@ func TestUnconditionalUpsertStillUsesIngest(t *testing.T) {
 	if _, err := oc.Upsert(context.Background(), "Doc", "a", map[string]any{"n": "x"}, nil); err != nil {
 		t.Fatal(err)
 	}
-	if seen.method != "POST" || seen.path != "/ingest" {
+	if seen.method != "POST" || seen.path != "/v1/ingest" {
 		t.Fatalf("request = %s %s", seen.method, seen.path)
 	}
 }
@@ -99,7 +99,7 @@ func TestDeleteWithExpectedVersionIsConditional(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if out["deleted"] != true || seen.method != "DELETE" || seen.path != "/objects/Doc/a" || seen.headers.Get("If-Match") != `"8"` {
+	if out["deleted"] != true || seen.method != "DELETE" || seen.path != "/v1/objects/Doc/a" || seen.headers.Get("If-Match") != `"8"` {
 		t.Fatalf("out=%v request=%s %s if-match=%q", out, seen.method, seen.path, seen.headers.Get("If-Match"))
 	}
 }
@@ -130,7 +130,7 @@ func TestCommitPostsBundleAndReportsFailingOperation(t *testing.T) {
 	var body map[string]any
 	_ = json.Unmarshal(seen.body, &body)
 	ops := body["operations"].([]any)[0].(map[string]any)
-	if seen.method != "POST" || seen.path != "/commit" || body["idempotencyKey"] != "k1" || body["purpose"] != "audit" || ops["expectedVersion"] != float64(2) {
+	if seen.method != "POST" || seen.path != "/v1/commit" || body["idempotencyKey"] != "k1" || body["purpose"] != "audit" || ops["expectedVersion"] != float64(2) {
 		t.Fatalf("request = %s %s body=%v", seen.method, seen.path, body)
 	}
 

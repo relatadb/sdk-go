@@ -38,38 +38,38 @@ func (i *IngestControlClient) getMap(ctx context.Context, path string) (map[stri
 	return out, nil
 }
 
-// Checkpoint calls GET /ingest/checkpoints/{source}: the last durably committed checkpoint.
+// Checkpoint calls GET /v1/ingest/checkpoints/{source}: the last durably committed checkpoint.
 func (i *IngestControlClient) Checkpoint(ctx context.Context, source string) (map[string]any, error) {
-	return i.getMap(ctx, "/ingest/checkpoints/"+pathSegment(source))
+	return i.getMap(ctx, "/v1/ingest/checkpoints/"+pathSegment(source))
 }
 
-// ListContracts calls GET /ingest/contracts: {"contracts": [{"dataset", "latest_version"}]}.
+// ListContracts calls GET /v1/ingest/contracts: {"contracts": [{"dataset", "latest_version"}]}.
 func (i *IngestControlClient) ListContracts(ctx context.Context) (map[string]any, error) {
-	return i.getMap(ctx, "/ingest/contracts")
+	return i.getMap(ctx, "/v1/ingest/contracts")
 }
 
-// GetContract calls GET /ingest/contracts/{dataset}: every retained contract version.
+// GetContract calls GET /v1/ingest/contracts/{dataset}: every retained contract version.
 func (i *IngestControlClient) GetContract(ctx context.Context, dataset string) (map[string]any, error) {
-	return i.getMap(ctx, "/ingest/contracts/"+pathSegment(dataset))
+	return i.getMap(ctx, "/v1/ingest/contracts/"+pathSegment(dataset))
 }
 
-// PutContract calls PUT /ingest/contracts/{dataset}: define the next contract
+// PutContract calls PUT /v1/ingest/contracts/{dataset}: define the next contract
 // version. The server checks backward compatibility; contract is sent verbatim.
 func (i *IngestControlClient) PutContract(ctx context.Context, dataset string, contract map[string]any) (map[string]any, error) {
 	var out map[string]any
-	if err := i.c.putJSON(ctx, "/ingest/contracts/"+pathSegment(dataset), contract, &out); err != nil {
+	if err := i.c.putJSON(ctx, "/v1/ingest/contracts/"+pathSegment(dataset), contract, &out); err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-// ContractQuality calls GET /ingest/contracts/{dataset}/quality: validation
+// ContractQuality calls GET /v1/ingest/contracts/{dataset}/quality: validation
 // counts, freshness and schema drift.
 func (i *IngestControlClient) ContractQuality(ctx context.Context, dataset string) (map[string]any, error) {
-	return i.getMap(ctx, "/ingest/contracts/"+pathSegment(dataset)+"/quality")
+	return i.getMap(ctx, "/v1/ingest/contracts/"+pathSegment(dataset)+"/quality")
 }
 
-// ListQuarantine calls GET /ingest/quarantine. opts may be nil.
+// ListQuarantine calls GET /v1/ingest/quarantine. opts may be nil.
 func (i *IngestControlClient) ListQuarantine(ctx context.Context, opts *QuarantineListOptions) (map[string]any, error) {
 	q := url.Values{}
 	if opts != nil {
@@ -83,18 +83,18 @@ func (i *IngestControlClient) ListQuarantine(ctx context.Context, opts *Quaranti
 			q.Set("limit", strconv.Itoa(opts.Limit))
 		}
 	}
-	path := "/ingest/quarantine"
+	path := "/v1/ingest/quarantine"
 	if enc := q.Encode(); enc != "" {
 		path += "?" + enc
 	}
 	return i.getMap(ctx, path)
 }
 
-// DeleteQuarantine calls DELETE /ingest/quarantine/{id}: discard one record
+// DeleteQuarantine calls DELETE /v1/ingest/quarantine/{id}: discard one record
 // (404 when unknown). It acknowledges the server's empty HTTP 204.
 func (i *IngestControlClient) DeleteQuarantine(ctx context.Context, id uint64) error {
 	var raw rawHTTPResponse
-	path := "/ingest/quarantine/" + strconv.FormatUint(id, 10)
+	path := "/v1/ingest/quarantine/" + strconv.FormatUint(id, 10)
 	if err := i.c.doRequestWithHeaders(ctx, http.MethodDelete, path, nil, "", &raw, nil); err != nil {
 		return err
 	}

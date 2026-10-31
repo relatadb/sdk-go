@@ -1,10 +1,11 @@
-// Command tokens demonstrates the dedup-token primitive (replay defence, #84).
+// Command tokens demonstrates the tenant self-service token surface under
+// /v1/auth/tokens/self.
 //
 // Flow:
-//  1. Remember(tokenID) → true on first insert, false on duplicate
-//  2. Check(tokenID)    → presence probe without mutation
-//  3. Stats()           → dedup-set size, oldest entry, eviction policy
-//  4. Revoke(tokenID)   → explicit removal (admin only)
+//  1. ListSelf()      → the caller's own tokens
+//  2. SelfAudit()     → audit trail of those tokens
+//  3. RotateSelf()    → replace the calling token (pass -rotate to run it)
+//  4. RevokeSelf(id)  → revoke one of the caller's tokens (pass -revoke <id>)
 //
 // Usage:
 //
@@ -23,6 +24,8 @@ import (
 func main() {
 	url := flag.String("url", "http://localhost:9090", "Relata server base URL")
 	token := flag.String("token", "", "Bearer token (optional)")
+	rotate := flag.Bool("rotate", false, "rotate the calling token (invalidates -token)")
+	revoke := flag.String("revoke", "", "token id to revoke")
 	flag.Parse()
 
 	client := relata.New(*url, &relata.ClientOptions{
@@ -35,48 +38,39 @@ func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
-	tokenID := "replay-defence-7QT3"
-	ttl := int64(3600)
-
-	// ── 1. Atomic test-and-set ────────────────────────────────────────────
-	fmt.Printf("=== 1. Remember('%s') ===\n", tokenID)
-	first, err := tokens.Remember(ctx, tokenID, &relata.TokenRememberOptions{TTLSecs: ttl})
-	if err != nil {
-		fmt.Printf("  error: %v\n", err)
-	}
-	fmt.Printf("  first call:  newly_inserted=%v  (expected true)\n", first)
-	second, err := tokens.Remember(ctx, tokenID, &relata.TokenRememberOptions{TTLSecs: ttl})
-	if err != nil {
-		fmt.Printf("  error: %v\n", err)
-	}
-	fmt.Printf("  second call: newly_inserted=%v  (expected false — duplicate)\n", second)
-
-	// ── 2. Non-mutating presence check ────────────────────────────────────
-	fmt.Printf("\n=== 2. Check('%s') ===\n", tokenID)
-	info, err := tokens.Check(ctx, tokenID)
+	fmt.Println("=== 1. ListSelf() ===")
+	list, err := tokens.ListSelf(ctx)
 	if err != nil {
 		fmt.Printf("  error: %v\n", err)
 	} else {
-		fmt.Printf("  present=%v  inserted_at_ns=%v  ttl=%v\n",
-			info["present"], info["inserted_at_ns"], info["ttl_secs"])
+		fmt.Printf("  tokens: %v\n", list)
 	}
 
-	// ── 3. Dedup-set stats ────────────────────────────────────────────────
-	fmt.Println("\n=== 3. Stats() ===")
-	stats, err := tokens.Stats(ctx)
+	fmt.Println("\n=== 2. SelfAudit() ===")
+	audit, err := tokens.SelfAudit(ctx)
 	if err != nil {
 		fmt.Printf("  error: %v\n", err)
 	} else {
-		fmt.Printf("  count=%d  oldest_ns=%d  eviction_policy=%s\n",
-			stats.Count, stats.OldestNS, stats.EvictionPolicy)
+		fmt.Printf("  audit: %v\n", audit)
 	}
 
-	// ── 4. Explicit revoke (admin only) ───────────────────────────────────
-	fmt.Printf("\n=== 4. Revoke('%s') ===\n", tokenID)
-	revoked, err := tokens.Revoke(ctx, tokenID)
-	if err != nil {
-		fmt.Printf("  (revoke requires admin — %v)\n", err)
-	} else {
-		fmt.Printf("  revoked=%v\n", revoked)
+	if *rotate {
+		fmt.Println("\n=== 3. RotateSelf() ===")
+		rotated, err := tokens.RotateSelf(ctx)
+		if err != nil {
+			fmt.Printf("  error: %v\n", err)
+		} else {
+			fmt.Printf("  rotated: %v\n", rotated)
+		}
+	}
+
+	if *revoke != "" {
+		fmt.Printf("\n=== 4. RevokeSelf('%s') ===\n", *revoke)
+		revoked, err := tokens.RevokeSelf(ctx, *revoke)
+		if err != nil {
+			fmt.Printf("  error: %v\n", err)
+		} else {
+			fmt.Printf("  revoked: %v\n", revoked)
+		}
 	}
 }

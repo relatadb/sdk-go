@@ -2,7 +2,7 @@
 // path (HYBRID_SEARCH FROM <type> QUERY '<text>' LIMIT <k>), fused via
 // reciprocal rank fusion (graph + BM25 + vector, ADR-175). The server embeds
 // the query text server-side; caller-supplied embeddings are not accepted by
-// the /query SQL surface (no vector-literal grammar).
+// the /v1/query SQL surface (no vector-literal grammar).
 //
 // Usage:
 //

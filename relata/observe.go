@@ -9,7 +9,7 @@ import (
 )
 
 // ObservabilityEvent is a single structured event emitted by the
-// GET /observe/stream SSE endpoint (PRs #3822 + #3828). The endpoint is opt-in
+// GET /v1/observe/stream SSE endpoint (PRs #3822 + #3828). The endpoint is opt-in
 // via RELATA_OBSERVE_STREAM=on, requires bearer auth, and is tenant-scoped
 // server-side. Fields the server may omit are pointers; a nil pointer means
 // the field was absent on the wire.
@@ -30,7 +30,7 @@ type ObservabilityEvent struct {
 	Message     string  `json:"message"`
 }
 
-// ObserveStream opens the GET /observe/stream SSE endpoint and returns a
+// ObserveStream opens the GET /v1/observe/stream SSE endpoint and returns a
 // channel that yields each parsed event. The endpoint is opt-in
 // (RELATA_OBSERVE_STREAM=on) and uses the client's existing auth headers and
 // tenant context; it is tenant-scoped server-side.
@@ -42,7 +42,7 @@ type ObservabilityEvent struct {
 // is returned immediately and no channel is produced; the caller does not need
 // to close anything — the background goroutine owns the response body.
 func (c *Client) ObserveStream(ctx context.Context) (<-chan ObservabilityEvent, error) {
-	rc, err := c.openStream(ctx, http.MethodGet, "/observe/stream", nil, "")
+	rc, err := c.openStream(ctx, http.MethodGet, "/v1/observe/stream", nil, "")
 	if err != nil {
 		return nil, err
 	}

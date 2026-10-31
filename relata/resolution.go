@@ -6,7 +6,7 @@ import (
 	"strconv"
 )
 
-// ResolutionClient wraps /resolution (#5712): entity-resolution rule sets,
+// ResolutionClient wraps /v1/resolution (#5712): entity-resolution rule sets,
 // candidate matches, and reviewed, reversible merges. A merge never rewrites
 // the source records; Lookup and Entity answer the canonical id.
 type ResolutionClient struct {
@@ -19,7 +19,7 @@ func NewResolutionClient(c *Client) *ResolutionClient {
 }
 
 func rulesetPath(name string, rest ...string) string {
-	p := "/resolution/rulesets/" + url.PathEscape(name)
+	p := "/v1/resolution/rulesets/" + url.PathEscape(name)
 	for _, r := range rest {
 		p += "/" + r
 	}
@@ -42,12 +42,12 @@ func (r *ResolutionClient) post(ctx context.Context, path string, in any) (map[s
 	return out, nil
 }
 
-// ListRulesets calls GET /resolution/rulesets.
+// ListRulesets calls GET /v1/resolution/rulesets.
 func (r *ResolutionClient) ListRulesets(ctx context.Context) (map[string]any, error) {
-	return r.get(ctx, "/resolution/rulesets")
+	return r.get(ctx, "/v1/resolution/rulesets")
 }
 
-// GetRuleset calls GET /resolution/rulesets/{name}; version 0 is the latest.
+// GetRuleset calls GET /v1/resolution/rulesets/{name}; version 0 is the latest.
 func (r *ResolutionClient) GetRuleset(ctx context.Context, name string, version int) (map[string]any, error) {
 	p := rulesetPath(name)
 	if version > 0 {
@@ -56,7 +56,7 @@ func (r *ResolutionClient) GetRuleset(ctx context.Context, name string, version 
 	return r.get(ctx, p)
 }
 
-// PublishRuleset calls PUT /resolution/rulesets/{name} under the
+// PublishRuleset calls PUT /v1/resolution/rulesets/{name} under the
 // expectedVersion precondition (0: no version yet). A mismatch is 412
 // resolution-version-conflict.
 func (r *ResolutionClient) PublishRuleset(ctx context.Context, name string, definition map[string]any, expectedVersion int) (map[string]any, error) {
@@ -88,7 +88,7 @@ func (r *ResolutionClient) Evaluate(ctx context.Context, name string, labeled []
 	return r.post(ctx, rulesetPath(name, "evaluate"), body)
 }
 
-// ListCandidates calls GET /resolution/candidates; empty filters and a zero
+// ListCandidates calls GET /v1/resolution/candidates; empty filters and a zero
 // limit are omitted.
 func (r *ResolutionClient) ListCandidates(ctx context.Context, ruleset, state string, limit int) (map[string]any, error) {
 	q := url.Values{}
@@ -101,23 +101,23 @@ func (r *ResolutionClient) ListCandidates(ctx context.Context, ruleset, state st
 	if limit > 0 {
 		q.Set("limit", strconv.Itoa(limit))
 	}
-	p := "/resolution/candidates"
+	p := "/v1/resolution/candidates"
 	if len(q) > 0 {
 		p += "?" + q.Encode()
 	}
 	return r.get(ctx, p)
 }
 
-// GetCandidate calls GET /resolution/candidates/{id}: evidence, history and
+// GetCandidate calls GET /v1/resolution/candidates/{id}: evidence, history and
 // live normalized values.
 func (r *ResolutionClient) GetCandidate(ctx context.Context, id string) (map[string]any, error) {
-	return r.get(ctx, "/resolution/candidates/"+url.PathEscape(id))
+	return r.get(ctx, "/v1/resolution/candidates/"+url.PathEscape(id))
 }
 
 // Decide calls POST .../decision with "approve", "reject" or "unmerge".
 // Repeating a decision is a no-op (idempotent).
 func (r *ResolutionClient) Decide(ctx context.Context, id, decision, reason string) (map[string]any, error) {
-	return r.post(ctx, "/resolution/candidates/"+url.PathEscape(id)+"/decision", map[string]any{"decision": decision, "reason": reason})
+	return r.post(ctx, "/v1/resolution/candidates/"+url.PathEscape(id)+"/decision", map[string]any{"decision": decision, "reason": reason})
 }
 
 // Approve merges a candidate.
@@ -135,16 +135,16 @@ func (r *ResolutionClient) Unmerge(ctx context.Context, id, reason string) (map[
 	return r.Decide(ctx, id, "unmerge", reason)
 }
 
-// Entity calls GET /resolution/entities/{canonical}; merge aliases resolve to
+// Entity calls GET /v1/resolution/entities/{canonical}; merge aliases resolve to
 // the survivor and a split id lists its successors.
 func (r *ResolutionClient) Entity(ctx context.Context, canonical string) (map[string]any, error) {
-	return r.get(ctx, "/resolution/entities/"+url.PathEscape(canonical))
+	return r.get(ctx, "/v1/resolution/entities/"+url.PathEscape(canonical))
 }
 
-// Lookup calls GET /resolution/lookup: the canonical id of a source record.
+// Lookup calls GET /v1/resolution/lookup: the canonical id of a source record.
 func (r *ResolutionClient) Lookup(ctx context.Context, typeName, id string) (map[string]any, error) {
 	q := url.Values{}
 	q.Set("type", typeName)
 	q.Set("id", id)
-	return r.get(ctx, "/resolution/lookup?"+q.Encode())
+	return r.get(ctx, "/v1/resolution/lookup?"+q.Encode())
 }

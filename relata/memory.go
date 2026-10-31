@@ -5,12 +5,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"strings"
 )
 
-// Memory is a Mem0-style high-level client over the governed /memory/* verbs
+// Memory is a Mem0-style high-level client over the governed /v1/memory/* verbs
 // (ADR-144). It owns its own HTTP transport (a private *Client) so it does not
 // depend on a caller-constructed Client. A non-empty purpose is required — the
 // server records it for audit and enforces ACL on every call.
@@ -163,7 +164,7 @@ func (m *Memory) Add(ctx context.Context, content string, opts ...MemoryOption) 
 		"session_id":   m.effectiveSession(cfg.sessionID),
 	}
 	var resp map[string]any
-	if err := m.c.postJSON(ctx, "/memory/remember", payload, &resp); err != nil {
+	if err := m.c.postJSON(ctx, "/v1/memory/remember", payload, &resp); err != nil {
 		return "", err
 	}
 	return unwrapString(unwrapMCP(resp), "id"), nil
@@ -183,7 +184,7 @@ func (m *Memory) AddBatch(ctx context.Context, items []any, opts ...MemoryOption
 		"items":   normalised,
 	}
 	var resp map[string]any
-	if err := m.c.postJSON(ctx, "/memory/remember/batch", payload, &resp); err != nil {
+	if err := m.c.postJSON(ctx, "/v1/memory/remember/batch", payload, &resp); err != nil {
 		return nil, err
 	}
 	return unwrapBatchIDs(unwrapMCP(resp)), nil
@@ -200,42 +201,43 @@ type RecallResult struct {
 	Cancelled        bool
 }
 
-// recallParams builds the GET /memory/recall query params shared by Search
-// and SearchDetailed, including the five ADR-145 retrieval-quality operators
-// (WithMinConfidence/WithRecencyHalfLife/WithBudgetTokens/WithStabilityDays/
-// WithCancelThreshold). Each is omitted when unset so the server applies its
-// own default.
-func (m *Memory) recallParams(query string, cfg memoryCall) url.Values {
+// recallBody builds the POST /v1/memory/recall JSON body shared by Search,
+// SearchDetailed and SearchStream, including the five ADR-145 retrieval-quality
+// operators (WithMinConfidence/WithRecencyHalfLife/WithBudgetTokens/
+// WithStabilityDays/WithCancelThreshold). Each is omitted when unset so the
+// server applies its own default.
+func (m *Memory) recallBody(query string, cfg memoryCall) map[string]any {
 	topK := cfg.topK
 	if topK <= 0 {
 		topK = 5
 	}
-	params := url.Values{}
-	params.Set("q", query)
-	params.Set("purpose", m.purpose)
-	params.Set("top_k", fmt.Sprintf("%d", topK))
+	body := map[string]any{
+		"query":   query,
+		"purpose": m.purpose,
+		"top_k":   topK,
+	}
 	if sid := m.effectiveSession(cfg.sessionID); sid != "" {
-		params.Set("session_id", sid)
+		body["session_id"] = sid
 	}
 	if cfg.asOf != "" {
-		params.Set("as_of", cfg.asOf)
+		body["as_of"] = cfg.asOf
 	}
 	if cfg.minConfidence != nil {
-		params.Set("min_confidence", fmt.Sprintf("%g", *cfg.minConfidence))
+		body["min_confidence"] = *cfg.minConfidence
 	}
 	if cfg.recencyHalfLifeSecs != nil {
-		params.Set("recency_half_life_secs", fmt.Sprintf("%g", *cfg.recencyHalfLifeSecs))
+		body["recency_half_life_secs"] = *cfg.recencyHalfLifeSecs
 	}
 	if cfg.budgetTokens != nil {
-		params.Set("budget_tokens", fmt.Sprintf("%d", *cfg.budgetTokens))
+		body["budget_tokens"] = *cfg.budgetTokens
 	}
 	if cfg.stabilityDays != nil {
-		params.Set("stability_days", fmt.Sprintf("%g", *cfg.stabilityDays))
+		body["stability_days"] = *cfg.stabilityDays
 	}
 	if cfg.cancelThreshold != nil {
-		params.Set("cancel_threshold", fmt.Sprintf("%g", *cfg.cancelThreshold))
+		body["cancel_threshold"] = *cfg.cancelThreshold
 	}
-	return params
+	return body
 }
 
 // Search recalls memories ranked by confidence × recency × relevance. Returns
@@ -249,7 +251,7 @@ func (m *Memory) recallParams(query string, cfg memoryCall) url.Values {
 func (m *Memory) Search(ctx context.Context, query string, opts ...MemoryOption) ([]map[string]any, error) {
 	cfg := applyMemoryOpts(opts, 1.0, "semantic")
 	var resp map[string]any
-	if err := m.c.get(ctx, "/memory/recall?"+m.recallParams(query, cfg).Encode(), &resp); err != nil {
+	if err := m.c.postJSON(ctx, "/v1/memory/recall", m.recallBody(query, cfg), &resp); err != nil {
 		return nil, err
 	}
 	return unwrapRows(unwrapMCP(resp)), nil
@@ -261,7 +263,7 @@ func (m *Memory) Search(ctx context.Context, query string, opts ...MemoryOption)
 func (m *Memory) SearchDetailed(ctx context.Context, query string, opts ...MemoryOption) (RecallResult, error) {
 	cfg := applyMemoryOpts(opts, 1.0, "semantic")
 	var resp map[string]any
-	if err := m.c.get(ctx, "/memory/recall?"+m.recallParams(query, cfg).Encode(), &resp); err != nil {
+	if err := m.c.postJSON(ctx, "/v1/memory/recall", m.recallBody(query, cfg), &resp); err != nil {
 		return RecallResult{}, err
 	}
 	inner := unwrapMCP(resp)
@@ -275,9 +277,64 @@ func (m *Memory) SearchDetailed(ctx context.Context, query string, opts ...Memor
 	return result, nil
 }
 
+// SearchStream runs a recall as a server-sent-event stream
+// (GET /v1/memory/recall/stream) and returns the raw text/event-stream body.
+// Each "data:" frame is a JSON object with a "type" of meta, memory, done or
+// error. The caller must Close the returned reader. The stream endpoint takes
+// the same retrieval options as Search, sent as query parameters.
+func (m *Memory) SearchStream(ctx context.Context, query string, opts ...MemoryOption) (io.ReadCloser, error) {
+	cfg := applyMemoryOpts(opts, 1.0, "semantic")
+	params := url.Values{}
+	for k, v := range m.recallBody(query, cfg) {
+		params.Set(k, fmt.Sprintf("%v", v))
+	}
+	return m.c.openStream(ctx, http.MethodGet, "/v1/memory/recall/stream?"+params.Encode(), nil, "")
+}
+
+// RememberProcedure stores a versioned agent procedure
+// (POST /v1/memory/remember-procedure) and returns the decoded result.
+func (m *Memory) RememberProcedure(ctx context.Context, agentID, name, instructionText string) (map[string]any, error) {
+	payload := map[string]any{
+		"agent_id":         agentID,
+		"name":             name,
+		"instruction_text": instructionText,
+		"purpose":          m.purpose,
+	}
+	var resp map[string]any
+	if err := m.c.postJSON(ctx, "/v1/memory/remember-procedure", payload, &resp); err != nil {
+		return nil, err
+	}
+	return unwrapMCP(resp), nil
+}
+
+// RecallProcedure reads back stored procedures for an agent
+// (GET /v1/memory/recall-procedure) and returns the decoded result.
+func (m *Memory) RecallProcedure(ctx context.Context, agentID string, opts *RecallProcedureOptions) (map[string]any, error) {
+	params := map[string]string{"agent_id": agentID, "purpose": m.purpose, "limit": "20"}
+	if opts != nil {
+		if opts.Name != "" {
+			params["name"] = opts.Name
+		}
+		if opts.AllVersions {
+			params["all_versions"] = "true"
+		}
+		if opts.Limit > 0 {
+			params["limit"] = fmt.Sprintf("%d", opts.Limit)
+		}
+		if opts.Purpose != "" {
+			params["purpose"] = opts.Purpose
+		}
+	}
+	var resp map[string]any
+	if err := m.c.get(ctx, encodeGetURL("/v1/memory/recall-procedure", params), &resp); err != nil {
+		return nil, err
+	}
+	return unwrapMCP(resp), nil
+}
+
 // Get fetches a single memory by id. Returns nil when not found.
 func (m *Memory) Get(ctx context.Context, memoryID string) (map[string]any, error) {
-	path := fmt.Sprintf("/memory/recognize/%s?purpose=%s", url.PathEscape(memoryID), url.QueryEscape(m.purpose))
+	path := fmt.Sprintf("/v1/memory/recognize/%s?purpose=%s", url.PathEscape(memoryID), url.QueryEscape(m.purpose))
 	var resp map[string]any
 	if err := m.c.get(ctx, path, &resp); err != nil {
 		return nil, err
@@ -297,7 +354,7 @@ func (m *Memory) Update(ctx context.Context, memoryID, content string) (string, 
 		"purpose": m.purpose,
 	}
 	var resp map[string]any
-	if err := m.c.postJSON(ctx, "/memory/consolidate", payload, &resp); err != nil {
+	if err := m.c.postJSON(ctx, "/v1/memory/consolidate", payload, &resp); err != nil {
 		return "", err
 	}
 	return unwrapString(unwrapMCP(resp), "new_id"), nil
@@ -306,7 +363,7 @@ func (m *Memory) Update(ctx context.Context, memoryID, content string) (string, 
 // Forget schedules a governed retention-policy retract for memoryID. Not a hard
 // delete — returns the policy decision (memory_item_id, policy, forget_at_ns).
 func (m *Memory) Forget(ctx context.Context, memoryID string) (map[string]any, error) {
-	path := fmt.Sprintf("/memory/forget/%s?purpose=%s", url.PathEscape(memoryID), url.QueryEscape(m.purpose))
+	path := fmt.Sprintf("/v1/memory/forget/%s?purpose=%s", url.PathEscape(memoryID), url.QueryEscape(m.purpose))
 	var resp map[string]any
 	if err := m.c.delete(ctx, path, &resp); err != nil {
 		return nil, err
@@ -315,7 +372,7 @@ func (m *Memory) Forget(ctx context.Context, memoryID string) (map[string]any, e
 }
 
 // Review approves or rejects a pending memory; decision is "approve" or
-// "reject" and reason is optional. Wraps POST /memory/review/{id}: memory stored
+// "reject" and reason is optional. Wraps POST /v1/memory/review/{id}: memory stored
 // with an external: origin is pending and hidden from recall until reviewed.
 // Returns id, review_status, previous_review_status and changed.
 func (m *Memory) Review(ctx context.Context, memoryID, decision, reason string) (map[string]any, error) {
@@ -324,7 +381,7 @@ func (m *Memory) Review(ctx context.Context, memoryID, decision, reason string) 
 		payload["reason"] = reason
 	}
 	var resp map[string]any
-	if err := m.c.postJSON(ctx, "/memory/review/"+url.PathEscape(memoryID), payload, &resp); err != nil {
+	if err := m.c.postJSON(ctx, "/v1/memory/review/"+url.PathEscape(memoryID), payload, &resp); err != nil {
 		return nil, err
 	}
 	return unwrapMCP(resp), nil
@@ -342,7 +399,7 @@ func (m *Memory) Associate(ctx context.Context, sourceID, targetID, relation str
 		"purpose":  m.purpose,
 	}
 	var resp map[string]any
-	if err := m.c.postJSON(ctx, "/memory/associate", payload, &resp); err != nil {
+	if err := m.c.postJSON(ctx, "/v1/memory/associate", payload, &resp); err != nil {
 		return nil, err
 	}
 	return unwrapMCP(resp), nil
@@ -361,7 +418,7 @@ func (m *Memory) Episodes(ctx context.Context, opts ...MemoryOption) ([]map[stri
 		params.Set("as_of", cfg.asOf)
 	}
 	var resp map[string]any
-	if err := m.c.get(ctx, "/memory/episodes?"+params.Encode(), &resp); err != nil {
+	if err := m.c.get(ctx, "/v1/memory/episodes?"+params.Encode(), &resp); err != nil {
 		return nil, err
 	}
 	return unwrapRows(unwrapMCP(resp)), nil
@@ -370,7 +427,7 @@ func (m *Memory) Episodes(ctx context.Context, opts ...MemoryOption) ([]map[stri
 // Justify returns the PROV-O assertion chain for memoryID — the derivation
 // lineage (source session, tool call, prior belief, …).
 func (m *Memory) Justify(ctx context.Context, memoryID string) (map[string]any, error) {
-	path := fmt.Sprintf("/memory/justify/%s?purpose=%s", url.PathEscape(memoryID), url.QueryEscape(m.purpose))
+	path := fmt.Sprintf("/v1/memory/justify/%s?purpose=%s", url.PathEscape(memoryID), url.QueryEscape(m.purpose))
 	var resp map[string]any
 	if err := m.c.get(ctx, path, &resp); err != nil {
 		return nil, err
@@ -379,10 +436,10 @@ func (m *Memory) Justify(ctx context.Context, memoryID string) (map[string]any, 
 }
 
 // Resolve resolves memoryID's supersession chain to its canonical head.
-// Wraps GET /memory/resolve/:id; the server route is GET-only and does not
+// Wraps GET /v1/memory/resolve/:id; the server route is GET-only and does not
 // read a policy field (#2675).
 func (m *Memory) Resolve(ctx context.Context, memoryID string) (map[string]any, error) {
-	path := fmt.Sprintf("/memory/resolve/%s?purpose=%s", url.PathEscape(memoryID), url.QueryEscape(m.purpose))
+	path := fmt.Sprintf("/v1/memory/resolve/%s?purpose=%s", url.PathEscape(memoryID), url.QueryEscape(m.purpose))
 	var resp map[string]any
 	if err := m.c.get(ctx, path, &resp); err != nil {
 		return nil, err
@@ -391,7 +448,7 @@ func (m *Memory) Resolve(ctx context.Context, memoryID string) (map[string]any, 
 }
 
 // AssociateBatch links many memory pairs in one request (POST
-// /memory/associate/batch). Each item is {"from_id", "to_id", "relation"?,
+// /v1/memory/associate/batch). Each item is {"from_id", "to_id", "relation"?,
 // "confidence"?, "purpose"?}; the client's purpose fills any item that omits
 // it. The result is {"stored", "submitted", "results"}; stored below submitted
 // means some items were rejected (see results).
@@ -411,7 +468,7 @@ func (m *Memory) AssociateBatch(ctx context.Context, items []map[string]any) (ma
 		out = append(out, merged)
 	}
 	var resp map[string]any
-	if err := m.c.postJSON(ctx, "/memory/associate/batch", map[string]any{"items": out}, &resp); err != nil {
+	if err := m.c.postJSON(ctx, "/v1/memory/associate/batch", map[string]any{"items": out}, &resp); err != nil {
 		return nil, err
 	}
 	return unwrapMCP(resp), nil
@@ -430,7 +487,7 @@ func (m *Memory) Summarise(ctx context.Context, sourceIDs []string, opts ...Memo
 		payload["contents"] = []string{cfg.summary}
 	}
 	var resp map[string]any
-	if err := m.c.postJSON(ctx, "/memory/summarise", payload, &resp); err != nil {
+	if err := m.c.postJSON(ctx, "/v1/memory/summarise", payload, &resp); err != nil {
 		return nil, err
 	}
 	return unwrapMCP(resp), nil

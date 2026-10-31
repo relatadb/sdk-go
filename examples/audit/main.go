@@ -6,7 +6,7 @@
 // produce a summary for the agency's data-governance board.
 //
 // Workflow:
-//  1. Verify the hash chain is intact via GET /audit/count.
+//  1. Verify the hash chain is intact via GET /v1/audit/count.
 //  2. Query the audit log for recent query activity (SELECT from AuditEntry).
 //  3. Flag any queries that lacked a valid purpose or came from unrecognised
 //     principals.
@@ -125,20 +125,8 @@ func main() {
 		}
 	}
 
-	// ── Step 4: Cluster node health sweep ────────────────────────────────────
-	fmt.Printf("\n=== Step 4: Cluster node health ===\n")
-
-	nodes, err := client.ClusterNodes(ctx)
-	if err != nil {
-		fmt.Printf("  [WARN] cluster nodes unavailable: %v\n", err)
-		// Non-fatal for free/server profiles that don't expose cluster info.
-	} else {
-		fmt.Printf("  Nodes: %d\n", len(nodes))
-		for _, node := range nodes {
-			fmt.Printf("    node_id=%-20s  role=%-15s  url=%s\n",
-				node.NodeID, node.Role, node.URL)
-		}
-	}
+	// ── Step 4: Node health ──────────────────────────────────────────────────
+	fmt.Printf("\n=== Step 4: Node health ===\n")
 
 	// Also verify health + status of the local node.
 	health, err := client.Health(ctx)

@@ -98,7 +98,7 @@ ingest → BM25-only vs. vector-only vs. fused search).
 
 ## Agent memory
 
-`Memory` is a Mem0-style surface over the governed `/memory/*` verbs — purpose + ACL
+`Memory` is a Mem0-style surface over the governed `/v1/memory/*` verbs — purpose + ACL
 stay on by default. It owns its own transport (it does not take a `*Client`).
 
 ```go
@@ -146,14 +146,13 @@ one `*http.Client`, like `*sql.DB`).
 |---|---|---|
 | `Query(ctx, sql, opts...)` | `(*QueryResult, error)` | Execute a SQL query |
 | `Health(ctx)` | `(*HealthResponse, error)` | `GET /health` |
-| `Status(ctx)` | `(*StatusResponse, error)` | `GET /status` — profile, role, quota |
-| `Stats(ctx)` | `(*Stats, error)` | `GET /debug/stats` — records / states / snapshot_rows / log_leaves / tokens |
+| `Status(ctx)` | `(*StatusResponse, error)` | `GET /v1/system/status` — profile, role, quota |
+| `Stats(ctx)` | `(*Stats, error)` | `GET /v1/system/stats` — records / states / snapshot_rows / log_leaves / tokens |
 | `Version(ctx)` | `(*VersionInfo, error)` | `GET /version` — build info |
 | `Ready(ctx)` | `(*ReadyReport, error)` | `GET /health/ready` — 9-condition readiness |
-| `AuditCount(ctx)` | `(*AuditCountResponse, error)` | `GET /audit/count` — returns `ErrChainCorrupted` if `ChainValid == false` |
-| `ClusterNodes(ctx)` | `([]ClusterNode, error)` | `GET /cluster/nodes` |
-| `IngestDocument(ctx, objects, purpose)` | `(*IngestDocumentResponse, error)` | Queues prepared mixed-type rows via `POST /ingest/bulk` (`queued: true`) and returns one process-local task receipt |
-| `IngestDocumentStatus(ctx, taskID)` | `(*IngestDocumentTaskStatus, error)` | Polls `GET /ingest/tasks/:task_id` for terminal complete/partial/failed/uncertain/incomplete state and confirmed written/dropped row counts |
+| `AuditCount(ctx)` | `(*AuditCountResponse, error)` | `GET /v1/audit/count` — returns `ErrChainCorrupted` if `ChainValid == false` |
+| `IngestDocument(ctx, objects, purpose)` | `(*IngestDocumentResponse, error)` | Queues prepared mixed-type rows via `POST /v1/ingest/bulk` (`queued: true`) and returns one process-local task receipt |
+| `IngestDocumentStatus(ctx, taskID)` | `(*IngestDocumentTaskStatus, error)` | Polls `GET /v1/ingest/tasks/:task_id` for terminal complete/partial/failed/uncertain/incomplete state and confirmed written/dropped row counts |
 
 `IngestDocument` takes application-prepared governed rows (for example a
 `DocumentSource`, linked `DocumentChunk` rows, and optional evidence rows with
@@ -289,7 +288,7 @@ result, err := relata.HybridSearch("Person", "Ahmed Khalil Karachi", 25).
 ## HTTP Arrow IPC
 
 For columnar query results, `StreamingClient.QueryArrowRaw` returns an
-`io.Reader` over the bytes from `POST /query/arrow`. Pass that reader to an
+`io.Reader` over the bytes from `POST /v1/query/arrow`. Pass that reader to an
 Arrow IPC reader from the application you use for analysis.
 
 ```go
@@ -317,7 +316,7 @@ The Go SDK does not decode Arrow IPC into a typed table. `POST /ingest/media`
 and its status route were removed (#5942, they answer `410 media-ingest-removed`),
 and so were `IngestClient.MediaStatus` and `McpClient.IngestMedia`. Media is
 uploaded through the Files API with `process=true` and followed with
-`MediaWorkClient`; the separate `FilesClient` below wraps `/files/content`.
+`MediaWorkClient`; the separate `FilesClient` below wraps `/v1/files/content`.
 
 ## `Memory` — governed agent memory
 
@@ -338,6 +337,9 @@ m, err := relata.NewMemory(url, "agent-notes", &relata.MemoryOptions{
 | `AddBatch(ctx, items, opts...)` | `([]string, error)` | Batch store → ids in order |
 | `Search(ctx, query, opts...)` | `([]map[string]any, error)` | Recall (confidence × recency × relevance) |
 | `SearchDetailed(ctx, query, opts...)` | `(RecallResult, error)` | Like `Search` but returns the full envelope, incl. read-only `RecallCostTokens`/`Cancelled` |
+| `SearchStream(ctx, query, opts...)` | `(io.ReadCloser, error)` | Recall as an SSE stream (`GET /v1/memory/recall/stream`); caller closes |
+| `RememberProcedure(ctx, agentID, name, text)` | `(map[string]any, error)` | `POST /v1/memory/remember-procedure` |
+| `RecallProcedure(ctx, agentID, opts)` | `(map[string]any, error)` | `GET /v1/memory/recall-procedure` |
 | `Get(ctx, id)` | `(map[string]any, error)` | Fetch one memory (nil if absent) |
 | `Update(ctx, id, content)` | `(string, error)` | Supersede → new id |
 | `Forget(ctx, id)` | `(map[string]any, error)` | Governed retention-policy retract |
@@ -371,23 +373,22 @@ Python `from_client` classmethod. Optional parameters use struct-pointer options
 
 | Module | Constructor | Surface |
 |---|---|---|
-| `relata.governance` | `NewGovernanceClient` | Prepared rules, retention (holds + WORM), breakglass, alerts, DSAR |
+| `relata.governance` | `NewGovernanceClient` | Prepared rules, retention (holds + WORM), breakglass, alerts, DSAR, GDPR `Erase`/`DeletionStatus`/`VerifyReceipt` |
 | `relata.mcp` | `NewMcpClient` | 22 MCP tool wrappers + generic `CallTool` + `Initialize`/`ListTools` |
 | `relata.a2a` | `NewA2AClient` | A2A task submit/poll + LangGraph checkpoints + agent card |
-| `relata.audit` | `NewAuditClient` | Audit entries (filtered/paginated) + signed receipts + PDF export |
+| `relata.audit` | `NewAuditClient` | Audit count + filtered audit log (`GET /v1/audit/log`) |
 | `relata.identity` | `NewIdentityClient` | Identity label/uncertainty + lookup tables + `ERASE SUBJECT` |
-| `relata.objects` | `NewObjectClient` | Typed upsert + batch via `/ingest?object_type=` (NDJSON) |
+| `relata.objects` | `NewObjectClient` | Typed upsert + batch via `/v1/ingest?object_type=` (NDJSON) |
 | `relata.ingest` | `NewIngestClient` | Bulk NDJSON + CSV + media task status; it does not upload raw media bytes |
-| `relata.files` | `NewFilesClient` | Buffered Files `Put`/`Get`/`Delete`; byte content, ETag and content type metadata |
-| `relata.vectors` | `NewVectorClient` | KNN + hybrid search + similar-to (SQL-backed) + `Embed`/`EmbedBatch` (`POST /embed[/batch]`) |
-| `relata.search` (`SearchClient`) | `NewSearchClient` | Typed `POST /search` JSON query door (`rank_by`/`filters`) — separate from the untyped `Client.Search` |
-| `relata.system` | `NewSystemClient` | Generic jobs and operator surfaces; no feed broker routing |
+| `relata.files` | `NewFilesClient` | Buffered Files `Put`/`Get`/`Head`/`List`/`Delete`, `MediaContent`; byte content, ETag and content type metadata |
+| `relata.vectors` | `NewVectorClient` | KNN + hybrid search + similar-to (SQL-backed) + `Embed`/`EmbedBatch` (`POST /v1/embed` with `text` / `texts`) |
+| `relata.search` (`SearchClient`) | `NewSearchClient` | Typed `POST /v1/search` JSON query door (`rank_by`/`filters`) — separate from the untyped `Client.Search` |
+| `relata.system` | `NewSystemClient` | Jobs status and notification rules (`/v1/notification-rules`; a webhook is a delivery channel of a rule via `webhook_url`/`webhook_headers`); no feed broker routing |
 | `relata` (`FeedBrokerClient`) | `NewFeedBrokerClient` | Optional RIFN broker health, channels, signed-entry publishing at an explicit broker URL |
 | `relata.streaming` | `NewStreamingClient` | NDJSON `RowIterator` + SSE `SSEIterator` + Arrow `BytesIterator` |
-| `relata.tenants` | `NewTenantAdminClient` | Tenant CRUD + quota + sharing agreements + platform admin |
+| `relata.tenants` | `NewTenantAdminClient` | Caller's own tenant record (`Me`, `GET /v1/tenants/me`) |
 | `relata.backup` | `NewBackupClient` | Backup / restore / PITR (admin-auth) |
-| `relata.tokens` | `NewTokenClient` | Dedup / uniqueness tokens (test-and-set, check, revoke, stats) |
-| `relata.log` | `NewLogClient` | Ordered integrity log (append, head, load leaves) |
+| `relata.tokens` | `NewTokenClient` | Tenant self-service tokens: `ListSelf`, `SelfAudit`, `RotateSelf`, `RevokeSelf` (`/v1/auth/tokens/self`) |
 
 The former `get_domain_summary` MCP route is not a core tool in v3.0. To build
 the same application-facing inventory, call generic, tenant-scoped
@@ -424,14 +425,13 @@ feed entry plus the required `X-Publisher-Did`; the SDK does not create or
 sign entries, and `NewSystemClient` does not inherit or configure a broker.
 
 **Admin-listener reachability (`ClientOptions.AdminBaseURL`, #2321):** on a
-hardened `server`/`cluster` deployment, `/admin/*` and `/platform/*` are
+hardened `server`/`cluster` deployment, `/admin/*` is
 mounted only on the loopbound admin control-plane listener
 (`RELATA_ADMIN_BIND`, default `127.0.0.1:9091` — ADR-0261), never the main
 data-plane `BaseURL`. Set `AdminBaseURL` when constructing the `Client` so
-`NewBackupClient`/`NewTenantAdminClient`'s platform-tenant methods reach
-those routes. Leave it unset (the default) on the free profile, where the
+`NewBackupClient` reaches those routes. Leave it unset (the default) on the free profile, where the
 admin listener isn't split from the data plane. A bare 404 from an
-admin/platform-only route with no error detail is rewritten into a hint
+admin-only route with no error detail is rewritten into a hint
 pointing at this option instead of a confusing plain 404.
 
 ### Example — typed client chain
@@ -478,7 +478,7 @@ for it.Next() {
 if err := it.Err(); err != nil { log.Fatal(err) }
 ```
 
-`QueryRows` uses `/query/stream` with NDJSON. It yields data rows and validates
+`QueryRows` uses `/v1/query/stream` with NDJSON. It yields data rows and validates
 leading and terminal metadata. Always check `Err()` after iteration: missing,
 truncated, malformed or count-mismatched completion returns
 `*relata.IncompleteQueryStreamError` with `QueryID` and `RowsReceived`. Partial
@@ -499,15 +499,12 @@ for Arrow IPC consumption.
 | `HealthResponse` | `Status`, `Profile`, `NodeID` + `IsHealthy()` |
 | `StatusResponse` | `Profile`, `Role`, `QueryQuota` |
 | `AuditCountResponse` | `Entries`, `ChainValid` + `IsTampered()` |
-| `ClusterNode` | `NodeID`, `Role`, `URL` |
 | `VersionInfo` | `Version`, `Commit`, `Profile`, `SchemaVersion`, `Features` |
 | `Stats` | `Records`, `States`, `SnapshotRows`, `LogLeaves`, `Tokens`, `Raw` (full server response) |
 | `ReadyReport` | `IsReady`, `Status`, `Reason`, `Detail` |
 | `IngestDocumentResponse` | `TaskID`, `RowsQueued`, `RowsRejected`, `Errors`, `QueueDepth` |
 | `BackupRef` | `SnapshotID`, `Kind`, `WrittenAtNS`, `SizeBytes`, `SHA256`, `RowCount`, `Path` |
 | `RestoreStatus` | `RestoreID`, `SnapshotID`, `Status`, `RTOActualSecs`, `Error` + `IsCompleted()` / `IsFailed()` |
-| `TokenStats` | `Count`, `OldestNS`, `EvictionPolicy` |
-| `LogLeaf` | `Index`, `Data`, `CommitNS` |
 
 `QueryResult` is normalised automatically: the server sends
 `{"rows": <int>, "data": [...]}` on the wire and the SDK surfaces `Rows` as a slice
@@ -615,9 +612,9 @@ server-side cancellation. Prepared receipts describe historical local task
 outcomes; volatile profiles remain process-local.
 
 `NewFilesClient(client)` borrows the parent's auth, tenant, timeout and response
-cap. `Put(ctx, key, data, opts)` sends raw bytes to `PUT /files/content` and
+cap. `Put(ctx, key, data, opts)` sends raw bytes to `PUT /v1/files/content` and
 returns current-file metadata; `Get` returns buffered bytes plus ETag/content
-type, and `Delete` acknowledges the exact-key `DELETE /files/content`. A blank
+type, and `Delete` acknowledges the exact-key `DELETE /v1/files/content`. A blank
 bucket uses the authenticated tenant default; `FilesOptions` can select a
 bucket and upload content type. The server upload limit is 128 MiB; downloads
 are limited by `ClientOptions.MaxResponseBytes` (64 MiB by default). PUT and
@@ -627,20 +624,20 @@ writes, ranges, physical-erasure guarantees, or media processing.
 The caller's `ctx` cancels the client request; it does not promise that server
 work already accepted by the engine is aborted or rolled back. See the
 [HTTP Files contract](../../docs/src/specs/files-api.md) for server behavior.
-This client wraps only `/files/content`; it does not wrap the Files list or
+This client wraps only `/v1/files/content`; it does not wrap the Files list or
 folder operations.
 
 ## File-ingest limits
 
 `POST /ingest/media` was removed (#5942); poll OpenETL work items with
 `MediaWorkClient.Get`. `FilesClient` transfers
-opaque tenant-owned content through `/files/content`; it does not invoke media
+opaque tenant-owned content through `/v1/files/content`; it does not invoke media
 processing or document extraction. Use the deployment's supported connector
 integration when source-file transfer must also trigger ingestion.
 
 `ObjectClient.List`/`.Get` (present in the TypeScript SDK) are intentionally **not**
 ported — see the doc comment on `ObjectClient` in `relata/objects.go` for why (the
-server has no GET handler for `/objects/{type}(/{id})`, and the internal Rust
+server has no GET handler for `/v1/objects/{type}(/{id})`, and the internal Rust
 reference client and Python SDK both lack them too).
 
 ## Examples

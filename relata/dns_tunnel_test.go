@@ -43,7 +43,7 @@ func TestDnsTunnelDetectUsesGovernedPagesAndReportsContinuation(t *testing.T) {
 	var sqls []string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		if r.Method == http.MethodGet && r.URL.Path == "/query/schema" {
+		if r.Method == http.MethodGet && r.URL.Path == "/v1/query/schema" {
 			_, _ = fmt.Fprint(w, `{"purpose":"security","object_types":["DnsLog","Person"]}`)
 			return
 		}
@@ -91,7 +91,7 @@ func TestQueryResultTracksExplicitCursorAndTruncation(t *testing.T) {
 func TestDnsTunnelDetectRefusesPartialShardResponseAsComplete(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		if r.Method == http.MethodGet && r.URL.Path == "/query/schema" {
+		if r.Method == http.MethodGet && r.URL.Path == "/v1/query/schema" {
 			_, _ = fmt.Fprint(w, `{"purpose":"security","object_types":["DnsLog"]}`)
 			return
 		}

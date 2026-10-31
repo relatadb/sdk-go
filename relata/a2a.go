@@ -21,7 +21,7 @@ func NewA2AClient(c *Client) *A2AClient {
 // receipt. Payloads typically contain name, input, and skill.
 func (a *A2AClient) SubmitTask(ctx context.Context, payload map[string]any) (map[string]any, error) {
 	var resp map[string]any
-	if err := a.c.postJSON(ctx, "/a2a/tasks", payload, &resp); err != nil {
+	if err := a.c.postJSON(ctx, "/v1/a2a/tasks", payload, &resp); err != nil {
 		return nil, err
 	}
 	return resp, nil
@@ -30,7 +30,7 @@ func (a *A2AClient) SubmitTask(ctx context.Context, payload map[string]any) (map
 // GetTask polls a task's status. Returns id, status, result, error, …
 func (a *A2AClient) GetTask(ctx context.Context, taskID string) (map[string]any, error) {
 	var resp map[string]any
-	if err := a.c.get(ctx, "/a2a/tasks/"+pathSegment(taskID), &resp); err != nil {
+	if err := a.c.get(ctx, "/v1/a2a/tasks/"+pathSegment(taskID), &resp); err != nil {
 		return nil, err
 	}
 	return resp, nil
@@ -39,7 +39,7 @@ func (a *A2AClient) GetTask(ctx context.Context, taskID string) (map[string]any,
 // ListCheckpoints lists the LangGraph checkpoints for a thread.
 func (a *A2AClient) ListCheckpoints(ctx context.Context, threadID string) ([]map[string]any, error) {
 	var resp map[string]any
-	if err := a.c.get(ctx, "/a2a/checkpoints/"+pathSegment(threadID), &resp); err != nil {
+	if err := a.c.get(ctx, "/v1/a2a/checkpoints/"+pathSegment(threadID), &resp); err != nil {
 		return nil, err
 	}
 	return unwrapList(resp, "checkpoints"), nil
@@ -48,7 +48,7 @@ func (a *A2AClient) ListCheckpoints(ctx context.Context, threadID string) ([]map
 // LoadCheckpoint loads a specific checkpoint by id.
 func (a *A2AClient) LoadCheckpoint(ctx context.Context, threadID, checkpointID string) (map[string]any, error) {
 	var resp map[string]any
-	if err := a.c.get(ctx, "/a2a/checkpoints/"+pathSegment(threadID)+"/"+pathSegment(checkpointID), &resp); err != nil {
+	if err := a.c.get(ctx, "/v1/a2a/checkpoints/"+pathSegment(threadID)+"/"+pathSegment(checkpointID), &resp); err != nil {
 		return nil, err
 	}
 	return resp, nil
@@ -59,7 +59,7 @@ func (a *A2AClient) LoadCheckpoint(ctx context.Context, threadID, checkpointID s
 // server's save receipt.
 func (a *A2AClient) SaveCheckpoint(ctx context.Context, threadID, checkpointID string, payload map[string]any) (map[string]any, error) {
 	var resp map[string]any
-	if err := a.c.putJSON(ctx, "/a2a/checkpoints/"+pathSegment(threadID)+"/"+pathSegment(checkpointID), payload, &resp); err != nil {
+	if err := a.c.putJSON(ctx, "/v1/a2a/checkpoints/"+pathSegment(threadID)+"/"+pathSegment(checkpointID), payload, &resp); err != nil {
 		return nil, err
 	}
 	return resp, nil

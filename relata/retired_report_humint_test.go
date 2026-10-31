@@ -16,7 +16,7 @@ func TestRetiredReportHumintMethodsAbsent(t *testing.T) {
 			}
 		}
 	}
-	if _, ok := reflect.TypeOf((*AuditClient)(nil)).MethodByName("Entries"); !ok {
-		t.Fatal("generic audit entries removed")
+	if _, ok := reflect.TypeOf((*AuditClient)(nil)).MethodByName("Log"); !ok {
+		t.Fatal("generic audit log removed")
 	}
 }

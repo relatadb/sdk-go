@@ -44,12 +44,12 @@ func TestAssertionRelationRoutesAndBodies(t *testing.T) {
 	}
 	nil_ := map[string]any(nil)
 	want := [][]any{
-		{"POST", "/assertion-relations", "", map[string]any{"from": "asr_a", "to": "asr_b", "kind": "supports", "rationale": "same passage", "locator": map[string]any{"pointer": "page=3"}}},
-		{"POST", "/assertion-relations", "", map[string]any{"from": "asr_a", "to": "asr_b", "kind": "contradicts", "rationale": "dates differ"}},
-		{"POST", "/assertion-relations/rel%2F1/revoke", "", map[string]any{"reason": "misread"}},
-		{"POST", "/assertions/asr_a/assessment", "", map[string]any{"judgment": "disputed", "reason": "two witnesses disagree"}},
-		{"GET", "/assertions/asr_a/evidence-graph", "", nil_},
-		{"GET", "/assertions/asr%2Fa/evidence-graph", "depth=3&limit=10&policy=trust&policy_version=2", nil_},
+		{"POST", "/v1/assertions/relations", "", map[string]any{"from": "asr_a", "to": "asr_b", "kind": "supports", "rationale": "same passage", "locator": map[string]any{"pointer": "page=3"}}},
+		{"POST", "/v1/assertions/relations", "", map[string]any{"from": "asr_a", "to": "asr_b", "kind": "contradicts", "rationale": "dates differ"}},
+		{"POST", "/v1/assertions/relations/rel%2F1/revoke", "", map[string]any{"reason": "misread"}},
+		{"POST", "/v1/assertions/asr_a/assessment", "", map[string]any{"judgment": "disputed", "reason": "two witnesses disagree"}},
+		{"GET", "/v1/assertions/asr_a/evidence-graph", "", nil_},
+		{"GET", "/v1/assertions/asr%2Fa/evidence-graph", "depth=3&limit=10&policy=trust&policy_version=2", nil_},
 	}
 	if len(seen) != len(want) {
 		t.Fatalf("got %d requests, want %d: %v", len(seen), len(want), seen)

@@ -54,18 +54,18 @@ func TestAssertionsRoutesAndBodies(t *testing.T) {
 		}
 	}
 	want := [][]any{
-		{"POST", "/assertions", "", claim},
-		{"GET", "/assertions", "", map[string]any(nil)},
-		{"GET", "/assertions", "limit=5&predicate=city&state=confirmed&subject_id=p+1&subject_type=Person", map[string]any(nil)},
-		{"GET", "/assertions/asr_1", "", map[string]any(nil)},
-		{"POST", "/assertions/asr_1/decision", "", map[string]any{"decision": "confirm", "reason": "verified"}},
-		{"POST", "/assertions/asr%2F2/decision", "", map[string]any{"decision": "reject", "reason": "stale"}},
-		{"POST", "/assertions/asr_1/revoke", "", map[string]any{"reason": "error"}},
-		{"PUT", "/assertion-policies/trust", "", map[string]any{"expected_version": float64(2), "definition": def}},
-		{"GET", "/assertion-policies/trust", "", map[string]any(nil)},
-		{"GET", "/assertion-policies/trust", "version=3", map[string]any(nil)},
-		{"GET", "/assertion-resolve", "predicate=city&subject_id=p1&subject_type=Person&valid_at=5", map[string]any(nil)},
-		{"GET", "/assertion-resolve", "policy=trust&policy_version=2&predicate=city&recorded_as_of=9&subject_id=p1&subject_type=Person&valid_at=5", map[string]any(nil)},
+		{"POST", "/v1/assertions", "", claim},
+		{"GET", "/v1/assertions", "", map[string]any(nil)},
+		{"GET", "/v1/assertions", "limit=5&predicate=city&state=confirmed&subject_id=p+1&subject_type=Person", map[string]any(nil)},
+		{"GET", "/v1/assertions/asr_1", "", map[string]any(nil)},
+		{"POST", "/v1/assertions/asr_1/decision", "", map[string]any{"decision": "confirm", "reason": "verified"}},
+		{"POST", "/v1/assertions/asr%2F2/decision", "", map[string]any{"decision": "reject", "reason": "stale"}},
+		{"POST", "/v1/assertions/asr_1/revoke", "", map[string]any{"reason": "error"}},
+		{"PUT", "/v1/assertions/policies/trust", "", map[string]any{"expected_version": float64(2), "definition": def}},
+		{"GET", "/v1/assertions/policies/trust", "", map[string]any(nil)},
+		{"GET", "/v1/assertions/policies/trust", "version=3", map[string]any(nil)},
+		{"GET", "/v1/assertions/resolve", "predicate=city&subject_id=p1&subject_type=Person&valid_at=5", map[string]any(nil)},
+		{"GET", "/v1/assertions/resolve", "policy=trust&policy_version=2&predicate=city&recorded_as_of=9&subject_id=p1&subject_type=Person&valid_at=5", map[string]any(nil)},
 	}
 	if len(seen) != len(want) {
 		t.Fatalf("got %d requests, want %d: %v", len(seen), len(want), seen)

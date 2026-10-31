@@ -49,7 +49,7 @@ func TestMemory_Add(t *testing.T) {
 	if id != "mem-1" {
 		t.Fatalf("id = %q, want mem-1", id)
 	}
-	if gotMethod != "POST" || gotPath != "/memory/remember" {
+	if gotMethod != "POST" || gotPath != "/v1/memory/remember" {
 		t.Fatalf("method/path = %s %s", gotMethod, gotPath)
 	}
 	if gotBody["purpose"] != "agent-notes" || gotBody["content"] != "Alice prefers dark mode" {
@@ -61,9 +61,12 @@ func TestMemory_Add(t *testing.T) {
 }
 
 func TestMemory_Search(t *testing.T) {
-	var gotQuery string
+	var gotBody map[string]any
+	var gotMethod, gotPath string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		gotQuery = r.URL.RawQuery
+		gotMethod, gotPath = r.Method, r.URL.Path
+		b, _ := io.ReadAll(r.Body)
+		_ = json.Unmarshal(b, &gotBody)
 		inner := `{"rows":[{"id":"mem-1","content":"x","score":0.9}]}`
 		fmt.Fprintf(w, `{"content":[{"type":"text","text":%s}],"isError":false}`, strconvQuote(inner))
 	}))
@@ -77,21 +80,22 @@ func TestMemory_Search(t *testing.T) {
 	if len(rows) != 1 || rows[0]["id"] != "mem-1" {
 		t.Fatalf("rows = %v", rows)
 	}
-	if gotQuery == "" {
-		t.Fatal("no query string")
+	if gotMethod != "POST" || gotPath != "/v1/memory/recall" {
+		t.Fatalf("method/path = %s %s", gotMethod, gotPath)
 	}
-	// purpose + session_id + top_k must be present
-	if !contains(gotQuery, "purpose=agent-notes") || !contains(gotQuery, "session_id=sess-1") || !contains(gotQuery, "top_k=5") {
-		t.Fatalf("query = %q", gotQuery)
+	// purpose + session_id + top_k must be present in the JSON body
+	if gotBody["query"] != "ui prefs" || gotBody["purpose"] != "agent-notes" || gotBody["session_id"] != "sess-1" || gotBody["top_k"] != float64(5) {
+		t.Fatalf("body = %v", gotBody)
 	}
 }
 
 func TestMemory_Search_SendsADR145RetrievalQualityParams(t *testing.T) {
 	// #2674: CONFIDENCE/RECENCY/BUDGET/FORGETTING_CURVE/CANCEL_WHEN must be
 	// reachable as MemoryOptions on Search, not just top_k/session_id/as_of.
-	var gotQuery string
+	var gotBody map[string]any
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		gotQuery = r.URL.RawQuery
+		b, _ := io.ReadAll(r.Body)
+		_ = json.Unmarshal(b, &gotBody)
 		inner := `{"rows":[]}`
 		fmt.Fprintf(w, `{"content":[{"type":"text","text":%s}],"isError":false}`, strconvQuote(inner))
 	}))
@@ -108,20 +112,21 @@ func TestMemory_Search_SendsADR145RetrievalQualityParams(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Search: %v", err)
 	}
-	for _, want := range []string{
-		"min_confidence=0.6", "recency_half_life_secs=3600", "budget_tokens=500",
-		"stability_days=7", "cancel_threshold=0.95",
+	for key, want := range map[string]float64{
+		"min_confidence": 0.6, "recency_half_life_secs": 3600, "budget_tokens": 500,
+		"stability_days": 7, "cancel_threshold": 0.95,
 	} {
-		if !contains(gotQuery, want) {
-			t.Fatalf("query = %q, want %q", gotQuery, want)
+		if gotBody[key] != want {
+			t.Fatalf("body = %v, want %s=%v", gotBody, key, want)
 		}
 	}
 }
 
 func TestMemory_Search_OmitsADR145ParamsWhenUnset(t *testing.T) {
-	var gotQuery string
+	var gotBody map[string]any
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		gotQuery = r.URL.RawQuery
+		b, _ := io.ReadAll(r.Body)
+		_ = json.Unmarshal(b, &gotBody)
 		inner := `{"rows":[]}`
 		fmt.Fprintf(w, `{"content":[{"type":"text","text":%s}],"isError":false}`, strconvQuote(inner))
 	}))
@@ -135,8 +140,8 @@ func TestMemory_Search_OmitsADR145ParamsWhenUnset(t *testing.T) {
 		"min_confidence", "recency_half_life_secs", "budget_tokens",
 		"stability_days", "cancel_threshold",
 	} {
-		if contains(gotQuery, unwanted) {
-			t.Fatalf("query = %q, unexpected %q", gotQuery, unwanted)
+		if _, present := gotBody[unwanted]; present {
+			t.Fatalf("body = %v, unexpected %q", gotBody, unwanted)
 		}
 	}
 }
@@ -182,7 +187,7 @@ func TestMemory_Forget(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Forget: %v", err)
 	}
-	if gotMethod != "DELETE" || gotPath != "/memory/forget/mem-1" {
+	if gotMethod != "DELETE" || gotPath != "/v1/memory/forget/mem-1" {
 		t.Fatalf("method/path = %s %s", gotMethod, gotPath)
 	}
 	if out["policy"] != "retention" {
@@ -206,7 +211,7 @@ func TestMemory_Review(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Review: %v", err)
 	}
-	if gotMethod != "POST" || gotPath != "/memory/review/mem-1" {
+	if gotMethod != "POST" || gotPath != "/v1/memory/review/mem-1" {
 		t.Fatalf("method/path = %s %s", gotMethod, gotPath)
 	}
 	if !strings.Contains(gotBody, `"decision":"approve"`) || out["review_status"] != "approved" {
@@ -275,7 +280,7 @@ func TestMemory_Associate(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if gotPath != "/memory/associate" || out["relation"] != "derives" {
+	if gotPath != "/v1/memory/associate" || out["relation"] != "derives" {
 		t.Fatalf("path=%q out=%v", gotPath, out)
 	}
 	// The server reads from_id/to_id (source_id/target_id 400s).
@@ -301,7 +306,7 @@ func TestMemory_Resolve(t *testing.T) {
 		t.Fatalf("Resolve: %v", err)
 	}
 	// The server route is GET-only (#2675) — a POST body/policy param 405s.
-	if gotMethod != "GET" || gotPath != "/memory/resolve/mem-9" {
+	if gotMethod != "GET" || gotPath != "/v1/memory/resolve/mem-9" {
 		t.Fatalf("method/path = %s %s", gotMethod, gotPath)
 	}
 	if !contains(gotQuery, "purpose=agent-notes") {
@@ -330,4 +335,58 @@ func indexOf(s, sub string) int {
 		}
 	}
 	return -1
+}
+
+func TestMemory_SearchStream_GetsSSE(t *testing.T) {
+	var gotMethod, gotPath, gotRaw string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotMethod, gotPath, gotRaw = r.Method, r.URL.Path, r.URL.RawQuery
+		w.Header().Set("Content-Type", "text/event-stream")
+		fmt.Fprint(w, "data: {\"type\":\"done\"}\n\n")
+	}))
+	defer srv.Close()
+
+	m, _ := NewMemory(srv.URL, "agent-notes", nil)
+	rc, err := m.SearchStream(context.Background(), "ui prefs")
+	if err != nil {
+		t.Fatalf("SearchStream: %v", err)
+	}
+	defer rc.Close()
+	body, _ := io.ReadAll(rc)
+	if gotMethod != "GET" || gotPath != "/v1/memory/recall/stream" || !contains(gotRaw, "purpose=agent-notes") {
+		t.Fatalf("method/path/query = %s %s %s", gotMethod, gotPath, gotRaw)
+	}
+	if !contains(string(body), `"type":"done"`) {
+		t.Fatalf("body = %q", body)
+	}
+}
+
+func TestMemory_Procedures(t *testing.T) {
+	var methods, paths, queries []string
+	var gotBody map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		methods = append(methods, r.Method)
+		paths = append(paths, r.URL.Path)
+		queries = append(queries, r.URL.RawQuery)
+		if r.Method == "POST" {
+			b, _ := io.ReadAll(r.Body)
+			_ = json.Unmarshal(b, &gotBody)
+		}
+		fmt.Fprint(w, `{"stored":"ProcedureMemory"}`)
+	}))
+	defer srv.Close()
+
+	m, _ := NewMemory(srv.URL, "agent-notes", nil)
+	if _, err := m.RememberProcedure(context.Background(), "a1", "triage", "1. check"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := m.RecallProcedure(context.Background(), "a1", &RecallProcedureOptions{Name: "triage", AllVersions: true}); err != nil {
+		t.Fatal(err)
+	}
+	if methods[0] != "POST" || paths[0] != "/v1/memory/remember-procedure" || gotBody["agent_id"] != "a1" || gotBody["instruction_text"] != "1. check" {
+		t.Fatalf("remember = %s %s %v", methods[0], paths[0], gotBody)
+	}
+	if methods[1] != "GET" || paths[1] != "/v1/memory/recall-procedure" || !contains(queries[1], "agent_id=a1") || !contains(queries[1], "all_versions=true") || !contains(queries[1], "name=triage") {
+		t.Fatalf("recall = %s %s?%s", methods[1], paths[1], queries[1])
+	}
 }

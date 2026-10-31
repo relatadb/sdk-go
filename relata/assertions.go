@@ -6,7 +6,7 @@ import (
 	"strconv"
 )
 
-// AssertionsClient wraps /assertions (#5713): claims with valid time,
+// AssertionsClient wraps /v1/assertions (#5713): claims with valid time,
 // recorded time and reviewed corrections. Resolve answers what is true for a
 // predicate at a valid time as known at a recorded time (integer
 // nanoseconds), with the verdict and reason for every assertion considered.
@@ -35,13 +35,13 @@ func (a *AssertionsClient) post(ctx context.Context, path string, in any) (map[s
 	return out, nil
 }
 
-// Record calls POST /assertions: record a claim; idempotent on claim, source
+// Record calls POST /v1/assertions: record a claim; idempotent on claim, source
 // version and derivation.
 func (a *AssertionsClient) Record(ctx context.Context, assertion map[string]any) (map[string]any, error) {
-	return a.post(ctx, "/assertions", assertion)
+	return a.post(ctx, "/v1/assertions", assertion)
 }
 
-// List calls GET /assertions; empty filters and a zero limit are omitted.
+// List calls GET /v1/assertions; empty filters and a zero limit are omitted.
 func (a *AssertionsClient) List(ctx context.Context, subjectType, subjectID, predicate, state string, limit int) (map[string]any, error) {
 	q := url.Values{}
 	for k, v := range map[string]string{"subject_type": subjectType, "subject_id": subjectID, "predicate": predicate, "state": state} {
@@ -52,21 +52,21 @@ func (a *AssertionsClient) List(ctx context.Context, subjectType, subjectID, pre
 	if limit > 0 {
 		q.Set("limit", strconv.Itoa(limit))
 	}
-	p := "/assertions"
+	p := "/v1/assertions"
 	if len(q) > 0 {
 		p += "?" + q.Encode()
 	}
 	return a.get(ctx, p)
 }
 
-// Get calls GET /assertions/{id}.
+// Get calls GET /v1/assertions/{id}.
 func (a *AssertionsClient) Get(ctx context.Context, id string) (map[string]any, error) {
-	return a.get(ctx, "/assertions/"+url.PathEscape(id))
+	return a.get(ctx, "/v1/assertions/"+url.PathEscape(id))
 }
 
 // Decide calls POST .../decision with "confirm" or "reject"; idempotent.
 func (a *AssertionsClient) Decide(ctx context.Context, id, decision, reason string) (map[string]any, error) {
-	return a.post(ctx, "/assertions/"+url.PathEscape(id)+"/decision", map[string]any{"decision": decision, "reason": reason})
+	return a.post(ctx, "/v1/assertions/"+url.PathEscape(id)+"/decision", map[string]any{"decision": decision, "reason": reason})
 }
 
 // Confirm confirms an assertion.
@@ -83,10 +83,10 @@ func (a *AssertionsClient) Reject(ctx context.Context, id, reason string) (map[s
 // tombstone. A legal hold or WORM retention on the subject is 409
 // assertion-retention-blocked.
 func (a *AssertionsClient) Revoke(ctx context.Context, id, reason string) (map[string]any, error) {
-	return a.post(ctx, "/assertions/"+url.PathEscape(id)+"/revoke", map[string]any{"reason": reason})
+	return a.post(ctx, "/v1/assertions/"+url.PathEscape(id)+"/revoke", map[string]any{"reason": reason})
 }
 
-// Relate calls POST /assertion-relations (#5721): link two assertions with
+// Relate calls POST /v1/assertions/relations (#5721): link two assertions with
 // kind "supports", "contradicts", "derived_from" (or a reviewer's
 // "same_group_as" / "distinct_from"), a rationale and an
 // optional locator ({"evidence_id": ..., "pointer": ...}; nil for none).
@@ -95,10 +95,10 @@ func (a *AssertionsClient) Relate(ctx context.Context, from, kind, to, rationale
 	if locator != nil {
 		body["locator"] = locator
 	}
-	return a.post(ctx, "/assertion-relations", body)
+	return a.post(ctx, "/v1/assertions/relations", body)
 }
 
-// RelateSimilar calls POST /assertion-relations with kind "similar_to": the
+// RelateSimilar calls POST /v1/assertions/relations with kind "similar_to": the
 // score in [0, 1] and method come from the caller's ETL step.
 func (a *AssertionsClient) RelateSimilar(ctx context.Context, from, to, rationale string, score float64, method string, locator map[string]any) (map[string]any, error) {
 	body := map[string]any{"from": from, "to": to, "kind": "similar_to", "rationale": rationale,
@@ -106,19 +106,19 @@ func (a *AssertionsClient) RelateSimilar(ctx context.Context, from, to, rational
 	if locator != nil {
 		body["locator"] = locator
 	}
-	return a.post(ctx, "/assertion-relations", body)
+	return a.post(ctx, "/v1/assertions/relations", body)
 }
 
-// Unrelate calls POST /assertion-relations/{id}/revoke: withdraw a relation.
+// Unrelate calls POST /v1/assertions/relations/{id}/revoke: withdraw a relation.
 func (a *AssertionsClient) Unrelate(ctx context.Context, relationID, reason string) (map[string]any, error) {
-	return a.post(ctx, "/assertion-relations/"+url.PathEscape(relationID)+"/revoke", map[string]any{"reason": reason})
+	return a.post(ctx, "/v1/assertions/relations/"+url.PathEscape(relationID)+"/revoke", map[string]any{"reason": reason})
 }
 
 // Assess calls POST .../assessment: an analyst judgment ("corroborated",
 // "disputed" or "inconclusive") kept apart from source reliability and model
 // confidence.
 func (a *AssertionsClient) Assess(ctx context.Context, id, judgment, reason string) (map[string]any, error) {
-	return a.post(ctx, "/assertions/"+url.PathEscape(id)+"/assessment", map[string]any{"judgment": judgment, "reason": reason})
+	return a.post(ctx, "/v1/assertions/"+url.PathEscape(id)+"/assessment", map[string]any{"judgment": judgment, "reason": reason})
 }
 
 // EvidenceGraphOptions are the optional parameters of EvidenceGraph.
@@ -155,27 +155,27 @@ func (a *AssertionsClient) EvidenceGraph(ctx context.Context, id string, opts Ev
 	if opts.MinSimilarity != nil {
 		q.Set("min_similarity", strconv.FormatFloat(*opts.MinSimilarity, 'f', -1, 64))
 	}
-	p := "/assertions/" + url.PathEscape(id) + "/evidence-graph"
+	p := "/v1/assertions/" + url.PathEscape(id) + "/evidence-graph"
 	if len(q) > 0 {
 		p += "?" + q.Encode()
 	}
 	return a.get(ctx, p)
 }
 
-// PublishPolicy calls PUT /assertion-policies/{name} under the
+// PublishPolicy calls PUT /v1/assertions/policies/{name} under the
 // expectedVersion precondition (0: no version yet).
 func (a *AssertionsClient) PublishPolicy(ctx context.Context, name string, definition map[string]any, expectedVersion int) (map[string]any, error) {
 	var out map[string]any
 	body := map[string]any{"expected_version": expectedVersion, "definition": definition}
-	if err := a.c.putJSON(ctx, "/assertion-policies/"+url.PathEscape(name), body, &out); err != nil {
+	if err := a.c.putJSON(ctx, "/v1/assertions/policies/"+url.PathEscape(name), body, &out); err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-// GetPolicy calls GET /assertion-policies/{name}; version 0 is the latest.
+// GetPolicy calls GET /v1/assertions/policies/{name}; version 0 is the latest.
 func (a *AssertionsClient) GetPolicy(ctx context.Context, name string, version int) (map[string]any, error) {
-	p := "/assertion-policies/" + url.PathEscape(name)
+	p := "/v1/assertions/policies/" + url.PathEscape(name)
 	if version > 0 {
 		p += "?version=" + strconv.Itoa(version)
 	}
@@ -192,7 +192,7 @@ type ResolveOptions struct {
 	PolicyVersion int
 }
 
-// Resolve calls GET /assertion-resolve: the value at validAt as known at
+// Resolve calls GET /v1/assertions/resolve: the value at validAt as known at
 // opts.RecordedAsOf, with the verdict for every assertion considered.
 func (a *AssertionsClient) Resolve(ctx context.Context, subjectType, subjectID, predicate string, validAt int64, opts ResolveOptions) (map[string]any, error) {
 	q := url.Values{}
@@ -209,5 +209,5 @@ func (a *AssertionsClient) Resolve(ctx context.Context, subjectType, subjectID, 
 			q.Set("policy_version", strconv.Itoa(opts.PolicyVersion))
 		}
 	}
-	return a.get(ctx, "/assertion-resolve?"+q.Encode())
+	return a.get(ctx, "/v1/assertions/resolve?"+q.Encode())
 }

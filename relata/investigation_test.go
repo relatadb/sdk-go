@@ -63,20 +63,20 @@ func TestInvestigationRoutesAndBodies(t *testing.T) {
 	}
 	nb := map[string]any(nil)
 	want := [][]any{
-		{"GET", "/alerts/a%2F1/evidence", "", nb},
-		{"GET", "/alerts/a1/evidence", "deadline_ms=900&max_events=5", nb},
-		{"GET", "/alerts/a1/timeline", "", nb},
-		{"GET", "/alerts/a1/timeline", "deadline_ms=10", nb},
-		{"POST", "/alerts/a1/pivot", "", map[string]any{}},
-		{"POST", "/alerts/a1/pivot", "", map[string]any{"field": "user", "value": "alice", "target_field": "owner", "target_types": []any{"Session"}, "limit": float64(3), "deadline_ms": float64(50)}},
-		{"POST", "/searches/saved", "", map[string]any{"name": "n", "sql": "SELECT 1", "purpose": "audit", "description": "d", "params": []any{"x"}}},
-		{"GET", "/searches/saved", "", nb},
-		{"GET", "/searches/saved", "limit=7&q=fail", nb},
-		{"GET", "/searches/saved/ss%2F1", "", nb},
-		{"PUT", "/searches/saved/ss-1", "", map[string]any{"name": "n", "sql": "SELECT 2", "expected_version": float64(3)}},
-		{"DELETE", "/searches/saved/ss-1", "", nb},
-		{"POST", "/searches/saved/ss-1/run", "", map[string]any{}},
-		{"POST", "/searches/saved/ss-1/run", "", map[string]any{"params": []any{float64(1), nil}}},
+		{"GET", "/v1/alerts/a%2F1/evidence", "", nb},
+		{"GET", "/v1/alerts/a1/evidence", "deadline_ms=900&max_events=5", nb},
+		{"GET", "/v1/alerts/a1/timeline", "", nb},
+		{"GET", "/v1/alerts/a1/timeline", "deadline_ms=10", nb},
+		{"POST", "/v1/alerts/a1/pivot", "", map[string]any{}},
+		{"POST", "/v1/alerts/a1/pivot", "", map[string]any{"field": "user", "value": "alice", "target_field": "owner", "target_types": []any{"Session"}, "limit": float64(3), "deadline_ms": float64(50)}},
+		{"POST", "/v1/search/saved", "", map[string]any{"name": "n", "sql": "SELECT 1", "purpose": "audit", "description": "d", "params": []any{"x"}}},
+		{"GET", "/v1/search/saved", "", nb},
+		{"GET", "/v1/search/saved", "limit=7&q=fail", nb},
+		{"GET", "/v1/search/saved/ss%2F1", "", nb},
+		{"PUT", "/v1/search/saved/ss-1", "", map[string]any{"name": "n", "sql": "SELECT 2", "expected_version": float64(3)}},
+		{"DELETE", "/v1/search/saved/ss-1", "", nb},
+		{"POST", "/v1/search/saved/ss-1/run", "", map[string]any{}},
+		{"POST", "/v1/search/saved/ss-1/run", "", map[string]any{"params": []any{float64(1), nil}}},
 	}
 	if len(seen) != len(want) {
 		t.Fatalf("got %d requests, want %d: %v", len(seen), len(want), seen)

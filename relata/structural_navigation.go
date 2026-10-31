@@ -17,7 +17,7 @@ import (
 // document's section_path/page_start/page_end — one node per distinct
 // heading-breadcrumb prefix, plus a synthetic root, each carrying a cheap
 // LLM-free one-line Summary and its direct LeafChunkIDs.
-// POST /rag/query's search_mode: structural (#4514/#4542,
+// POST /v1/rag/query's search_mode: structural (#4514/#4542,
 // crates/relata-cli/src/serve/query/rag_query.rs) is a single-shot, one-hop
 // approximation of tree navigation: it lexically matches node
 // title/summary, then ranks within the matched node(s)' own leaf chunks.
@@ -29,9 +29,9 @@ import (
 // descend into, and stops either when a level has no children (a leaf) or
 // the strategy declines to descend further — then ranks that leaf's own
 // LeafChunkIDs via a governed RAG_RETRIEVE call, exactly like every other
-// /rag/query mode (same ACL/cell-masking enforcement — no bypass, since
-// this still goes through Client.Query, the same governed /query surface
-// /rag/query itself delegates to server-side).
+// /v1/rag/query mode (same ACL/cell-masking enforcement — no bypass, since
+// this still goes through Client.Query, the same governed /v1/query surface
+// /v1/rag/query itself delegates to server-side).
 //
 // Per ADR-013, RelataDB has no server-side agent loop — the reasoning that
 // picks which child to descend into is a caller-supplied ChildSelector,
@@ -117,7 +117,7 @@ func structuralFloatFromAny(v any) float64 {
 	}
 }
 
-// StructureNodeFromRow builds a StructureNode from one /query result row
+// StructureNodeFromRow builds a StructureNode from one /v1/query result row
 // (Client.Query's QueryResult.Rows element).
 //
 // LeafChunkIDs is stored server-side as a JSON array string
@@ -217,7 +217,7 @@ func LexicalChildSelector(question string, children []StructureNode) *StructureN
 
 // StructuralNavigator is structural table-of-contents navigation over a
 // Client. Every fetch (FetchRootNode/FetchChildNodes/the final ranked
-// RAG_RETRIEVE) goes through Client.Query — the same governed /query
+// RAG_RETRIEVE) goes through Client.Query — the same governed /v1/query
 // surface — so ACL/cell-masking apply identically at every level; there is
 // no bypass path.
 type StructuralNavigator struct {
@@ -249,7 +249,7 @@ type FetchChildNodesOptions struct {
 // FetchChildNodes fetches the direct children of opts.ParentID (or the
 // synthetic root's single row when opts.ParentID is nil) for
 // opts.ReportID's DocumentStructureNode tree, via a plain governed SELECT —
-// the same /query surface /rag/query itself delegates to server-side, so
+// the same /v1/query surface /v1/rag/query itself delegates to server-side, so
 // ACL/cell-masking apply identically.
 func (n *StructuralNavigator) FetchChildNodes(
 	ctx context.Context,
@@ -428,13 +428,13 @@ type NavigateStructuralTreeOptions struct {
 // LeafChunkIDs against opts.Question.
 //
 // This is the true multi-hop agent loop #4542's design describes,
-// complementing (not replacing) /rag/query's single-shot search_mode:
+// complementing (not replacing) /v1/rag/query's single-shot search_mode:
 // structural (#4514) — SelectChild is where an application plugs in real
 // reasoning (e.g. an LLM call over the candidates' Summary fields);
 // LexicalChildSelector is the LLM-free default.
 //
 // Every fetch (FetchRootNode/FetchChildNodes/the final ranked
-// RAG_RETRIEVE) goes through Client.Query — the same governed /query
+// RAG_RETRIEVE) goes through Client.Query — the same governed /v1/query
 // surface — so ACL/cell-masking apply identically at every level; there is
 // no bypass path.
 //

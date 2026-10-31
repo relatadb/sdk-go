@@ -69,7 +69,7 @@ func (i *IdentityClient) Label(ctx context.Context, identity, label string, opts
 		}
 	}
 	var resp map[string]any
-	if err := i.c.postJSON(ctx, "/identity/label", payload, &resp); err != nil {
+	if err := i.c.postJSON(ctx, "/v1/identity/label", payload, &resp); err != nil {
 		return nil, err
 	}
 	return resp, nil
@@ -96,7 +96,7 @@ func (i *IdentityClient) RecordUncertainty(ctx context.Context, identity, reason
 		params["suggested_alternatives"] = joined
 	}
 	var resp map[string]any
-	if err := i.c.get(ctx, encodeGetURL("/identity/uncertainty", params), &resp); err != nil {
+	if err := i.c.get(ctx, encodeGetURL("/v1/identity/uncertainty", params), &resp); err != nil {
 		return nil, err
 	}
 	return resp, nil
@@ -114,7 +114,7 @@ func (i *IdentityClient) RegisterLookup(ctx context.Context, name, csvData, keyC
 		payload["value_columns"] = opts.ValueColumns
 	}
 	var resp map[string]any
-	if err := i.c.postJSON(ctx, "/lookup/register", payload, &resp); err != nil {
+	if err := i.c.postJSON(ctx, "/v1/lookup/register", payload, &resp); err != nil {
 		return nil, err
 	}
 	return resp, nil
@@ -123,7 +123,7 @@ func (i *IdentityClient) RegisterLookup(ctx context.Context, name, csvData, keyC
 // ListLookups lists registered lookup tables.
 func (i *IdentityClient) ListLookups(ctx context.Context) ([]map[string]any, error) {
 	var resp map[string]any
-	if err := i.c.get(ctx, "/lookup", &resp); err != nil {
+	if err := i.c.get(ctx, "/v1/lookup", &resp); err != nil {
 		return nil, err
 	}
 	return unwrapList(resp, "lookups"), nil
@@ -132,7 +132,7 @@ func (i *IdentityClient) ListLookups(ctx context.Context) ([]map[string]any, err
 // InvokeLookup invokes a registered lookup. Returns the row(s) matching key.
 func (i *IdentityClient) InvokeLookup(ctx context.Context, name, key string) (map[string]any, error) {
 	var resp map[string]any
-	if err := i.c.get(ctx, encodeGetURL("/lookup", map[string]string{"name": name, "key": key}), &resp); err != nil {
+	if err := i.c.get(ctx, encodeGetURL("/v1/lookup", map[string]string{"name": name, "key": key}), &resp); err != nil {
 		return nil, err
 	}
 	return resp, nil
@@ -165,7 +165,7 @@ func (i *IdentityClient) EraseSubject(ctx context.Context, subjectIdentity, reas
 		certifyKW,
 	)
 	var resp map[string]any
-	if err := i.c.postJSON(ctx, "/query", map[string]any{"purpose": purpose, "sql": sql}, &resp); err != nil {
+	if err := i.c.postJSON(ctx, "/v1/query", map[string]any{"purpose": purpose, "sql": sql}, &resp); err != nil {
 		return nil, err
 	}
 	return resp, nil

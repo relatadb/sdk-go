@@ -47,12 +47,12 @@ import (
 // Per ADR-0298, RelataDB has no server-side agent loop and orchestration
 // lives in the SDK; sdks/python/relata/rag.go's RagClient stays canonical
 // and this package's RagClient (rag.go) stays a thin pass-through over the
-// frozen /rag/query contract. This file is the query-understanding layer
+// frozen /v1/rag/query contract. This file is the query-understanding layer
 // *above* that thin pass-through, now shipped here too per epic #4576.
 
 // ---------------------------------------------------------------------------
 // 0. Content-safety pre-filter (#4536) — runs before everything else, before
-//    any /rag/query or /query call is constructed.
+//    any /v1/rag/query or /v1/query call is constructed.
 // ---------------------------------------------------------------------------
 
 // DangerousContentPatterns is a reviewed starter set of dangerous-content
@@ -364,7 +364,7 @@ func IsNumericIntent(query string) bool { return numericIntentRE.MatchString(que
 //
 // hypothesisFn is called with query and must return a hypothetical answer
 // (plain text); that hypothetical answer becomes the query field sent to
-// POST /rag/query (#4514), which embeds and searches it server-side — this
+// POST /v1/rag/query (#4514), which embeds and searches it server-side — this
 // function does not embed anything itself.
 func ExpandQueryHyde(ctx context.Context, query string, hypothesisFn HypothesisGenerator) (string, error) {
 	if IsNumericIntent(query) {
@@ -438,7 +438,7 @@ func DecomposeQuery(query string) []string {
 // nSubqueries parallel result lists: max(10, 60/n) (verified in the
 // reference toolkit). Deliberately *not* RelataDB's fixed internal
 // RRF_K=60 (crates/relata-query/src/hybrid.rs), which fuses BM25(+)vector
-// within one /rag/query call — a different merge at a different layer.
+// within one /v1/rag/query call — a different merge at a different layer.
 func RrfKForFanout(nSubqueries int) (float64, error) {
 	if nSubqueries <= 0 {
 		return 0, errors.New("relata: nSubqueries must be positive")
@@ -709,7 +709,7 @@ func (o RouteQueryOptions) queryOpts() []QueryOption {
 }
 
 // RouteAttributeFilterQuery routes an attribute-filter-shaped query (#4536)
-// to a governed SQL /query call instead of a semantic-similarity retrieval
+// to a governed SQL /v1/query call instead of a semantic-similarity retrieval
 // guess.
 //
 // Returns (nil, nil) — never an error for "nothing to route" — when
@@ -943,9 +943,9 @@ func RouteRankingQuery(ctx context.Context, client *Client, query, objectType st
 // ---------------------------------------------------------------------------
 
 // ErrEnumerationTimeout is returned by RouteEnumerationQuery when the
-// background /rag/export operation does not complete within the poll
+// background /v1/rag/export operation does not complete within the poll
 // timeout.
-var ErrEnumerationTimeout = errors.New("relata: /rag/export operation did not complete within the poll timeout")
+var ErrEnumerationTimeout = errors.New("relata: /v1/rag/export operation did not complete within the poll timeout")
 
 // EnumerationPollInterval is the default interval between
 // GET /v1/operations/{id} polls.
@@ -956,7 +956,7 @@ const EnumerationPollInterval = 500 * time.Millisecond
 // background job, but it must not poll forever.
 const EnumerationPollTimeout = 300 * time.Second
 
-// LargeExportResult is the result of a completed POST /rag/export
+// LargeExportResult is the result of a completed POST /v1/rag/export
 // operation (#4535).
 //
 // Exactly one of two shapes, distinguished by IsFileBacked: Inline
@@ -1077,7 +1077,7 @@ type RouteEnumerationOptions struct {
 }
 
 // RouteEnumerationQuery routes an ENUMERATION-shaped query (#4535, e.g.
-// "give me all calls made by 9800004040 last year") to POST /rag/export
+// "give me all calls made by 9800004040 last year") to POST /v1/rag/export
 // instead of a widened-topK retrieval guess that can never be exhaustive.
 //
 // Returns (nil, nil) — caller should fall back to retrieval — only when
@@ -1112,7 +1112,7 @@ func RouteEnumerationQuery(ctx context.Context, client *Client, query, objectTyp
 	}
 
 	var op map[string]any
-	if err := client.postJSON(ctx, "/rag/export", payload, &op); err != nil {
+	if err := client.postJSON(ctx, "/v1/rag/export", payload, &op); err != nil {
 		return nil, err
 	}
 	operationID, _ := op["operation_id"].(string)
@@ -1138,7 +1138,7 @@ func RouteEnumerationQuery(ctx context.Context, client *Client, query, objectTyp
 			return largeExportResultFromBody(status), nil
 		}
 		if time.Now().After(deadline) {
-			return nil, fmt.Errorf("relata: /rag/export operation %s did not complete within %s: %w", operationID, pollTimeout, ErrEnumerationTimeout)
+			return nil, fmt.Errorf("relata: /v1/rag/export operation %s did not complete within %s: %w", operationID, pollTimeout, ErrEnumerationTimeout)
 		}
 		select {
 		case <-ctx.Done():
@@ -1149,7 +1149,7 @@ func RouteEnumerationQuery(ctx context.Context, client *Client, query, objectTyp
 }
 
 // ---------------------------------------------------------------------------
-// Entry point — composes everything ahead of the first /rag/query call
+// Entry point — composes everything ahead of the first /v1/rag/query call
 // ---------------------------------------------------------------------------
 
 // SmartRagQueryResult is the result of SmartRagQuery — extends the plain
@@ -1215,14 +1215,14 @@ func ptrInt(v *int) int {
 // SmartRagQuery runs query through the content-safety gate, structured-
 // attribute routing, decomposition, per-sub-query shape dispatch, and
 // optional HyDE, then issues the (possibly several, concurrent)
-// /rag/query calls via ragClient and RRF-merges the results.
+// /v1/rag/query calls via ragClient and RRF-merges the results.
 //
 // Sub-query fan-out runs concurrently via goroutines — the Go equivalent of
 // the Python reference's async twin (asmart_rag_query); Go's goroutines
 // have no thread-pool-size knob to mirror the sync twin's max_workers.
 //
 // Refused is set (empty Hits) when the content-safety gate matched, before
-// any /rag/query or /query call was made. SQLResult is set (empty Hits)
+// any /v1/rag/query or /v1/query call was made. SQLResult is set (empty Hits)
 // when an attribute-filter/aggregation/negation/boolean/ranking-shaped
 // query was routed to SQL instead of retrieval. Otherwise this is the
 // (possibly RRF-merged) retrieval result — with LowConfidence set when a

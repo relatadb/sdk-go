@@ -19,7 +19,7 @@ type FreshnessOptions struct {
 	Partial bool
 }
 
-// FreshnessHeaders returns the headers that gate /query, /search, /graphql or
+// FreshnessHeaders returns the headers that gate /v1/query, /v1/search, /v1/graphql or
 // MCP reads on token. A read is never served as complete while an index it
 // depends on is behind: it fails 503 freshness-not-ready with per-index
 // progress, or, with Partial, carries freshness.status "incomplete".
@@ -57,17 +57,17 @@ func NewFreshnessClient(c *Client) *FreshnessClient {
 	return &FreshnessClient{c: c}
 }
 
-// Status calls GET /freshness/status: per-index state plus a token for the
+// Status calls GET /v1/freshness/status: per-index state plus a token for the
 // caller's latest accepted write.
 func (f *FreshnessClient) Status(ctx context.Context) (map[string]any, error) {
 	var out map[string]any
-	if err := f.c.get(ctx, "/freshness/status", &out); err != nil {
+	if err := f.c.get(ctx, "/v1/freshness/status", &out); err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-// Barrier calls POST /freshness/barrier and waits until token is visible in
+// Barrier calls POST /v1/freshness/barrier and waits until token is visible in
 // the named indexes. A write not visible within WaitMS returns the server's
 // freshness-not-ready problem as an error.
 func (f *FreshnessClient) Barrier(ctx context.Context, token string, opts *FreshnessOptions) (map[string]any, error) {
@@ -84,7 +84,7 @@ func (f *FreshnessClient) Barrier(ctx context.Context, token string, opts *Fresh
 		}
 	}
 	var out map[string]any
-	if err := f.c.postJSON(ctx, "/freshness/barrier", payload, &out); err != nil {
+	if err := f.c.postJSON(ctx, "/v1/freshness/barrier", payload, &out); err != nil {
 		return nil, err
 	}
 	return out, nil

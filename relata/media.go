@@ -7,7 +7,7 @@ import (
 
 // ---------------------------------------------------------------------------
 // Multimedia operators (#2251, #2840) — governed wrapper over SIMILAR_IMAGE
-// (FACE_SEARCH / MATCH_PDQ were retired from core, #5935). It routes through POST /query so PURPOSE /
+// (FACE_SEARCH / MATCH_PDQ were retired from core, #5935). It routes through POST /v1/query so PURPOSE /
 // ACL / cell-masking / tenant isolation apply identically to a hand-written
 // query. The server operators are registered in relata_query::parser:
 //   - SIMILAR_IMAGE('<media_ref>', THRESHOLD => f, INDEX => '<corpus>')
@@ -62,7 +62,7 @@ func buildSimilarImageSQL(mediaRef string, threshold float64, index string) stri
 
 // SimilarImage runs a perceptual near-duplicate image search over mediaRef
 // (#2840, PR #2859) via the server's SIMILAR_IMAGE operator. It executes
-// SIMILAR_IMAGE(...) through the governed /query door so
+// SIMILAR_IMAGE(...) through the governed /v1/query door so
 // PURPOSE / ACL / cell-masking / tenant isolation apply identically to a
 // hand-written query. threshold defaults to 0.9; when no index is supplied
 // the server searches its default scope.

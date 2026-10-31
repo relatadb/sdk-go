@@ -1,15 +1,14 @@
-// Command streaming demonstrates SSE watch + transparency log (#967 Tier 2b).
+// Command streaming demonstrates the SSE watch + alerts streams (#967 Tier 2b).
 //
-// Two related real-time surfaces:
-//  1. StreamingClient.Watch — /watch/stream polls for governed query-result
+// Related real-time surfaces:
+//  1. StreamingClient.Watch — /v1/v1/watch/stream polls for governed query-result
 //     notifications. The server emits hashes and explicit gap/failure events,
 //     not changed row contents. Reconnects use the same in-memory
 //     per-principal queue, so clients must re-register after server restart.
-//  2. LogClient — /log/append|head|loadLeaves is the tamper-evident audit
-//     append-log. Every governed write lands here as a leaf.
+//  2. /v1/alerts/stream — the SSE alerts feed an external consumer can tail.
 //
-// The example consumes watch events for 5 seconds, performs a write to trigger
-// an event, then queries the transparency log.
+// The example consumes watch events for 5 seconds and performs a write to
+// trigger an event.
 //
 // Usage:
 //
@@ -36,7 +35,6 @@ func main() {
 		Timeout:        30 * time.Second,
 	})
 	streaming := relata.NewStreamingClient(client)
-	logClient := relata.NewLogClient(client)
 	ingest := relata.NewIngestClient(client)
 
 	// ── 1. Watch with a 5-second deadline ─────────────────────────────────
@@ -65,7 +63,7 @@ func main() {
 	writeCtx, writeCancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer writeCancel()
 
-	// /query is read-only (#782) — writes go through the governed ingest
+	// /v1/query is read-only (#782) — writes go through the governed ingest
 	// door, not SQL INSERT.
 	fmt.Println("\n=== 2. Issuing a write to trigger watch events ===")
 	rows := []map[string]any{{"_pk": "watch-1", "name": "Watch Test 1"}}
@@ -77,29 +75,5 @@ func main() {
 
 	// ── 3. Alerts stream URL (for an external curl consumer) ──────────────
 	fmt.Println("\n=== 3. Alerts stream URL (for external consumer) ===")
-	fmt.Printf("  %s/alerts/stream\n", *url)
-
-	// ── 4. Transparency log: append + head + leaves ───────────────────────
-	logCtx, logCancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer logCancel()
-
-	fmt.Println("\n=== 4. Transparency log (append + head + loadLeaves) ===")
-	index, _, err := logClient.Append(logCtx, []byte(`{"action":"example_run"}`))
-	if err != nil {
-		fmt.Printf("  append error: %v\n", err)
-	} else {
-		fmt.Printf("  appended leaf at index=%d\n", index)
-	}
-	head, err := logClient.Head(logCtx)
-	if err != nil {
-		fmt.Printf("  head error: %v\n", err)
-	} else {
-		fmt.Printf("  log head (tree size) = %d\n", head)
-	}
-	leaves, err := logClient.LoadLeaves(logCtx, nil)
-	if err != nil {
-		fmt.Printf("  loadLeaves error: %v\n", err)
-	} else {
-		fmt.Printf("  %d leaf/leaves loaded\n", len(leaves))
-	}
+	fmt.Printf("  %s/v1/alerts/stream\n", *url)
 }

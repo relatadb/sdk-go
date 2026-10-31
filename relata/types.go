@@ -26,7 +26,7 @@ import (
 	"time"
 )
 
-// QueryRequest is the wire payload sent to POST /query.
+// QueryRequest is the wire payload sent to POST /v1/query.
 type QueryRequest struct {
 	// Purpose is a mandatory token registered in the tenant's PurposeRegistry.
 	// The server rejects any query that omits this field.
@@ -56,7 +56,7 @@ type QueryRequest struct {
 	QueryVectorModel string `json:"query_vector_model,omitempty"`
 }
 
-// QueryResult is the response from POST /query.
+// QueryResult is the response from POST /v1/query.
 //
 // The server returns one of two wire shapes: either rows-as-an-int-count with
 // the actual row data in a sibling "data" array, or rows-as-the-array directly.
@@ -114,7 +114,7 @@ type queryResultWire struct {
 	Partial          bool             `json:"partial"`
 }
 
-// UnmarshalJSON normalises the two wire shapes the server emits for POST /query
+// UnmarshalJSON normalises the two wire shapes the server emits for POST /v1/query
 // into the canonical QueryResult. When "data" is present as an array it becomes
 // Rows; when "rows" is an integer count (and no "data" array is present) Rows
 // is set to an empty slice and RowCount captures the count. RowCount is always
@@ -197,7 +197,7 @@ type HealthResponse struct {
 // IsHealthy returns true when Status == "ok".
 func (r *HealthResponse) IsHealthy() bool { return r.Status == "ok" }
 
-// StatusResponse is the response from GET /status.
+// StatusResponse is the response from GET /v1/system/status.
 type StatusResponse struct {
 	// Profile is one of "free", "server", or "cluster".
 	Profile string `json:"profile"`
@@ -211,7 +211,7 @@ type StatusResponse struct {
 	QueryQuota int `json:"query_quota"`
 }
 
-// AuditCountResponse is the response from GET /audit/count.
+// AuditCountResponse is the response from GET /v1/audit/count.
 type AuditCountResponse struct {
 	// Entries is the number of audit log entries.
 	Entries int `json:"entries"`
@@ -224,23 +224,6 @@ type AuditCountResponse struct {
 
 // IsTampered returns true when the audit chain is broken (potential tampering).
 func (r *AuditCountResponse) IsTampered() bool { return !r.ChainValid }
-
-// ClusterNode describes a single node returned by GET /cluster/nodes.
-type ClusterNode struct {
-	// NodeID is the identifier for this node (NODE_ID env var on that node).
-	NodeID string `json:"node_id"`
-
-	// Role is one of "coordinator", "reader", or "writer".
-	Role string `json:"role"`
-
-	// URL is the base HTTP URL of the node.
-	URL string `json:"url"`
-}
-
-// ClusterNodesResponse is the response from GET /cluster/nodes.
-type ClusterNodesResponse struct {
-	Nodes []ClusterNode `json:"nodes"`
-}
 
 // VersionInfo is the response from GET /version.
 // Useful for migration checks and capability negotiation.
@@ -261,7 +244,7 @@ type VersionInfo struct {
 	Features []string `json:"features"`
 }
 
-// Stats is the response from GET /debug/stats.
+// Stats is the response from GET /v1/system/stats.
 //
 // The shape mirrors the partner storage-backend contract §9. Fields the server
 // does not yet populate decode as zero values. Raw captures the full server
@@ -346,14 +329,14 @@ func (r *ReadyReport) isReadySet(b []byte) bool {
 	return ok
 }
 
-// IngestDocumentRequest is the body sent to queued POST /ingest/bulk.
+// IngestDocumentRequest is the body sent to queued POST /v1/ingest/bulk.
 type IngestDocumentRequest struct {
 	Objects []map[string]any `json:"objects"`
 	Queued  bool             `json:"queued"`
 	Purpose string           `json:"purpose,omitempty"`
 }
 
-// IngestDocumentResponse is the receipt from queued POST /ingest/bulk.
+// IngestDocumentResponse is the receipt from queued POST /v1/ingest/bulk.
 type IngestDocumentResponse struct {
 	TaskID       string   `json:"task_id"`
 	RowsQueued   int      `json:"rows_queued"`
@@ -363,7 +346,7 @@ type IngestDocumentResponse struct {
 }
 
 // IngestDocumentTaskStatus is the generic task response from
-// GET /ingest/tasks/{taskID}. Persistent local receipts survive restart; volatile profiles remain process-local;
+// GET /v1/ingest/tasks/{taskID}. Persistent local receipts survive restart; volatile profiles remain process-local;
 // pending is nonterminal, while complete, partial, failed, uncertain, and
 // incomplete are terminal. Uncertain does not mean complete and must not be
 // blindly retried.
@@ -421,7 +404,7 @@ type EventTarget struct {
 	Value      string `json:"value"`
 }
 
-// EventAppendRequest is the body sent to POST /events/append. The target
+// EventAppendRequest is the body sent to POST /v1/ingest/events. The target
 // event type must be installed and marked append_only; the idempotency key is
 // required and must not be reused with a different payload.
 type EventAppendRequest struct {
@@ -488,13 +471,13 @@ type ClientOptions struct {
 	// delay for attempt N is RetryBackoff * 2^N. Defaults to 500ms if zero.
 	RetryBackoff time.Duration
 
-	// AdminBaseURL points /admin/* and /platform/* requests at the loopbound
+	// AdminBaseURL points /admin/* requests at the loopbound
 	// admin control-plane listener (RELATA_ADMIN_BIND, default
 	// 127.0.0.1:9091 — ADR-0261) instead of BaseURL (relatadb/RelataDB#2321).
 	// Per ADR-0261 v1, those routes are mounted ONLY on that listener, never
 	// the main data-plane listener BaseURL usually targets, so a hardened
 	// server/cluster deployment needs this set for BackupClient/
-	// TenantAdminClient's platform-tenant methods to reach them at all.
+	// the admin clients (e.g. BackupClient) to reach them at all.
 	// Leave empty (the default) when the admin listener isn't split from the
 	// data plane (e.g. local/free-profile dev) — every request then goes to
 	// BaseURL exactly as before this option existed.

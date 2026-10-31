@@ -29,14 +29,14 @@ func (a *AppPrimitivesClient) SequenceNext(ctx context.Context, name string, cou
 		body["idempotencyKey"] = idempotencyKey
 	}
 	var resp map[string]any
-	err := a.c.postJSON(ctx, "/sequences/"+pathSegment(name)+"/next", body, &resp)
+	err := a.c.postJSON(ctx, "/v1/sequences/"+pathSegment(name)+"/next", body, &resp)
 	return resp, err
 }
 
 // SequenceGet returns the value the next allocation would start at.
 func (a *AppPrimitivesClient) SequenceGet(ctx context.Context, name string) (map[string]any, error) {
 	var resp map[string]any
-	err := a.c.get(ctx, "/sequences/"+pathSegment(name), &resp)
+	err := a.c.get(ctx, "/v1/sequences/"+pathSegment(name), &resp)
 	return resp, err
 }
 
@@ -48,7 +48,7 @@ func (a *AppPrimitivesClient) Enqueue(ctx context.Context, queue string, payload
 		body[k] = v
 	}
 	var resp map[string]any
-	err := a.c.postJSON(ctx, "/queues/"+pathSegment(queue)+"/jobs", body, &resp)
+	err := a.c.postJSON(ctx, "/v1/queues/"+pathSegment(queue)+"/jobs", body, &resp)
 	return resp, err
 }
 
@@ -62,7 +62,7 @@ func (a *AppPrimitivesClient) Claim(ctx context.Context, queue, workerID string,
 		body["max"] = max
 	}
 	var resp map[string]any
-	if err := a.c.postJSON(ctx, "/queues/"+pathSegment(queue)+"/claim", body, &resp); err != nil {
+	if err := a.c.postJSON(ctx, "/v1/queues/"+pathSegment(queue)+"/claim", body, &resp); err != nil {
 		return nil, err
 	}
 	jobs, _ := resp["jobs"].([]any)
@@ -76,7 +76,7 @@ func (a *AppPrimitivesClient) Renew(ctx context.Context, jobID string, fencingTo
 		body["leaseMs"] = leaseMs
 	}
 	var resp map[string]any
-	err := a.c.postJSON(ctx, "/jobs/"+pathSegment(jobID)+"/renew", body, &resp)
+	err := a.c.postJSON(ctx, "/v1/jobs/"+pathSegment(jobID)+"/renew", body, &resp)
 	return resp, err
 }
 
@@ -87,7 +87,7 @@ func (a *AppPrimitivesClient) Complete(ctx context.Context, jobID string, fencin
 		body["result"] = result
 	}
 	var resp map[string]any
-	err := a.c.postJSON(ctx, "/jobs/"+pathSegment(jobID)+"/complete", body, &resp)
+	err := a.c.postJSON(ctx, "/v1/jobs/"+pathSegment(jobID)+"/complete", body, &resp)
 	return resp, err
 }
 
@@ -99,7 +99,7 @@ func (a *AppPrimitivesClient) Fail(ctx context.Context, jobID string, fencingTok
 		body[k] = v
 	}
 	var resp map[string]any
-	err := a.c.postJSON(ctx, "/jobs/"+pathSegment(jobID)+"/fail", body, &resp)
+	err := a.c.postJSON(ctx, "/v1/jobs/"+pathSegment(jobID)+"/fail", body, &resp)
 	return resp, err
 }
 
@@ -112,7 +112,7 @@ func (a *AppPrimitivesClient) ListJobs(ctx context.Context, queue, state string,
 	if limit > 0 {
 		q.Set("limit", strconv.Itoa(limit))
 	}
-	path := "/queues/" + pathSegment(queue) + "/jobs"
+	path := "/v1/queues/" + pathSegment(queue) + "/jobs"
 	if enc := q.Encode(); enc != "" {
 		path += "?" + enc
 	}
@@ -124,6 +124,6 @@ func (a *AppPrimitivesClient) ListJobs(ctx context.Context, queue, state string,
 // GetJob fetches one job.
 func (a *AppPrimitivesClient) GetJob(ctx context.Context, queue, jobID string) (map[string]any, error) {
 	var resp map[string]any
-	err := a.c.get(ctx, "/queues/"+pathSegment(queue)+"/jobs/"+pathSegment(jobID), &resp)
+	err := a.c.get(ctx, "/v1/queues/"+pathSegment(queue)+"/jobs/"+pathSegment(jobID), &resp)
 	return resp, err
 }

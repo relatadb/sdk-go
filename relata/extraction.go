@@ -6,7 +6,7 @@ import (
 	"strconv"
 )
 
-// ExtractionClient wraps /ontology/suggestions and /entities/exists (#5678).
+// ExtractionClient wraps /v1/ontology/suggestions and /v1/entities/exists (#5678).
 // OpenETL extracts entities, relationships and schema proposals; Relata stores
 // them. Submit a bounded batch (every suggestion starts pending; a submission
 // cannot carry a review state), work the review queue with List and Get, and
@@ -42,10 +42,10 @@ func (e *ExtractionClient) post(ctx context.Context, path string, in any) (map[s
 	return out, nil
 }
 
-// Submit calls POST /ontology/suggestions with 1 to 200 suggestions; each
+// Submit calls POST /v1/ontology/suggestions with 1 to 200 suggestions; each
 // result is created, existing (an exact retry) or invalid with issues.
 func (e *ExtractionClient) Submit(ctx context.Context, suggestions []map[string]any) (map[string]any, error) {
-	return e.post(ctx, "/ontology/suggestions", map[string]any{"suggestions": suggestions})
+	return e.post(ctx, "/v1/ontology/suggestions", map[string]any{"suggestions": suggestions})
 }
 
 // SuggestionFilter narrows List; zero values are omitted. LowConfidence and
@@ -60,7 +60,7 @@ type SuggestionFilter struct {
 	Limit         int
 }
 
-// List calls GET /ontology/suggestions: the review queue, oldest first.
+// List calls GET /v1/ontology/suggestions: the review queue, oldest first.
 func (e *ExtractionClient) List(ctx context.Context, f SuggestionFilter) (map[string]any, error) {
 	q := url.Values{}
 	for k, v := range map[string]string{"state": f.State, "kind": f.Kind, "definition": f.Definition} {
@@ -80,16 +80,16 @@ func (e *ExtractionClient) List(ctx context.Context, f SuggestionFilter) (map[st
 	if f.Limit > 0 {
 		q.Set("limit", strconv.Itoa(f.Limit))
 	}
-	p := "/ontology/suggestions"
+	p := "/v1/ontology/suggestions"
 	if len(q) > 0 {
 		p += "?" + q.Encode()
 	}
 	return e.get(ctx, p)
 }
 
-// Get calls GET /ontology/suggestions/{id}: with its correction and history.
+// Get calls GET /v1/ontology/suggestions/{id}: with its correction and history.
 func (e *ExtractionClient) Get(ctx context.Context, id string) (map[string]any, error) {
-	return e.get(ctx, "/ontology/suggestions/"+url.PathEscape(id))
+	return e.get(ctx, "/v1/ontology/suggestions/"+url.PathEscape(id))
 }
 
 // Decide calls POST .../decision with "accept", "reject", "correct" or
@@ -102,7 +102,7 @@ func (e *ExtractionClient) Decide(ctx context.Context, id, decision, reason stri
 	if acceptLowConfidence {
 		body["accept_low_confidence"] = true
 	}
-	return e.post(ctx, "/ontology/suggestions/"+url.PathEscape(id)+"/decision", body)
+	return e.post(ctx, "/v1/ontology/suggestions/"+url.PathEscape(id)+"/decision", body)
 }
 
 // Accept accepts a suggestion as extracted. A low-confidence suggestion needs
@@ -126,17 +126,17 @@ func (e *ExtractionClient) Reopen(ctx context.Context, id, reason string) (map[s
 	return e.Decide(ctx, id, "reopen", reason, nil, false)
 }
 
-// Apply calls POST /ontology/suggestions/apply: fold accepted schema
+// Apply calls POST /v1/ontology/suggestions/apply: fold accepted schema
 // suggestions into the definition's draft. suggestionIDs nil means all.
 func (e *ExtractionClient) Apply(ctx context.Context, definition string, suggestionIDs []string) (map[string]any, error) {
 	body := map[string]any{"definition": definition}
 	if suggestionIDs != nil {
 		body["suggestion_ids"] = suggestionIDs
 	}
-	return e.post(ctx, "/ontology/suggestions/apply", body)
+	return e.post(ctx, "/v1/ontology/suggestions/apply", body)
 }
 
-// EntitiesExist calls POST /entities/exists: for up to 500 candidates of the
+// EntitiesExist calls POST /v1/entities/exists: for up to 500 candidates of the
 // form {"type": ..., "match": {field: value}}, whether a live record matches
 // exactly and with which ids. A non-empty definition also returns its current
 // ontology_version.
@@ -145,5 +145,5 @@ func (e *ExtractionClient) EntitiesExist(ctx context.Context, candidates []map[s
 	if definition != "" {
 		body["definition"] = definition
 	}
-	return e.post(ctx, "/entities/exists", body)
+	return e.post(ctx, "/v1/entities/exists", body)
 }

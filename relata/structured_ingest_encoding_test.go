@@ -73,7 +73,7 @@ func TestStructuredIngestEncodingPreservesExactValuesAndTenant(t *testing.T) {
 	var calls atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		calls.Add(1)
-		if r.URL.Path != "/ingest" || r.URL.Query().Get("object_type") != "StructuredRecord" || r.URL.Query().Get("purpose") != "analytics" {
+		if r.URL.Path != "/v1/ingest" || r.URL.Query().Get("object_type") != "StructuredRecord" || r.URL.Query().Get("purpose") != "analytics" {
 			t.Errorf("routing=%s", r.URL.String())
 		}
 		if r.Header.Get("X-Relata-Tenant-Id") != "tenant-a" {

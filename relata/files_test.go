@@ -19,7 +19,7 @@ func TestFilesExactBinaryMetadataAndDelete(t *testing.T) {
 	var calls []string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		calls = append(calls, r.Method)
-		if r.URL.Path != "/files/content" || r.URL.Query().Get("key") != key || r.URL.Query().Get("bucket") != "tenant-a" {
+		if r.URL.Path != "/v1/files/content" || r.URL.Query().Get("key") != key || r.URL.Query().Get("bucket") != "tenant-a" {
 			t.Errorf("route/query: %s", r.URL)
 		}
 		if r.Header.Get("Authorization") != "Bearer scoped" || r.Header.Get("X-Relata-Tenant-Id") != "tenant-a" || r.Header.Get("X-Request-ID") == "" {
@@ -33,7 +33,7 @@ func TestFilesExactBinaryMetadataAndDelete(t *testing.T) {
 			}
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(201)
-			fmt.Fprint(w, `{"bucket":"tenant-a","key":"nested/a+b ?&é.bin","row_id":"row-1","size":5,"etag":"\"abc\"","content_type":"application/x-fixture","modified_ns":42,"is_folder":false,"download_url":"/files/content"}`)
+			fmt.Fprint(w, `{"bucket":"tenant-a","key":"nested/a+b ?&é.bin","row_id":"row-1","size":5,"etag":"\"abc\"","content_type":"application/x-fixture","modified_ns":42,"is_folder":false,"download_url":"/v1/files/content"}`)
 		case http.MethodGet:
 			if r.Header.Get("Accept") != "application/octet-stream" {
 				t.Errorf("accept: %s", r.Header.Get("Accept"))
@@ -190,7 +190,7 @@ func TestFilesUploadResumesAfterTransientFailure(t *testing.T) {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		switch {
-		case r.Method == http.MethodPost && r.URL.Path == "/files/uploads":
+		case r.Method == http.MethodPost && r.URL.Path == "/v1/files/uploads":
 			w.WriteHeader(201)
 			fmt.Fprint(w, session())
 		case r.Method == http.MethodPut:
@@ -214,7 +214,7 @@ func TestFilesUploadResumesAfterTransientFailure(t *testing.T) {
 		case r.Method == http.MethodPost:
 			completed = append([]byte(nil), data...)
 			w.WriteHeader(201)
-			fmt.Fprint(w, `{"bucket":"b","key":"k","row_id":null,"size":10,"etag":"\"h\"","content_type":"x","modified_ns":1,"is_folder":false,"download_url":"/files/content"}`)
+			fmt.Fprint(w, `{"bucket":"b","key":"k","row_id":null,"size":10,"etag":"\"h\"","content_type":"x","modified_ns":1,"is_folder":false,"download_url":"/v1/files/content"}`)
 		default:
 			t.Errorf("unexpected %s %s", r.Method, r.URL)
 		}

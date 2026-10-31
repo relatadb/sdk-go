@@ -51,7 +51,7 @@ func TestSchemaAlter_TranslatesDocumentedShortVerbs(t *testing.T) {
 			if err != nil {
 				t.Fatalf("SchemaAlter: %v", err)
 			}
-			if gotMethod != "PATCH" || gotPath != "/types/Company/schema" {
+			if gotMethod != "PATCH" || gotPath != "/v1/types/Company/schema" {
 				t.Fatalf("method/path = %s %s", gotMethod, gotPath)
 			}
 			if gotBody["action"] != tc.expected {

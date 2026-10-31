@@ -28,7 +28,7 @@ func TestGovernanceClient_ListRules(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if gotPath != "/rules" || gotQuery != "object_type=Person" {
+	if gotPath != "/v1/rules" || gotQuery != "object_type=Person" {
 		t.Fatalf("path=%q query=%q", gotPath, gotQuery)
 	}
 	if len(rules) != 2 || rules[0]["id"] != "r1" {
@@ -55,7 +55,7 @@ func TestGovernanceClient_CreateRule(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if gotMethod != "POST" || gotPath != "/rules" || gotQuery != "purpose=audit" {
+	if gotMethod != "POST" || gotPath != "/v1/rules" || gotQuery != "purpose=audit" {
 		t.Fatalf("method/path/query = %s %s %s", gotMethod, gotPath, gotQuery)
 	}
 	if gotBody["name"] != "x" || gotBody["condition_sql"] != "age > 18" || gotBody["target_type"] != "Person" {
@@ -112,7 +112,7 @@ func TestGovernanceClient_DisableRule(t *testing.T) {
 	if _, err := g.DisableRule(context.Background(), "r1"); err != nil {
 		t.Fatal(err)
 	}
-	if gotMethod != "DELETE" || gotPath != "/rules/r1" {
+	if gotMethod != "DELETE" || gotPath != "/v1/rules/r1" {
 		t.Fatalf("method/path = %s %s", gotMethod, gotPath)
 	}
 }
@@ -132,7 +132,7 @@ func TestGovernanceClient_SubmitDSAR(t *testing.T) {
 	if _, err := g.SubmitDSAR(context.Background(), "alice@example.com", "gdpr-art-15", &SubmitDSAROptions{Scope: "email"}); err != nil {
 		t.Fatal(err)
 	}
-	if gotMethod != "GET" || gotPath != "/gdpr/dsar" {
+	if gotMethod != "GET" || gotPath != "/v1/gdpr/dsar" {
 		t.Fatalf("method/path = %s %s", gotMethod, gotPath)
 	}
 	if !contains(gotQuery, "subject_identity=alice") || !contains(gotQuery, "scope=email") {
@@ -154,36 +154,14 @@ func TestGovernanceClient_UpdateAlert(t *testing.T) {
 	if _, err := g.UpdateAlert(context.Background(), "a1", &UpdateAlertOptions{Status: "ack", Assignee: "bob"}); err != nil {
 		t.Fatal(err)
 	}
-	if gotMethod != "PATCH" || gotPath != "/alerts/update/a1" {
+	if gotMethod != "PATCH" || gotPath != "/v1/alerts/a1" {
 		t.Fatalf("method/path = %s %s", gotMethod, gotPath)
 	}
 }
 
 // ---- AuditClient ------------------------------------------------------------
 
-func TestAuditClient_Entries(t *testing.T) {
-	var gotQuery string
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		gotQuery = r.URL.RawQuery
-		fmt.Fprint(w, `{"entries":[{"id":1}],"next_cursor":"c1","chain_valid":true}`)
-	}))
-	defer srv.Close()
-
-	c := newTestClient(srv, nil)
-	a := NewAuditClient(c)
-	out, err := a.Entries(context.Background(), &AuditEntriesOptions{Principal: "bob", Limit: 50})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !contains(gotQuery, "principal=bob") || !contains(gotQuery, "limit=50") {
-		t.Fatalf("query = %q", gotQuery)
-	}
-	if out["next_cursor"] != "c1" {
-		t.Fatalf("out = %v", out)
-	}
-}
-
-func TestAuditClient_LogAndSinceUntil(t *testing.T) {
+func TestAuditClient_Log(t *testing.T) {
 	var paths, queries []string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		paths = append(paths, r.URL.Path)
@@ -196,91 +174,8 @@ func TestAuditClient_LogAndSinceUntil(t *testing.T) {
 	if _, err := a.Log(context.Background(), &AuditLogOptions{Limit: 5, Table: "Person", TenantID: "t1"}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := a.Entries(context.Background(), &AuditEntriesOptions{SinceNS: 10, UntilNS: 20}); err != nil {
-		t.Fatal(err)
-	}
-	if paths[0] != "/audit/log" || !contains(queries[0], "limit=5") || !contains(queries[0], "table=Person") || !contains(queries[0], "tenant_id=t1") {
+	if paths[0] != "/v1/audit/log" || !contains(queries[0], "limit=5") || !contains(queries[0], "table=Person") || !contains(queries[0], "tenant_id=t1") {
 		t.Fatalf("log = %s?%s", paths[0], queries[0])
-	}
-	if !contains(queries[1], "since=10") || !contains(queries[1], "until=20") || contains(queries[1], "since_ns") {
-		t.Fatalf("entries query = %q", queries[1])
-	}
-}
-
-func TestAuditClient_FindByRequestID(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprint(w, `{"entries":[{"id":1,"request_id":"rid"}],"chain_valid":true}`)
-	}))
-	defer srv.Close()
-
-	c := newTestClient(srv, nil)
-	a := NewAuditClient(c)
-	got, err := a.FindByRequestID(context.Background(), "rid")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got == nil || got["request_id"] != "rid" {
-		t.Fatalf("got = %v", got)
-	}
-}
-
-func TestAuditClient_FindByRequestID_IgnoresMismatchedEntry(t *testing.T) {
-	// A server that ignores request_id answers with the newest entry.
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Query().Get("request_id") != "rid" {
-			t.Errorf("request_id not sent: %q", r.URL.RawQuery)
-		}
-		fmt.Fprint(w, `{"entries":[{"id":1,"request_id":"newest"}],"chain_valid":true}`)
-	}))
-	defer srv.Close()
-
-	a := NewAuditClient(newTestClient(srv, nil))
-	got, err := a.FindByRequestID(context.Background(), "rid")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got != nil {
-		t.Fatalf("got = %v, want nil", got)
-	}
-}
-
-func TestTenantAdminClient_CRUD(t *testing.T) {
-	var paths []string
-	var methods []string
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		paths = append(paths, r.URL.Path)
-		methods = append(methods, r.Method)
-		switch r.URL.Path {
-		case "/platform/tenants":
-			fmt.Fprint(w, `{"tenant_id":"acme","tier":"standard"}`)
-		case "/platform/tenants/acme":
-			fmt.Fprint(w, `{"tenant_id":"acme"}`)
-		case "/platform/tenants/acme/tier":
-			fmt.Fprint(w, `{"tenant_id":"acme","tier":"enterprise"}`)
-		}
-	}))
-	defer srv.Close()
-
-	c := newTestClient(srv, nil)
-	tc := NewTenantAdminClient(c)
-	if _, err := tc.Create(context.Background(), "acme", nil); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := tc.Get(context.Background(), "acme"); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := tc.SetTier(context.Background(), "acme", "enterprise"); err != nil {
-		t.Fatal(err)
-	}
-	wantPaths := []string{"/platform/tenants", "/platform/tenants/acme", "/platform/tenants/acme/tier"}
-	wantMethods := []string{"POST", "GET", "PATCH"}
-	for i := range wantPaths {
-		if paths[i] != wantPaths[i] {
-			t.Fatalf("path[%d] = %q, want %q", i, paths[i], wantPaths[i])
-		}
-		if methods[i] != wantMethods[i] {
-			t.Fatalf("method[%d] = %q, want %q", i, methods[i], wantMethods[i])
-		}
 	}
 }
 
@@ -323,74 +218,54 @@ func TestBackupClient_CreateAndRestore(t *testing.T) {
 
 // ---- TokenClient ------------------------------------------------------------
 
-func TestTokenClient_Remember(t *testing.T) {
-	var gotPath, gotMethod string
+func TestTokenClient_SelfService(t *testing.T) {
+	var paths, methods []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		paths = append(paths, r.URL.Path)
+		methods = append(methods, r.Method)
+		fmt.Fprint(w, `{"ok":true}`)
+	}))
+	defer srv.Close()
+
+	tc := NewTokenClient(newTestClient(srv, nil))
+	ctx := context.Background()
+	if _, err := tc.ListSelf(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tc.SelfAudit(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tc.RotateSelf(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tc.RevokeSelf(ctx, "tok-1"); err != nil {
+		t.Fatal(err)
+	}
+	wantPaths := []string{"/v1/auth/tokens/self", "/v1/auth/tokens/self/audit", "/v1/auth/tokens/self/rotate", "/v1/auth/tokens/self/tok-1"}
+	wantMethods := []string{"GET", "GET", "POST", "DELETE"}
+	for i := range wantPaths {
+		if paths[i] != wantPaths[i] || methods[i] != wantMethods[i] {
+			t.Fatalf("call %d = %s %s, want %s %s", i, methods[i], paths[i], wantMethods[i], wantPaths[i])
+		}
+	}
+}
+
+// ---- TenantAdminClient ----------------------------------------------------------
+
+func TestTenantAdminClient_Me(t *testing.T) {
+	var gotPath string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotPath = r.URL.Path
-		gotMethod = r.Method
-		fmt.Fprint(w, `{"newly_inserted":true}`)
+		fmt.Fprint(w, `{"tenant_id":"acme"}`)
 	}))
 	defer srv.Close()
 
-	c := newTestClient(srv, nil)
-	tc := NewTokenClient(c)
-	inserted, err := tc.Remember(context.Background(), "tok-1", nil)
+	out, err := NewTenantAdminClient(newTestClient(srv, nil)).Me(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !inserted {
-		t.Fatal("expected newly_inserted=true")
-	}
-	if gotPath != "/tokens" || gotMethod != "POST" {
-		t.Fatalf("method/path = %s %s", gotMethod, gotPath)
-	}
-}
-
-func TestTokenClient_Stats(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprint(w, `{"count":42,"oldest_ns":123,"eviction_policy":"lru"}`)
-	}))
-	defer srv.Close()
-
-	c := newTestClient(srv, nil)
-	tc := NewTokenClient(c)
-	stats, err := tc.Stats(context.Background())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if stats.Count != 42 || stats.OldestNS != 123 || stats.EvictionPolicy != "lru" {
-		t.Fatalf("stats = %+v", stats)
-	}
-}
-
-// ---- LogClient --------------------------------------------------------------
-
-func TestLogClient_AppendAndHead(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch r.URL.Path {
-		case "/log/leaf":
-			fmt.Fprint(w, `{"index":5,"commit_ns":999}`)
-		case "/log/head":
-			fmt.Fprint(w, `{"head":5}`)
-		}
-	}))
-	defer srv.Close()
-
-	c := newTestClient(srv, nil)
-	lc := NewLogClient(c)
-	idx, commit, err := lc.Append(context.Background(), []byte("hello"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if idx != 5 || commit != 999 {
-		t.Fatalf("idx=%d commit=%d", idx, commit)
-	}
-	head, err := lc.Head(context.Background())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if head != 5 {
-		t.Fatalf("head = %d", head)
+	if gotPath != "/v1/tenants/me" || out["tenant_id"] != "acme" {
+		t.Fatalf("path=%q out=%v", gotPath, out)
 	}
 }
 
@@ -415,7 +290,7 @@ func TestMcpClient_CallTool_Unwraps(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if gotMethod != "GET" || gotPath != "/mcp/tools" {
+	if gotMethod != "GET" || gotPath != "/v1/mcp/tools" {
 		t.Fatalf("method/path = %s %s", gotMethod, gotPath)
 	}
 	if len(out) != 1 || out[0]["name"] != "query_knowledge" {
@@ -445,7 +320,7 @@ func TestObjectClient_Upsert(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if gotPath != "/ingest" || !contains(gotQuery, "object_type=Person") || !contains(gotQuery, "purpose=ingest") {
+	if gotPath != "/v1/ingest" || !contains(gotQuery, "object_type=Person") || !contains(gotQuery, "purpose=ingest") {
 		t.Fatalf("path=%q query=%q", gotPath, gotQuery)
 	}
 	if gotCT != "application/x-ndjson" {
@@ -476,7 +351,7 @@ func TestA2AClient_SubmitTask(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if gotMethod != "POST" || gotPath != "/a2a/tasks" || out["id"] != "task-1" {
+	if gotMethod != "POST" || gotPath != "/v1/a2a/tasks" || out["id"] != "task-1" {
 		t.Fatalf("method/path = %s %s, out = %v", gotMethod, gotPath, out)
 	}
 }
@@ -561,7 +436,7 @@ func TestIdentityClient_EraseSubjectCertifyOptIn(t *testing.T) {
 
 func TestStreamingClient_QueryRows(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/query/stream" {
+		if r.URL.Path != "/v1/query/stream" {
 			t.Fatalf("path = %s", r.URL.Path)
 		}
 		if r.Header.Get("Accept") != "application/x-ndjson" {
@@ -757,8 +632,8 @@ func TestVectorClient_Embed(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if gotPath != "/embed" {
-		t.Fatalf("path = %q, want /embed", gotPath)
+	if gotPath != "/v1/embed" {
+		t.Fatalf("path = %q, want /v1/embed", gotPath)
 	}
 	if _, hasModel := gotBody["model"]; hasModel {
 		t.Fatalf("model should be omitted when empty, got body = %v", gotBody)
@@ -771,8 +646,8 @@ func TestVectorClient_Embed(t *testing.T) {
 func TestVectorClient_EmbedBatch(t *testing.T) {
 	var gotBody map[string]any
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/embed/batch" {
-			t.Errorf("path = %q, want /embed/batch", r.URL.Path)
+		if r.URL.Path != "/v1/embed" {
+			t.Errorf("path = %q, want /v1/embed", r.URL.Path)
 		}
 		b, _ := io.ReadAll(r.Body)
 		_ = json.Unmarshal(b, &gotBody)
@@ -794,7 +669,7 @@ func TestVectorClient_EmbedBatch(t *testing.T) {
 	}
 }
 
-// ---- SearchClient (typed /search JSON query door, #1983/#2169) -------------
+// ---- SearchClient (typed /v1/search JSON query door, #1983/#2169) -------------
 
 func TestSearchClient_Query(t *testing.T) {
 	var gotBody map[string]any

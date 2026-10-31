@@ -55,13 +55,13 @@ func TestIngestControlRoutesAndBodies(t *testing.T) {
 		}
 	}
 	want := []seenReq{
-		{"GET", "/ingest/checkpoints/kafka%2Forders%201", "", nil},
-		{"GET", "/ingest/contracts", "", nil},
-		{"GET", "/ingest/contracts/orders", "", nil},
-		{"PUT", "/ingest/contracts/orders", "", contract},
-		{"GET", "/ingest/contracts/orders/quality", "", nil},
-		{"GET", "/ingest/quarantine", "after_id=5&dataset=orders&limit=50", nil},
-		{"GET", "/ingest/quarantine", "", nil},
+		{"GET", "/v1/ingest/checkpoints/kafka%2Forders%201", "", nil},
+		{"GET", "/v1/ingest/contracts", "", nil},
+		{"GET", "/v1/ingest/contracts/orders", "", nil},
+		{"PUT", "/v1/ingest/contracts/orders", "", contract},
+		{"GET", "/v1/ingest/contracts/orders/quality", "", nil},
+		{"GET", "/v1/ingest/quarantine", "after_id=5&dataset=orders&limit=50", nil},
+		{"GET", "/v1/ingest/quarantine", "", nil},
 	}
 	if !reflect.DeepEqual(seen, want) {
 		t.Fatalf("got %#v\nwant %#v", seen, want)
@@ -76,7 +76,7 @@ func TestIngestControlDeleteQuarantine(t *testing.T) {
 	if err := ic.DeleteQuarantine(context.Background(), 9); err != nil {
 		t.Fatal(err)
 	}
-	if len(seen) != 1 || seen[0].Method != "DELETE" || seen[0].Path != "/ingest/quarantine/9" {
+	if len(seen) != 1 || seen[0].Method != "DELETE" || seen[0].Path != "/v1/ingest/quarantine/9" {
 		t.Fatalf("seen = %#v", seen)
 	}
 	var none []seenReq
@@ -100,7 +100,7 @@ func TestMemoryAssociateBatch(t *testing.T) {
 		t.Fatalf("out=%v err=%v", out, err)
 	}
 	items, _ := seen[0].Body["items"].([]any)
-	if seen[0].Path != "/memory/associate/batch" || len(items) != 2 {
+	if seen[0].Path != "/v1/memory/associate/batch" || len(items) != 2 {
 		t.Fatalf("seen = %#v", seen)
 	}
 	if items[0].(map[string]any)["purpose"] != "notes" || items[1].(map[string]any)["purpose"] != "x" {
@@ -119,7 +119,7 @@ func TestFilesCreateFolder(t *testing.T) {
 	if err != nil || !meta.IsFolder {
 		t.Fatalf("meta=%v err=%v", meta, err)
 	}
-	if seen[0].Method != "POST" || seen[0].Path != "/files/folders" || seen[0].Body["key"] != "a" || seen[0].Body["bucket"] != "t" {
+	if seen[0].Method != "POST" || seen[0].Path != "/v1/files/folders" || seen[0].Body["key"] != "a" || seen[0].Body["bucket"] != "t" {
 		t.Fatalf("seen = %#v", seen)
 	}
 }

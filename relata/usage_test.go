@@ -21,7 +21,7 @@ func TestRecordUsageBuildsGenericEventRequest(t *testing.T) {
 	var got map[string]any
 	client := New("http://relata.invalid", &ClientOptions{HTTPClient: &http.Client{
 		Transport: usageRoundTripFunc(func(r *http.Request) (*http.Response, error) {
-			if r.Method != http.MethodPost || r.URL.Path != "/events/append" {
+			if r.Method != http.MethodPost || r.URL.Path != "/v1/ingest/events" {
 				t.Fatalf("method/path = %s %s", r.Method, r.URL.Path)
 			}
 			if err := json.NewDecoder(r.Body).Decode(&got); err != nil {

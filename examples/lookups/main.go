@@ -1,4 +1,4 @@
-// Command lookups demonstrates CSV enrichment at query time via /lookup/*
+// Command lookups demonstrates CSV enrichment at query time via /v1/lookup/*
 // (#967 / #79).
 //
 // Lookup tables are small, read-only dictionaries the server joins into queries

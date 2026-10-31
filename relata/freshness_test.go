@@ -17,12 +17,12 @@ func TestFreshnessStatusAndBarrierWireShapes(t *testing.T) {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		switch r.URL.Path {
-		case "/freshness/status":
+		case "/v1/freshness/status":
 			if r.Method != http.MethodGet {
 				t.Errorf("status method %s", r.Method)
 			}
 			w.Write([]byte(`{"token":"fv1.x","indexes":[]}`))
-		case "/freshness/barrier":
+		case "/v1/freshness/barrier":
 			var b map[string]any
 			_ = json.NewDecoder(r.Body).Decode(&b)
 			bodies = append(bodies, b)

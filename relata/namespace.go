@@ -53,7 +53,7 @@ func (n *Namespace) resolvePurpose(override string) string {
 }
 
 // Query runs a typed ranked search over this namespace through the governed
-// /search door (#1983). It delegates to [SearchClient.Query] with From pinned
+// /v1/search door (#1983). It delegates to [SearchClient.Query] with From pinned
 // to the namespace name. PURPOSE / ACL / cell-masking / tenant isolation apply
 // identically to a hand-written query — no SQL is constructed on the client
 // side.
@@ -83,7 +83,7 @@ type NamespaceWriteOptions struct {
 	Schema map[string]string
 }
 
-// Write performs a schemaless upsert — POST /ingest/auto (T6, #1988). If the
+// Write performs a schemaless upsert — POST /v1/ingest/auto (T6, #1988). If the
 // namespace's type does not yet exist the server creates it with field types
 // inferred from the rows; the response carries type_created and inferred_schema.
 //
@@ -108,7 +108,7 @@ func (n *Namespace) Write(ctx context.Context, rows []map[string]any, opts *Name
 		body["purpose"] = purpose
 	}
 	var out map[string]any
-	if err := n.c.postJSON(ctx, "/ingest/auto", body, &out); err != nil {
+	if err := n.c.postJSON(ctx, "/v1/ingest/auto", body, &out); err != nil {
 		return nil, err
 	}
 	return out, nil
@@ -141,7 +141,7 @@ func (n *Namespace) Get(ctx context.Context, objectID string, opts *NamespaceOpt
 }
 
 // NamespaceOption is a lightweight per-call override for namespace methods that
-// only take a purpose (Get, DeleteAll, BranchFrom).
+// only take a purpose (Get, DeleteAll).
 type NamespaceOption struct {
 	Purpose string
 }
@@ -188,28 +188,8 @@ func (n *Namespace) DeleteAll(ctx context.Context, opts *NamespaceOption) (map[s
 	if purpose != "" {
 		body["purpose"] = purpose
 	}
-	if err := n.c.postJSON(ctx, "/ingest/auto", body, nil); err != nil {
+	if err := n.c.postJSON(ctx, "/v1/ingest/auto", body, nil); err != nil {
 		return nil, err
 	}
 	return map[string]any{"deleted": len(ids)}, nil
-}
-
-// BranchFrom creates this namespace as a copy-on-write branch of source. Targets
-// POST /v1/namespaces/:name/branch (T10, #1992).
-func (n *Namespace) BranchFrom(ctx context.Context, source string, opts *NamespaceOption) (map[string]any, error) {
-	if err := n.validate(); err != nil {
-		return nil, err
-	}
-	if err := validateNamespaceName(source); err != nil {
-		return nil, err
-	}
-	body := map[string]any{"from": source}
-	if opts != nil && opts.Purpose != "" {
-		body["purpose"] = opts.Purpose
-	}
-	var out map[string]any
-	if err := n.c.postJSON(ctx, fmt.Sprintf("/v1/namespaces/%s/branch", n.Name), body, &out); err != nil {
-		return nil, err
-	}
-	return out, nil
 }

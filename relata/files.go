@@ -62,7 +62,7 @@ func filePath(key string, opts *FilesOptions) string {
 	if opts != nil && opts.Bucket != "" {
 		q.Set("bucket", opts.Bucket)
 	}
-	return "/files/content?" + q.Encode()
+	return "/v1/files/content?" + q.Encode()
 }
 
 // Put uploads exact bytes and returns the server's 201 current-file metadata.
@@ -86,7 +86,7 @@ func (f *FilesClient) Put(ctx context.Context, key string, data []byte, opts *Fi
 	return &metadata, nil
 }
 
-// CreateFolder calls POST /files/folders and returns the 201 folder-marker
+// CreateFolder calls POST /v1/files/folders and returns the 201 folder-marker
 // metadata (IsFolder true). Only opts.Bucket is used.
 func (f *FilesClient) CreateFolder(ctx context.Context, key string, opts *FilesOptions) (*FileMetadata, error) {
 	body := map[string]string{"key": key}
@@ -98,7 +98,7 @@ func (f *FilesClient) CreateFolder(ctx context.Context, key string, opts *FilesO
 		return nil, fmt.Errorf("relata: marshal folder request: %w", err)
 	}
 	var raw rawHTTPResponse
-	if err := f.c.doRequestWithHeaders(ctx, http.MethodPost, "/files/folders", data, "application/json", &raw, nil); err != nil {
+	if err := f.c.doRequestWithHeaders(ctx, http.MethodPost, "/v1/files/folders", data, "application/json", &raw, nil); err != nil {
 		return nil, err
 	}
 	if raw.StatusCode != http.StatusCreated {
@@ -120,6 +120,76 @@ func (f *FilesClient) Get(ctx context.Context, key string, opts *FilesOptions) (
 	}
 	if raw.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("relata: Files Get expected HTTP 200, got %d", raw.StatusCode)
+	}
+	return &FileContent{Bytes: raw.Body, ETag: raw.Headers.Get("ETag"), ContentType: raw.Headers.Get("Content-Type")}, nil
+}
+
+// Head checks whether a file exists and returns its representation metadata
+// without transferring the body (HEAD /v1/files/content). It returns a nil
+// *FileContent and no error when the file does not exist (HTTP 404); Bytes is
+// always empty.
+func (f *FilesClient) Head(ctx context.Context, key string, opts *FilesOptions) (*FileContent, error) {
+	var raw rawHTTPResponse
+	if err := f.c.doRequestWithHeaders(ctx, http.MethodHead, filePath(key, opts), nil, "", &raw, nil); err != nil {
+		if errors.Is(err, ErrNotFound) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	if raw.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("relata: Files Head expected HTTP 200, got %d", raw.StatusCode)
+	}
+	return &FileContent{ETag: raw.Headers.Get("ETag"), ContentType: raw.Headers.Get("Content-Type")}, nil
+}
+
+// ListFilesOptions filters FilesClient.List.
+type ListFilesOptions struct {
+	// Bucket defaults to the authenticated tenant.
+	Bucket string
+	// Prefix restricts the listing to keys with this prefix.
+	Prefix string
+	// Cursor is the opaque pagination cursor from a prior response.
+	Cursor string
+	// Limit caps the page size; zero uses the server default.
+	Limit int
+}
+
+// List returns one page of files (GET /v1/files) as the decoded JSON response.
+func (f *FilesClient) List(ctx context.Context, opts *ListFilesOptions) (map[string]any, error) {
+	q := url.Values{}
+	if opts != nil {
+		if opts.Bucket != "" {
+			q.Set("bucket", opts.Bucket)
+		}
+		if opts.Prefix != "" {
+			q.Set("prefix", opts.Prefix)
+		}
+		if opts.Cursor != "" {
+			q.Set("cursor", opts.Cursor)
+		}
+		if opts.Limit > 0 {
+			q.Set("limit", fmt.Sprintf("%d", opts.Limit))
+		}
+	}
+	path := "/v1/files"
+	if enc := q.Encode(); enc != "" {
+		path += "?" + enc
+	}
+	var out map[string]any
+	if err := f.c.get(ctx, path, &out); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// MediaContent downloads the bytes of a media row (GET /v1/media/{row_id}/content).
+func (f *FilesClient) MediaContent(ctx context.Context, rowID string) (*FileContent, error) {
+	var raw rawHTTPResponse
+	if err := f.c.doRequestWithHeaders(ctx, http.MethodGet, "/v1/media/"+url.PathEscape(rowID)+"/content", nil, "", &raw, map[string]string{"Accept": "application/octet-stream"}); err != nil {
+		return nil, err
+	}
+	if raw.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("relata: MediaContent expected HTTP 200, got %d", raw.StatusCode)
 	}
 	return &FileContent{Bytes: raw.Body, ETag: raw.Headers.Get("ETag"), ContentType: raw.Headers.Get("Content-Type")}, nil
 }
@@ -167,7 +237,7 @@ type UploadOptions struct {
 const defaultUploadChunk = 8 * 1024 * 1024
 
 func uploadPath(id, suffix string, offset *int64) string {
-	p := "/files/uploads/" + url.PathEscape(id) + suffix
+	p := "/v1/files/uploads/" + url.PathEscape(id) + suffix
 	if offset != nil {
 		p += "?offset=" + strconv.FormatInt(*offset, 10)
 	}
@@ -212,7 +282,7 @@ func (f *FilesClient) StartUpload(ctx context.Context, key string, size int64, o
 		return nil, err
 	}
 	var session UploadSession
-	if err := f.sendUpload(ctx, http.MethodPost, "/files/uploads", payload, "application/json", http.StatusCreated, nil, &session); err != nil {
+	if err := f.sendUpload(ctx, http.MethodPost, "/v1/files/uploads", payload, "application/json", http.StatusCreated, nil, &session); err != nil {
 		return nil, err
 	}
 	return &session, nil

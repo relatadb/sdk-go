@@ -59,19 +59,19 @@ func TestExtractionRoutesAndBodies(t *testing.T) {
 	}
 	nb := map[string]any(nil)
 	want := [][]any{
-		{"POST", "/ontology/suggestions", "", map[string]any{"suggestions": []any{s}}},
-		{"GET", "/ontology/suggestions", "", nb},
-		{"GET", "/ontology/suggestions", "definition=kb&kind=entity&limit=5&low_confidence=true&min_confidence=0.25&stale=false&state=pending", nb},
-		{"GET", "/ontology/suggestions/sug%2F1", "", nb},
-		{"POST", "/ontology/suggestions/sug_1/decision", "", map[string]any{"decision": "accept", "reason": "ok"}},
-		{"POST", "/ontology/suggestions/sug_1/decision", "", map[string]any{"decision": "accept", "reason": "", "accept_low_confidence": true}},
-		{"POST", "/ontology/suggestions/sug_1/decision", "", map[string]any{"decision": "reject", "reason": "wrong"}},
-		{"POST", "/ontology/suggestions/sug_1/decision", "", map[string]any{"decision": "correct", "reason": "typo", "correction": fix}},
-		{"POST", "/ontology/suggestions/sug_1/decision", "", map[string]any{"decision": "reopen", "reason": ""}},
-		{"POST", "/ontology/suggestions/apply", "", map[string]any{"definition": "kb"}},
-		{"POST", "/ontology/suggestions/apply", "", map[string]any{"definition": "kb", "suggestion_ids": []any{"sug_1"}}},
-		{"POST", "/entities/exists", "", map[string]any{"candidates": []any{map[string]any{"type": "Person", "match": map[string]any{"email": "a@b.c"}}}}},
-		{"POST", "/entities/exists", "", map[string]any{"candidates": []any{}, "definition": "kb"}},
+		{"POST", "/v1/ontology/suggestions", "", map[string]any{"suggestions": []any{s}}},
+		{"GET", "/v1/ontology/suggestions", "", nb},
+		{"GET", "/v1/ontology/suggestions", "definition=kb&kind=entity&limit=5&low_confidence=true&min_confidence=0.25&stale=false&state=pending", nb},
+		{"GET", "/v1/ontology/suggestions/sug%2F1", "", nb},
+		{"POST", "/v1/ontology/suggestions/sug_1/decision", "", map[string]any{"decision": "accept", "reason": "ok"}},
+		{"POST", "/v1/ontology/suggestions/sug_1/decision", "", map[string]any{"decision": "accept", "reason": "", "accept_low_confidence": true}},
+		{"POST", "/v1/ontology/suggestions/sug_1/decision", "", map[string]any{"decision": "reject", "reason": "wrong"}},
+		{"POST", "/v1/ontology/suggestions/sug_1/decision", "", map[string]any{"decision": "correct", "reason": "typo", "correction": fix}},
+		{"POST", "/v1/ontology/suggestions/sug_1/decision", "", map[string]any{"decision": "reopen", "reason": ""}},
+		{"POST", "/v1/ontology/suggestions/apply", "", map[string]any{"definition": "kb"}},
+		{"POST", "/v1/ontology/suggestions/apply", "", map[string]any{"definition": "kb", "suggestion_ids": []any{"sug_1"}}},
+		{"POST", "/v1/entities/exists", "", map[string]any{"candidates": []any{map[string]any{"type": "Person", "match": map[string]any{"email": "a@b.c"}}}}},
+		{"POST", "/v1/entities/exists", "", map[string]any{"candidates": []any{}, "definition": "kb"}},
 	}
 	if len(seen) != len(want) {
 		t.Fatalf("got %d requests, want %d: %v", len(seen), len(want), seen)

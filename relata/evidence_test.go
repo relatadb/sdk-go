@@ -43,10 +43,10 @@ func TestEvidenceRoutesAndBodies(t *testing.T) {
 		t.Fatalf("citations: %v", out)
 	}
 	want := [][]any{
-		{"GET", "/evidence", "limit=5", map[string]any(nil)},
-		{"GET", "/evidence/evd_a%2Fb", "", map[string]any(nil)},
-		{"POST", "/evidence/evd_1/replay", "", map[string]any{"include_content": true}},
-		{"POST", "/evidence/evd_1/replay", "", map[string]any{}},
+		{"GET", "/v1/evidence", "limit=5", map[string]any(nil)},
+		{"GET", "/v1/evidence/evd_a%2Fb", "", map[string]any(nil)},
+		{"POST", "/v1/evidence/evd_1/replay", "", map[string]any{"include_content": true}},
+		{"POST", "/v1/evidence/evd_1/replay", "", map[string]any{}},
 	}
 	if !reflect.DeepEqual(seen, want) {
 		t.Fatalf("got %#v want %#v", seen, want)

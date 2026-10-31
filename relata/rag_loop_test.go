@@ -191,7 +191,7 @@ func TestGradeHits_RejectsMismatchedGradeCount(t *testing.T) {
 func TestRunAgenticLoop_Iteration0HeuristicPassMakesZeroLLMCalls(t *testing.T) {
 	var queryCallCount int32
 	srv := routedServer(t, map[string]func(http.ResponseWriter, *http.Request){
-		"/rag/query": func(w http.ResponseWriter, r *http.Request) {
+		"/v1/rag/query": func(w http.ResponseWriter, r *http.Request) {
 			atomic.AddInt32(&queryCallCount, 1)
 			writeJSON(w, 200, map[string]any{"hits": []any{hitJSON("c1"), hitJSON("c2")}})
 		},
@@ -249,7 +249,7 @@ func TestRunAgenticLoop_Iteration0HeuristicPassMakesZeroLLMCalls(t *testing.T) {
 func TestRunAgenticLoop_HeuristicRetryIsBoundedByMaxIterations(t *testing.T) {
 	var queryCallCount int32
 	srv := routedServer(t, map[string]func(http.ResponseWriter, *http.Request){
-		"/rag/query": func(w http.ResponseWriter, r *http.Request) {
+		"/v1/rag/query": func(w http.ResponseWriter, r *http.Request) {
 			atomic.AddInt32(&queryCallCount, 1)
 			writeJSON(w, 200, map[string]any{"hits": []any{hitJSON("c1")}})
 		},
@@ -285,7 +285,7 @@ func TestRunAgenticLoop_HeuristicRetryIsBoundedByMaxIterations(t *testing.T) {
 func TestRunAgenticLoop_CorrectiveGradingLowFractionCorrectIsBoundedByMaxIterations(t *testing.T) {
 	var queryCallCount int32
 	srv := routedServer(t, map[string]func(http.ResponseWriter, *http.Request){
-		"/rag/query": func(w http.ResponseWriter, r *http.Request) {
+		"/v1/rag/query": func(w http.ResponseWriter, r *http.Request) {
 			atomic.AddInt32(&queryCallCount, 1)
 			writeJSON(w, 200, map[string]any{"hits": []any{hitJSON("c1"), hitJSON("c2")}})
 		},
@@ -325,7 +325,7 @@ func TestRunAgenticLoop_CorrectiveGradingLowFractionCorrectIsBoundedByMaxIterati
 
 func TestRunAgenticLoop_NoGraderConfiguredStopsImmediatelyOnEvaluate(t *testing.T) {
 	srv := routedServer(t, map[string]func(http.ResponseWriter, *http.Request){
-		"/rag/query": func(w http.ResponseWriter, r *http.Request) {
+		"/v1/rag/query": func(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, 200, map[string]any{"hits": []any{hitJSON("c1")}})
 		},
 	})
@@ -353,7 +353,7 @@ func TestRunAgenticLoop_NoGraderConfiguredStopsImmediatelyOnEvaluate(t *testing.
 func TestRunAgenticLoop_CorrectiveGradingConfidentStop(t *testing.T) {
 	var queryCallCount int32
 	srv := routedServer(t, map[string]func(http.ResponseWriter, *http.Request){
-		"/rag/query": func(w http.ResponseWriter, r *http.Request) {
+		"/v1/rag/query": func(w http.ResponseWriter, r *http.Request) {
 			atomic.AddInt32(&queryCallCount, 1)
 			writeJSON(w, 200, map[string]any{"hits": []any{hitJSON("c1"), hitJSON("c2")}})
 		},
@@ -394,7 +394,7 @@ func TestRunAgenticLoop_CorrectiveGradingConfidentStop(t *testing.T) {
 
 func TestRunAgenticLoop_WebSearchFallbackUsedWhenNeedsRequery(t *testing.T) {
 	srv := routedServer(t, map[string]func(http.ResponseWriter, *http.Request){
-		"/rag/query": func(w http.ResponseWriter, r *http.Request) {
+		"/v1/rag/query": func(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, 200, map[string]any{"hits": []any{hitJSON("c1")}})
 		},
 	})
@@ -442,7 +442,7 @@ func TestRunAgenticLoop_WebSearchFallbackUsedWhenNeedsRequery(t *testing.T) {
 
 func TestRunAgenticLoop_HydeRefinesQueryOnRequeryAndIsCalledAtMostOncePerRetry(t *testing.T) {
 	srv := routedServer(t, map[string]func(http.ResponseWriter, *http.Request){
-		"/rag/query": func(w http.ResponseWriter, r *http.Request) {
+		"/v1/rag/query": func(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, 200, map[string]any{"hits": []any{hitJSON("c1")}})
 		},
 	})
@@ -495,7 +495,7 @@ func TestRunAgenticLoop_HydeRefinesQueryOnRequeryAndIsCalledAtMostOncePerRetry(t
 
 func TestRunAgenticLoop_RejectsNonPositiveMaxIterations(t *testing.T) {
 	srv := routedServer(t, map[string]func(http.ResponseWriter, *http.Request){
-		"/rag/query": func(w http.ResponseWriter, r *http.Request) {
+		"/v1/rag/query": func(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, 200, map[string]any{"hits": []any{}})
 		},
 	})
@@ -538,7 +538,7 @@ func TestRagFanout_ThresholdDefaultsMatchVerifiedValues(t *testing.T) {
 func TestRunSubagentFanout_WinnerIsStrictArgmaxByConfidenceNoLLMCall(t *testing.T) {
 	confidences := map[string]float64{"lexical": 0.9, "dense": 0.3, "hybrid": 0.1}
 	srv := routedServer(t, map[string]func(http.ResponseWriter, *http.Request){
-		"/rag/query": func(w http.ResponseWriter, r *http.Request) {
+		"/v1/rag/query": func(w http.ResponseWriter, r *http.Request) {
 			body := decodeBody(t, r)
 			mode := body["search_mode"].(string)
 			writeJSON(w, 200, map[string]any{"hits": []any{fanoutHitJSON(mode+"-1", f64(confidences[mode]))}})
@@ -566,7 +566,7 @@ func TestRunSubagentFanout_WinnerIsStrictArgmaxByConfidenceNoLLMCall(t *testing.
 
 func TestRunSubagentFanout_TiesBrokenByStrategyDeclarationOrder(t *testing.T) {
 	srv := routedServer(t, map[string]func(http.ResponseWriter, *http.Request){
-		"/rag/query": func(w http.ResponseWriter, r *http.Request) {
+		"/v1/rag/query": func(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, 200, map[string]any{"hits": []any{fanoutHitJSON("c1", f64(0.9))}})
 		},
 	})
@@ -588,7 +588,7 @@ func TestRunSubagentFanout_TiesBrokenByStrategyDeclarationOrder(t *testing.T) {
 func TestRunSubagentFanout_LowConfidenceStrategiesExcludedAsNoise(t *testing.T) {
 	confidences := map[string]float64{"lexical": 0.9, "dense": 0.1, "hybrid": 0.05}
 	srv := routedServer(t, map[string]func(http.ResponseWriter, *http.Request){
-		"/rag/query": func(w http.ResponseWriter, r *http.Request) {
+		"/v1/rag/query": func(w http.ResponseWriter, r *http.Request) {
 			body := decodeBody(t, r)
 			mode := body["search_mode"].(string)
 			writeJSON(w, 200, map[string]any{"hits": []any{fanoutHitJSON(mode+"-1", f64(confidences[mode]))}})
@@ -618,7 +618,7 @@ func TestRunSubagentFanout_LowConfidenceStrategiesExcludedAsNoise(t *testing.T) 
 func TestRunSubagentFanout_AllStrategiesBelowFloorFallsBackToBestScoring(t *testing.T) {
 	confidences := map[string]float64{"lexical": 0.15, "dense": 0.1, "hybrid": 0.05}
 	srv := routedServer(t, map[string]func(http.ResponseWriter, *http.Request){
-		"/rag/query": func(w http.ResponseWriter, r *http.Request) {
+		"/v1/rag/query": func(w http.ResponseWriter, r *http.Request) {
 			body := decodeBody(t, r)
 			mode := body["search_mode"].(string)
 			writeJSON(w, 200, map[string]any{"hits": []any{fanoutHitJSON(mode+"-1", f64(confidences[mode]))}})
@@ -645,7 +645,7 @@ func TestRunSubagentFanout_AllStrategiesBelowFloorFallsBackToBestScoring(t *test
 func TestRunSubagentFanout_SurvivorAboveMergeThresholdIsFoldedIn(t *testing.T) {
 	confidences := map[string]float64{"lexical": 0.9, "dense": 0.6, "hybrid": 0.05}
 	srv := routedServer(t, map[string]func(http.ResponseWriter, *http.Request){
-		"/rag/query": func(w http.ResponseWriter, r *http.Request) {
+		"/v1/rag/query": func(w http.ResponseWriter, r *http.Request) {
 			body := decodeBody(t, r)
 			mode := body["search_mode"].(string)
 			writeJSON(w, 200, map[string]any{"hits": []any{fanoutHitJSON(mode+"-1", f64(confidences[mode]))}})
@@ -681,7 +681,7 @@ func TestRunSubagentFanout_SurvivorAboveMergeThresholdIsFoldedIn(t *testing.T) {
 func TestRunSubagentFanout_SurvivorBelowMergeThresholdIsNotFoldedIn(t *testing.T) {
 	confidences := map[string]float64{"lexical": 0.9, "dense": 0.4, "hybrid": 0.3}
 	srv := routedServer(t, map[string]func(http.ResponseWriter, *http.Request){
-		"/rag/query": func(w http.ResponseWriter, r *http.Request) {
+		"/v1/rag/query": func(w http.ResponseWriter, r *http.Request) {
 			body := decodeBody(t, r)
 			mode := body["search_mode"].(string)
 			writeJSON(w, 200, map[string]any{"hits": []any{fanoutHitJSON(mode+"-1", f64(confidences[mode]))}})
@@ -710,7 +710,7 @@ func TestRunSubagentFanout_SurvivorBelowMergeThresholdIsNotFoldedIn(t *testing.T
 
 func TestRunSubagentFanout_MissingRelevanceConfidenceDefaultsToZeroAndIsExcluded(t *testing.T) {
 	srv := routedServer(t, map[string]func(http.ResponseWriter, *http.Request){
-		"/rag/query": func(w http.ResponseWriter, r *http.Request) {
+		"/v1/rag/query": func(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, 200, map[string]any{"hits": []any{fanoutHitJSON("c1", nil)}})
 		},
 	})
@@ -735,7 +735,7 @@ func TestRunSubagentFanout_MissingRelevanceConfidenceDefaultsToZeroAndIsExcluded
 
 func TestRunSubagentFanout_EmptyHitsScoresZeroConfidence(t *testing.T) {
 	srv := routedServer(t, map[string]func(http.ResponseWriter, *http.Request){
-		"/rag/query": func(w http.ResponseWriter, r *http.Request) {
+		"/v1/rag/query": func(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, 200, map[string]any{"hits": []any{}})
 		},
 	})
@@ -756,7 +756,7 @@ func TestRunSubagentFanout_EmptyHitsScoresZeroConfidence(t *testing.T) {
 
 func TestRunSubagentFanout_RejectsFewerThanTwoStrategies(t *testing.T) {
 	srv := routedServer(t, map[string]func(http.ResponseWriter, *http.Request){
-		"/rag/query": func(w http.ResponseWriter, r *http.Request) {
+		"/v1/rag/query": func(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, 200, map[string]any{"hits": []any{}})
 		},
 	})
@@ -772,7 +772,7 @@ func TestRunSubagentFanout_RejectsFewerThanTwoStrategies(t *testing.T) {
 
 func TestRunSubagentFanout_RejectsMoreThanFiveStrategies(t *testing.T) {
 	srv := routedServer(t, map[string]func(http.ResponseWriter, *http.Request){
-		"/rag/query": func(w http.ResponseWriter, r *http.Request) {
+		"/v1/rag/query": func(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, 200, map[string]any{"hits": []any{}})
 		},
 	})
@@ -790,12 +790,12 @@ func TestRunSubagentFanout_RejectsMoreThanFiveStrategies(t *testing.T) {
 	}
 }
 
-// ── every strategy issues exactly one /rag/query call, nothing more ────────
+// ── every strategy issues exactly one /v1/rag/query call, nothing more ────────
 
 func TestRunSubagentFanout_EachStrategyIssuesExactlyOneCall(t *testing.T) {
 	var callCount int32
 	srv := routedServer(t, map[string]func(http.ResponseWriter, *http.Request){
-		"/rag/query": func(w http.ResponseWriter, r *http.Request) {
+		"/v1/rag/query": func(w http.ResponseWriter, r *http.Request) {
 			atomic.AddInt32(&callCount, 1)
 			writeJSON(w, 200, map[string]any{"hits": []any{fanoutHitJSON("c1", f64(0.9))}})
 		},

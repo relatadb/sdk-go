@@ -4,19 +4,9 @@ import (
 	"context"
 )
 
-// TokenStats holds dedup-token-set statistics.
-type TokenStats struct {
-	// Count is the current number of tracked tokens.
-	Count int64
-	// OldestNS is the nanosecond timestamp of the oldest token, or 0 when empty.
-	OldestNS int64
-	// EvictionPolicy is the server's eviction-policy name.
-	EvictionPolicy string
-}
-
-// TokenClient is the synchronous dedup / uniqueness token client. It provides
-// atomic test-and-set (Remember), presence check (Check), explicit revoke
-// (Revoke — admin only), and Stats. This is the replay-defence primitive.
+// TokenClient is the synchronous tenant self-service token client. It lists,
+// audits, rotates and revokes the caller's own bearer tokens under
+// /v1/auth/tokens/self.
 type TokenClient struct {
 	c *Client
 }
@@ -27,61 +17,43 @@ func NewTokenClient(c *Client) *TokenClient {
 	return &TokenClient{c: c}
 }
 
-// TokenRememberOptions configures TokenClient.Remember.
-type TokenRememberOptions struct {
-	// TTLSecs sets an optional per-token expiry.
-	TTLSecs int64
-}
-
-// Remember performs an atomic test-and-set. Returns true if newly inserted,
-// false if already present. A backend that buffers the write asynchronously or
-// loses the token on restart fails the §7 contract.
-func (t *TokenClient) Remember(ctx context.Context, tokenID string, opts *TokenRememberOptions) (bool, error) {
-	payload := map[string]any{"id": tokenID}
-	if opts != nil && opts.TTLSecs > 0 {
-		payload["ttl_secs"] = opts.TTLSecs
-	}
+// ListSelf lists the caller's own tokens (GET /v1/auth/tokens/self).
+func (t *TokenClient) ListSelf(ctx context.Context) (map[string]any, error) {
 	var resp map[string]any
-	if err := t.c.postJSON(ctx, "/tokens", payload, &resp); err != nil {
-		return false, err
-	}
-	return boolField(resp, "newly_inserted"), nil
-}
-
-// Check is a non-mutating presence check. Returns the decoded server response
-// (present, inserted_at_ns, ttl_secs).
-func (t *TokenClient) Check(ctx context.Context, tokenID string) (map[string]any, error) {
-	var resp map[string]any
-	if err := t.c.get(ctx, "/tokens/"+pathSegment(tokenID), &resp); err != nil {
+	if err := t.c.get(ctx, "/v1/auth/tokens/self", &resp); err != nil {
 		return nil, err
 	}
 	return resp, nil
 }
 
-// Revoke explicitly removes a token (admin only). Returns true if a token was
-// actually removed.
-func (t *TokenClient) Revoke(ctx context.Context, tokenID string) (bool, error) {
+// SelfAudit returns the audit trail of the caller's own tokens
+// (GET /v1/auth/tokens/self/audit).
+func (t *TokenClient) SelfAudit(ctx context.Context) (map[string]any, error) {
 	var resp map[string]any
-	if err := t.c.delete(ctx, "/tokens/"+pathSegment(tokenID), &resp); err != nil {
-		return false, err
+	if err := t.c.get(ctx, "/v1/auth/tokens/self/audit", &resp); err != nil {
+		return nil, err
 	}
-	return boolField(resp, "revoked"), nil
+	return resp, nil
 }
 
-// Stats returns dedup-set statistics.
-func (t *TokenClient) Stats(ctx context.Context) (TokenStats, error) {
+// RotateSelf rotates the calling token (POST /v1/auth/tokens/self/rotate) and
+// returns the decoded response carrying the replacement secret.
+func (t *TokenClient) RotateSelf(ctx context.Context) (map[string]any, error) {
 	var resp map[string]any
-	if err := t.c.get(ctx, "/tokens/stats", &resp); err != nil {
-		return TokenStats{}, err
+	if err := t.c.postJSON(ctx, "/v1/auth/tokens/self/rotate", map[string]any{}, &resp); err != nil {
+		return nil, err
 	}
-	stats := TokenStats{
-		Count:          int64Field(resp, "count"),
-		EvictionPolicy: stringField(resp, "eviction_policy"),
+	return resp, nil
+}
+
+// RevokeSelf revokes one of the caller's own tokens by id
+// (DELETE /v1/auth/tokens/self/{id}).
+func (t *TokenClient) RevokeSelf(ctx context.Context, tokenID string) (map[string]any, error) {
+	var resp map[string]any
+	if err := t.c.delete(ctx, "/v1/auth/tokens/self/"+pathSegment(tokenID), &resp); err != nil {
+		return nil, err
 	}
-	if v, ok := resp["oldest_ns"]; ok && v != nil {
-		stats.OldestNS = int64Field(resp, "oldest_ns")
-	}
-	return stats, nil
+	return resp, nil
 }
 
 // boolField pulls a boolean value from a decoded map, coercing numeric truthiness.

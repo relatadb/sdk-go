@@ -2,11 +2,11 @@ package relata
 
 import "context"
 
-// RagClient is a thin typed pass-through for `POST /rag/query` (#4523,
+// RagClient is a thin typed pass-through for `POST /v1/rag/query` (#4523,
 // #4514/ADR-0299). Per ADR-0298, sdks/python carries the canonical
 // agentic-RAG implementation (the SDK-side iterative retrieve->evaluate->
 // refine loop); this client stays a thin typed wrapper over the frozen
-// /rag/query contract — no client-side agentic loop lives here, not full
+// /v1/rag/query contract — no client-side agentic loop lives here, not full
 // parity with sdks/python's relata.rag.
 type RagClient struct {
 	c *Client
@@ -30,7 +30,7 @@ type RagFilter struct {
 	Value any    `json:"value"`
 }
 
-// RagQueryRequest is the typed POST /rag/query body (#4514's exact
+// RagQueryRequest is the typed POST /v1/rag/query body (#4514's exact
 // parameter table — do not deviate without re-opening ADR-0299).
 type RagQueryRequest struct {
 	Query string `json:"query"`
@@ -62,7 +62,7 @@ type RagQueryRequest struct {
 	GraphHops int `json:"graph_hops,omitempty"`
 }
 
-// RagHit is a single hit from POST /rag/query (#4514's per-hit contract
+// RagHit is a single hit from POST /v1/rag/query (#4514's per-hit contract
 // table). BM25Score/VectorScore are always present and never fused into one
 // number — SDK-side fusion/diversity selection depends on both being real,
 // independent values.
@@ -90,12 +90,12 @@ type RagHit struct {
 	RelevanceConfidence *float64 `json:"relevance_confidence"`
 }
 
-// RagQueryResponse is the response from POST /rag/query.
+// RagQueryResponse is the response from POST /v1/rag/query.
 type RagQueryResponse struct {
 	Hits []RagHit `json:"hits"`
 }
 
-// Query runs a governed retrieval via POST /rag/query (#4514's exact
+// Query runs a governed retrieval via POST /v1/rag/query (#4514's exact
 // parameter table). If req.Purpose is empty it falls back to the parent
 // client's DefaultPurpose; ErrPurposeRequired is returned if neither is set.
 //
@@ -126,7 +126,7 @@ func (r *RagClient) Query(ctx context.Context, req RagQueryRequest) (*RagQueryRe
 		body.Filters = []RagFilter{}
 	}
 	var out RagQueryResponse
-	if err := r.c.postJSON(ctx, "/rag/query", body, &out); err != nil {
+	if err := r.c.postJSON(ctx, "/v1/rag/query", body, &out); err != nil {
 		return nil, err
 	}
 	return &out, nil

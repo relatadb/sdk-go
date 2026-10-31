@@ -117,7 +117,7 @@ type RelataError struct {
 	// empty when the server emits the legacy {"error": "..."} shape. Two
 	// vocabularies exist in real responses (#2555): most HTTP errors
 	// (auth/ACL/ingest/admin/...) use kebab-case, e.g. "access-denied",
-	// "parse-error" (catalogue: docs/api/error-codes.md); /query's
+	// "parse-error" (catalogue: docs/api/error-codes.md); /v1/query's
 	// planner/execution errors use the QueryError-derived REL_* form, e.g.
 	// "REL_PARSE", "REL_ACL" (catalogue: docs/src/end-users/error-codes.md).
 	// Match on the literal string rather than assuming either form — do not
@@ -193,7 +193,7 @@ type problemShape struct {
 // (Duplicated here rather than shared to keep errorFromStatus a pure,
 // dependency-free function usable from tests without a *Client.)
 func errorPathIsAdminOnly(path string) bool {
-	return strings.HasPrefix(path, "/admin/") || strings.HasPrefix(path, "/platform/")
+	return strings.HasPrefix(path, "/admin/")
 }
 
 // responseDetailIsBlank reports whether a non-2xx response body carries no
@@ -220,7 +220,7 @@ func responseDetailIsBlank(contentType string, body []byte) bool {
 }
 
 // adminListenerHint builds the "you're probably pointed at the wrong port"
-// hint for a bare 404 against an admin/platform-only path (#2321).
+// hint for a bare 404 against an admin-only path (#2321).
 func adminListenerHint(path string) string {
 	return fmt.Sprintf(
 		"%s returned a bare 404 with no error detail. This route is served "+
@@ -241,7 +241,7 @@ func adminListenerHint(path string) string {
 // parsed as RFC 7807 problem+json when possible, otherwise the raw text is used
 // as the message. requestID is the X-Request-ID from the response headers;
 // retryAfter is the parsed Retry-After header value (zero if absent). path is
-// the request path (used only to detect an admin/platform-listener-split
+// the request path (used only to detect an admin-listener-split
 // 404, #2321); contentType is the response's Content-Type header.
 func errorFromStatus(
 	statusCode int,
@@ -289,7 +289,7 @@ func errorFromStatus(
 	}
 
 	// #2321 (ADR-0261): a bare 404 with no detail text against an
-	// admin/platform-only path almost always means this client is pointed at
+	// admin-only path almost always means this client is pointed at
 	// the data-plane listener rather than the loopbound admin listener those
 	// routes are exclusively mounted on. A real business 404 always carries a
 	// non-empty detail/error/message by convention across this codebase, so

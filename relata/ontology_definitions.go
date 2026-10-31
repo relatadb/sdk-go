@@ -18,7 +18,7 @@ type PublishOptions struct {
 	FromVersion int
 }
 
-// OntologyDefinitionsClient wraps /ontology/definitions: versioned ontology
+// OntologyDefinitionsClient wraps /v1/ontology/definitions: versioned ontology
 // definitions with compare/impact, publication under a version precondition
 // and resumable data migration.
 type OntologyDefinitionsClient struct {
@@ -31,7 +31,7 @@ func NewOntologyDefinitionsClient(c *Client) *OntologyDefinitionsClient {
 }
 
 func ontoPath(name string, rest ...string) string {
-	p := "/ontology/definitions/" + url.PathEscape(name)
+	p := "/v1/ontology/definitions/" + url.PathEscape(name)
 	for _, r := range rest {
 		p += "/" + r
 	}
@@ -54,22 +54,22 @@ func (o *OntologyDefinitionsClient) post(ctx context.Context, path string, in an
 	return out, nil
 }
 
-// List calls GET /ontology/definitions.
+// List calls GET /v1/ontology/definitions.
 func (o *OntologyDefinitionsClient) List(ctx context.Context) (map[string]any, error) {
-	return o.get(ctx, "/ontology/definitions")
+	return o.get(ctx, "/v1/ontology/definitions")
 }
 
-// Create calls POST /ontology/definitions: a new set with an initial draft.
+// Create calls POST /v1/ontology/definitions: a new set with an initial draft.
 func (o *OntologyDefinitionsClient) Create(ctx context.Context, name string, definition map[string]any) (map[string]any, error) {
-	return o.post(ctx, "/ontology/definitions", map[string]any{"name": name, "definition": definition})
+	return o.post(ctx, "/v1/ontology/definitions", map[string]any{"name": name, "definition": definition})
 }
 
-// Get calls GET /ontology/definitions/{name}: head and current draft.
+// Get calls GET /v1/ontology/definitions/{name}: head and current draft.
 func (o *OntologyDefinitionsClient) Get(ctx context.Context, name string) (map[string]any, error) {
 	return o.get(ctx, ontoPath(name))
 }
 
-// SaveDraft calls PUT /ontology/definitions/{name}/draft.
+// SaveDraft calls PUT /v1/ontology/definitions/{name}/draft.
 func (o *OntologyDefinitionsClient) SaveDraft(ctx context.Context, name string, definition map[string]any) (map[string]any, error) {
 	var out map[string]any
 	if err := o.c.putJSON(ctx, ontoPath(name, "draft"), map[string]any{"definition": definition}, &out); err != nil {

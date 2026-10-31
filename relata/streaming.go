@@ -204,7 +204,7 @@ func (s *StreamingClient) QueryRows(ctx context.Context, sql string, opts *Strea
 		return nil, err
 	}
 	body, _ := json.Marshal(map[string]any{"purpose": purpose, "sql": sql})
-	rc, err := s.c.openStreamAccept(ctx, http.MethodPost, "/query/stream", body, defaultContentType, "application/x-ndjson")
+	rc, err := s.c.openStreamAccept(ctx, http.MethodPost, "/v1/query/stream", body, defaultContentType, "application/x-ndjson")
 	if err != nil {
 		return nil, err
 	}
@@ -227,7 +227,7 @@ func newRowIterator(body io.ReadCloser, limit int64) *RowIterator {
 	return &RowIterator{scanner: scanner, body: body, frameLimit: frameLimit}
 }
 
-// BytesIterator is the raw Arrow IPC byte-stream iterator from POST /query/arrow.
+// BytesIterator is the raw Arrow IPC byte-stream iterator from POST /v1/query/arrow.
 // Each chunk is a slice of bytes; callers wrap with their Arrow IPC reader.
 type BytesIterator struct {
 	reader *bufio.Reader
@@ -273,7 +273,7 @@ func (it *BytesIterator) Close() error {
 	return nil
 }
 
-// QueryArrowRaw streams the raw Arrow IPC byte stream from POST /query/arrow.
+// QueryArrowRaw streams the raw Arrow IPC byte stream from POST /v1/query/arrow.
 // The returned *BytesIterator satisfies io.Reader; callers wrap it with their
 // Arrow IPC stream reader.
 func (s *StreamingClient) QueryArrowRaw(ctx context.Context, sql string, opts *StreamingQueryOptions) (*BytesIterator, error) {
@@ -282,7 +282,7 @@ func (s *StreamingClient) QueryArrowRaw(ctx context.Context, sql string, opts *S
 		return nil, err
 	}
 	body, _ := json.Marshal(map[string]any{"purpose": purpose, "sql": sql})
-	rc, err := s.c.openStream(ctx, http.MethodPost, "/query/arrow", body, defaultContentType)
+	rc, err := s.c.openStream(ctx, http.MethodPost, "/v1/query/arrow", body, defaultContentType)
 	if err != nil {
 		return nil, err
 	}
@@ -427,7 +427,7 @@ type StreamingQueryOptions struct {
 	Purpose string
 }
 
-// Watch opens the finite SSE poll consumer for GET /watch/stream. The server
+// Watch opens the finite SSE poll consumer for GET /v1/watch/stream. The server
 // emits result_changed hashes, gap, and evaluation_failed notifications; it
 // does not stream changed row contents. Reconnects poll the same consumptive
 // queue for this authenticated principal. Registrations are in-memory and must
@@ -446,7 +446,7 @@ func (s *StreamingClient) Watch(ctx context.Context, sql string, opts *WatchOpti
 			reconnect = *opts.Reconnect
 		}
 	}
-	params := encodeGetURL("/watch/stream", map[string]string{"sql": sql, "purpose": purpose})
+	params := encodeGetURL("/v1/watch/stream", map[string]string{"sql": sql, "purpose": purpose})
 	factory := func() (io.ReadCloser, error) {
 		return s.c.openStream(ctx, http.MethodGet, params, nil, "")
 	}
@@ -464,7 +464,7 @@ func (s *StreamingClient) Watch(ctx context.Context, sql string, opts *WatchOpti
 	}, nil
 }
 
-// Alerts opens the SSE consumer for GET /alerts/stream, yielding alert events
+// Alerts opens the SSE consumer for GET /v1/alerts/stream, yielding alert events
 // addressed to the caller's principal / tenant.
 func (s *StreamingClient) Alerts(ctx context.Context, opts *AlertsOptions) (*SSEIterator, error) {
 	reconnect := true
@@ -472,7 +472,7 @@ func (s *StreamingClient) Alerts(ctx context.Context, opts *AlertsOptions) (*SSE
 		reconnect = *opts.Reconnect
 	}
 	factory := func() (io.ReadCloser, error) {
-		return s.c.openStream(ctx, http.MethodGet, "/alerts/stream", nil, "")
+		return s.c.openStream(ctx, http.MethodGet, "/v1/alerts/stream", nil, "")
 	}
 	rc, err := factory()
 	if err != nil {
