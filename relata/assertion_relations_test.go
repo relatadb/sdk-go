@@ -62,3 +62,31 @@ func TestAssertionRelationRoutesAndBodies(t *testing.T) {
 		}
 	}
 }
+
+func TestRelateSimilarAndMinSimilarityReachTheWire(t *testing.T) {
+	var seen [][]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var b map[string]any
+		if r.Method == http.MethodPost {
+			_ = json.NewDecoder(r.Body).Decode(&b)
+		}
+		seen = append(seen, []any{r.URL.RawQuery, b})
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"ok":true}`))
+	}))
+	defer srv.Close()
+	a := NewAssertionsClient(newTestClient(srv, &ClientOptions{BearerToken: "scoped"}))
+	ctx := context.Background()
+	if _, err := a.RelateSimilar(ctx, "a", "b", "same photo", 0.93, "phash-v1", nil); err != nil {
+		t.Fatal(err)
+	}
+	min := 0.5
+	if _, err := a.EvidenceGraph(ctx, "a", EvidenceGraphOptions{MinSimilarity: &min}); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := json.Marshal(seen)
+	want := `[["",{"from":"a","kind":"similar_to","rationale":"same photo","similarity":{"method":"phash-v1","score":0.93},"to":"b"}],["min_similarity=0.5",null]]`
+	if string(got) != want {
+		t.Fatalf("got %s want %s", got, want)
+	}
+}
