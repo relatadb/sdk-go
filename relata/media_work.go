@@ -58,6 +58,17 @@ type MediaWorkClaimOptions struct {
 	LeaseMs  int
 }
 
+// Qualification calls GET /media/qualification: the supported media tasks and
+// the strongest claim the recorded evidence supports for each (stored_only,
+// extracted_features or evaluated_retrieval).
+func (m *MediaWorkClient) Qualification(ctx context.Context) (map[string]any, error) {
+	var out map[string]any
+	if err := m.c.get(ctx, "/media/qualification", &out); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // List calls GET /media/work. state "" returns every state; limit <= 0 uses
 // the server default.
 func (m *MediaWorkClient) List(ctx context.Context, state string, limit int) (map[string]any, error) {

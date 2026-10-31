@@ -86,6 +86,31 @@ func (f *FilesClient) Put(ctx context.Context, key string, data []byte, opts *Fi
 	return &metadata, nil
 }
 
+// CreateFolder calls POST /files/folders and returns the 201 folder-marker
+// metadata (IsFolder true). Only opts.Bucket is used.
+func (f *FilesClient) CreateFolder(ctx context.Context, key string, opts *FilesOptions) (*FileMetadata, error) {
+	body := map[string]string{"key": key}
+	if opts != nil && opts.Bucket != "" {
+		body["bucket"] = opts.Bucket
+	}
+	data, err := json.Marshal(body)
+	if err != nil {
+		return nil, fmt.Errorf("relata: marshal folder request: %w", err)
+	}
+	var raw rawHTTPResponse
+	if err := f.c.doRequestWithHeaders(ctx, http.MethodPost, "/files/folders", data, "application/json", &raw, nil); err != nil {
+		return nil, err
+	}
+	if raw.StatusCode != http.StatusCreated {
+		return nil, fmt.Errorf("relata: Files CreateFolder expected HTTP 201, got %d", raw.StatusCode)
+	}
+	var metadata FileMetadata
+	if err := json.Unmarshal(raw.Body, &metadata); err != nil {
+		return nil, fmt.Errorf("relata: decode Files CreateFolder metadata after HTTP 201: %w", err)
+	}
+	return &metadata, nil
+}
+
 // Get retrieves exact bytes within the parent's MaxResponseBytes limit (64 MiB by default).
 // Context cancellation is forwarded to the shared HTTP transport.
 func (f *FilesClient) Get(ctx context.Context, key string, opts *FilesOptions) (*FileContent, error) {

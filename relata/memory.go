@@ -330,16 +330,16 @@ func (m *Memory) Review(ctx context.Context, memoryID, decision, reason string) 
 	return unwrapMCP(resp), nil
 }
 
-// Associate links two memories with a typed relation. Returns the association
-// record (source_id, target_id, relation, confidence).
-func (m *Memory) Associate(ctx context.Context, sourceID, targetID, relation string, opts ...MemoryOption) (map[string]any, error) {
-	cfg := applyMemoryOpts(opts, 1.0, "semantic")
+// Associate links two memories with a typed relation. The server reads
+// from_id / to_id / relation; confidence options are accepted for source
+// compatibility but are not part of the server schema and are ignored.
+// Returns the association record.
+func (m *Memory) Associate(ctx context.Context, sourceID, targetID, relation string, _ ...MemoryOption) (map[string]any, error) {
 	payload := map[string]any{
-		"source_id":  sourceID,
-		"target_id":  targetID,
-		"relation":   relation,
-		"confidence": clampConfidence(cfg.confidence, 1.0),
-		"purpose":    m.purpose,
+		"from_id":  sourceID,
+		"to_id":    targetID,
+		"relation": relation,
+		"purpose":  m.purpose,
 	}
 	var resp map[string]any
 	if err := m.c.postJSON(ctx, "/memory/associate", payload, &resp); err != nil {
@@ -390,17 +390,44 @@ func (m *Memory) Resolve(ctx context.Context, memoryID string) (map[string]any, 
 	return unwrapMCP(resp), nil
 }
 
+// AssociateBatch links many memory pairs in one request (POST
+// /memory/associate/batch). Each item is {"from_id", "to_id", "relation"?,
+// "confidence"?, "purpose"?}; the client's purpose fills any item that omits
+// it. The result is {"stored", "submitted", "results"}; stored below submitted
+// means some items were rejected (see results).
+func (m *Memory) AssociateBatch(ctx context.Context, items []map[string]any) (map[string]any, error) {
+	out := make([]map[string]any, 0, len(items))
+	for _, item := range items {
+		if s, _ := item["from_id"].(string); s == "" {
+			return nil, fmt.Errorf("relata: each association needs non-empty from_id and to_id")
+		}
+		if s, _ := item["to_id"].(string); s == "" {
+			return nil, fmt.Errorf("relata: each association needs non-empty from_id and to_id")
+		}
+		merged := map[string]any{"purpose": m.purpose}
+		for k, v := range item {
+			merged[k] = v
+		}
+		out = append(out, merged)
+	}
+	var resp map[string]any
+	if err := m.c.postJSON(ctx, "/memory/associate/batch", map[string]any{"items": out}, &resp); err != nil {
+		return nil, err
+	}
+	return unwrapMCP(resp), nil
+}
+
 // Summarise produces a summary belief from a set of source memories. When
 // summaryContent is supplied (via WithSummaryContent) the server stores that
 // text; otherwise it derives one. Returns the new summary memory.
 func (m *Memory) Summarise(ctx context.Context, sourceIDs []string, opts ...MemoryOption) (map[string]any, error) {
 	cfg := applyMemoryOpts(opts, 1.0, "semantic")
 	payload := map[string]any{
-		"source_ids": sourceIDs,
-		"purpose":    m.purpose,
+		"ids":     sourceIDs,
+		"purpose": m.purpose,
 	}
 	if cfg.summary != "" {
-		payload["summary_content"] = cfg.summary
+		payload["contents"] = []string{cfg.summary}
 	}
 	var resp map[string]any
 	if err := m.c.postJSON(ctx, "/memory/summarise", payload, &resp); err != nil {

@@ -261,8 +261,10 @@ func TestMemory_AddBatch(t *testing.T) {
 
 func TestMemory_Associate(t *testing.T) {
 	var gotPath string
+	var gotBody map[string]any
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotPath = r.URL.Path
+		_ = json.NewDecoder(r.Body).Decode(&gotBody)
 		inner := `{"source_id":"a","target_id":"b","relation":"derives"}`
 		fmt.Fprintf(w, `{"content":[{"type":"text","text":%s}],"isError":false}`, strconvQuote(inner))
 	}))
@@ -275,6 +277,10 @@ func TestMemory_Associate(t *testing.T) {
 	}
 	if gotPath != "/memory/associate" || out["relation"] != "derives" {
 		t.Fatalf("path=%q out=%v", gotPath, out)
+	}
+	// The server reads from_id/to_id (source_id/target_id 400s).
+	if gotBody["from_id"] != "a" || gotBody["to_id"] != "b" || gotBody["source_id"] != nil {
+		t.Fatalf("associate body = %v", gotBody)
 	}
 }
 
