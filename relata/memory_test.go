@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -186,6 +187,30 @@ func TestMemory_Forget(t *testing.T) {
 	}
 	if out["policy"] != "retention" {
 		t.Fatalf("policy decision = %v", out)
+	}
+}
+
+func TestMemory_Review(t *testing.T) {
+	var gotMethod, gotPath, gotBody string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotMethod = r.Method
+		gotPath = r.URL.Path
+		b, _ := io.ReadAll(r.Body)
+		gotBody = string(b)
+		fmt.Fprint(w, `{"id":"mem-1","review_status":"approved","changed":true}`)
+	}))
+	defer srv.Close()
+
+	m, _ := NewMemory(srv.URL, "agent-notes", nil)
+	out, err := m.Review(context.Background(), "mem-1", "approve", "checked")
+	if err != nil {
+		t.Fatalf("Review: %v", err)
+	}
+	if gotMethod != "POST" || gotPath != "/memory/review/mem-1" {
+		t.Fatalf("method/path = %s %s", gotMethod, gotPath)
+	}
+	if !strings.Contains(gotBody, `"decision":"approve"`) || out["review_status"] != "approved" {
+		t.Fatalf("body = %s out = %v", gotBody, out)
 	}
 }
 

@@ -314,6 +314,22 @@ func (m *Memory) Forget(ctx context.Context, memoryID string) (map[string]any, e
 	return unwrapMCP(resp), nil
 }
 
+// Review approves or rejects a pending memory; decision is "approve" or
+// "reject" and reason is optional. Wraps POST /memory/review/{id}: memory stored
+// with an external: origin is pending and hidden from recall until reviewed.
+// Returns id, review_status, previous_review_status and changed.
+func (m *Memory) Review(ctx context.Context, memoryID, decision, reason string) (map[string]any, error) {
+	payload := map[string]any{"decision": decision, "purpose": m.purpose}
+	if reason != "" {
+		payload["reason"] = reason
+	}
+	var resp map[string]any
+	if err := m.c.postJSON(ctx, "/memory/review/"+url.PathEscape(memoryID), payload, &resp); err != nil {
+		return nil, err
+	}
+	return unwrapMCP(resp), nil
+}
+
 // Associate links two memories with a typed relation. Returns the association
 // record (source_id, target_id, relation, confidence).
 func (m *Memory) Associate(ctx context.Context, sourceID, targetID, relation string, opts ...MemoryOption) (map[string]any, error) {
