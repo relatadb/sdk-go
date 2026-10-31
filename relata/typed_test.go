@@ -224,6 +224,26 @@ func TestAuditClient_FindByRequestID(t *testing.T) {
 	}
 }
 
+func TestAuditClient_FindByRequestID_IgnoresMismatchedEntry(t *testing.T) {
+	// A server that ignores request_id answers with the newest entry.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("request_id") != "rid" {
+			t.Errorf("request_id not sent: %q", r.URL.RawQuery)
+		}
+		fmt.Fprint(w, `{"entries":[{"id":1,"request_id":"newest"}],"chain_valid":true}`)
+	}))
+	defer srv.Close()
+
+	a := NewAuditClient(newTestClient(srv, nil))
+	got, err := a.FindByRequestID(context.Background(), "rid")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != nil {
+		t.Fatalf("got = %v, want nil", got)
+	}
+}
+
 func TestTenantAdminClient_CRUD(t *testing.T) {
 	var paths []string
 	var methods []string

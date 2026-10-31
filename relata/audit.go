@@ -139,6 +139,11 @@ func (a *AuditClient) FindByRequestID(ctx context.Context, requestID string) (ma
 		return nil, nil
 	}
 	if m, ok := entries[0].(map[string]any); ok {
+		// Never return a different request's entry (e.g. a server that ignores
+		// the request_id filter answers with the newest entry).
+		if rid, present := m["request_id"]; present && rid != requestID {
+			return nil, nil
+		}
 		return m, nil
 	}
 	return nil, nil
