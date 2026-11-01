@@ -16,6 +16,9 @@ type PublishOptions struct {
 	// FromVersion republishes an earlier version's content as the next one
 	// when non-zero (forward-only rollback).
 	FromVersion int
+	// OverrideUnsafe publishes a change that drops or retypes data; it needs
+	// a schema-admin or platform-admin token (else 403).
+	OverrideUnsafe bool
 }
 
 // OntologyDefinitionsClient wraps /v1/ontology/definitions: versioned ontology
@@ -112,6 +115,9 @@ func (o *OntologyDefinitionsClient) Publish(ctx context.Context, name string, op
 	}
 	if opts.AcceptBreaking {
 		body["accept_breaking"] = true
+	}
+	if opts.OverrideUnsafe {
+		body["override_unsafe"] = true
 	}
 	if opts.FromVersion > 0 {
 		body["from_version"] = opts.FromVersion

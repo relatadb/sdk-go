@@ -39,7 +39,7 @@ func TestOntologyDefinitionsRoutesAndBodies(t *testing.T) {
 		func() error { _, e := o.Compare(ctx, "crm", "1", "draft"); return e },
 		func() error { _, e := o.Compare(ctx, "crm", "", ""); return e },
 		func() error {
-			_, e := o.Publish(ctx, "crm", PublishOptions{ExpectedVersion: 1, AcceptMigration: true, FromVersion: 1})
+			_, e := o.Publish(ctx, "crm", PublishOptions{ExpectedVersion: 1, AcceptMigration: true, FromVersion: 1, OverrideUnsafe: true})
 			return e
 		},
 		func() error { _, e := o.Publish(ctx, "crm", PublishOptions{}); return e },
@@ -64,7 +64,7 @@ func TestOntologyDefinitionsRoutesAndBodies(t *testing.T) {
 		{"POST", "/v1/ontology/definitions/crm/validate", "", map[string]any{"definition": d}},
 		{"GET", "/v1/ontology/definitions/crm/compare", "from=1&to=draft", nb},
 		{"GET", "/v1/ontology/definitions/crm/compare", "", nb},
-		{"POST", "/v1/ontology/definitions/crm/publish", "", map[string]any{"expected_version": float64(1), "accept_migration": true, "from_version": float64(1)}},
+		{"POST", "/v1/ontology/definitions/crm/publish", "", map[string]any{"expected_version": float64(1), "accept_migration": true, "from_version": float64(1), "override_unsafe": true}},
 		{"POST", "/v1/ontology/definitions/crm/publish", "", map[string]any{"expected_version": float64(0)}},
 		{"GET", "/v1/ontology/definitions/crm/versions/2", "", nb},
 		{"GET", "/v1/ontology/definitions/crm/status", "", nb},
