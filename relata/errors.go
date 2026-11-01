@@ -138,6 +138,16 @@ type RelataError struct {
 	// or the problem+json retry_after extension. Zero when not supplied.
 	RetryAfter time.Duration
 
+	// TaskID is the ingest task identifier when the error body carries one
+	// (an accepted-then-uncertain 5xx). Poll it instead of replaying the POST.
+	TaskID string
+	// Accepted is non-nil when the server states whether the request was
+	// accepted before failing; nil means unknown.
+	Accepted *bool
+	// ReceiptStatus is the server receipt state on the error body (for
+	// example "uncertain"); empty when absent.
+	ReceiptStatus string
+
 	// RateLimitLimit is the X-RateLimit-Limit header — the per-window request
 	// budget (#1321). Zero when the server did not emit the header.
 	RateLimitLimit int64
@@ -181,6 +191,10 @@ type problemShape struct {
 	Retryable  bool        `json:"retryable"`
 	RequestID  string      `json:"request_id"`
 	RetryAfter json.Number `json:"retry_after"`
+
+	TaskID        string `json:"task_id"`
+	Accepted      *bool  `json:"accepted"`
+	ReceiptStatus string `json:"receipt_status"`
 
 	CurrentVersion  *int64 `json:"current_version"`
 	FailedOperation *int   `json:"failed_operation"`
@@ -309,6 +323,10 @@ func errorFromStatus(
 		Retryable:  retryable,
 		RequestID:  rid,
 		RetryAfter: retryAfter,
+
+		TaskID:        prob.TaskID,
+		Accepted:      prob.Accepted,
+		ReceiptStatus: prob.ReceiptStatus,
 
 		CurrentVersion:  currentVersion,
 		FailedOperation: failedOperation,
