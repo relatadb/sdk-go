@@ -109,6 +109,19 @@ func (a *AssertionsClient) RelateSimilar(ctx context.Context, from, to, rational
 	return a.post(ctx, "/v1/assertions/relations", body)
 }
 
+// RelateWithConfidence is Relate plus the author's confidence in [0, 1] that the
+// link holds and an optional note on what remains unknown ("" for none).
+func (a *AssertionsClient) RelateWithConfidence(ctx context.Context, from, kind, to, rationale string, locator map[string]any, confidence float64, uncertainty string) (map[string]any, error) {
+	body := map[string]any{"from": from, "to": to, "kind": kind, "rationale": rationale, "confidence": confidence}
+	if locator != nil {
+		body["locator"] = locator
+	}
+	if uncertainty != "" {
+		body["uncertainty"] = uncertainty
+	}
+	return a.post(ctx, "/v1/assertions/relations", body)
+}
+
 // Unrelate calls POST /v1/assertions/relations/{id}/revoke: withdraw a relation.
 func (a *AssertionsClient) Unrelate(ctx context.Context, relationID, reason string) (map[string]any, error) {
 	return a.post(ctx, "/v1/assertions/relations/"+url.PathEscape(relationID)+"/revoke", map[string]any{"reason": reason})
@@ -119,6 +132,16 @@ func (a *AssertionsClient) Unrelate(ctx context.Context, relationID, reason stri
 // confidence.
 func (a *AssertionsClient) Assess(ctx context.Context, id, judgment, reason string) (map[string]any, error) {
 	return a.post(ctx, "/v1/assertions/"+url.PathEscape(id)+"/assessment", map[string]any{"judgment": judgment, "reason": reason})
+}
+
+// AssessWithConfidence is Assess plus the reviewer's confidence in [0, 1] and an
+// optional note on what remains unknown ("" for none).
+func (a *AssertionsClient) AssessWithConfidence(ctx context.Context, id, judgment, reason string, confidence float64, uncertainty string) (map[string]any, error) {
+	body := map[string]any{"judgment": judgment, "reason": reason, "confidence": confidence}
+	if uncertainty != "" {
+		body["uncertainty"] = uncertainty
+	}
+	return a.post(ctx, "/v1/assertions/"+url.PathEscape(id)+"/assessment", body)
 }
 
 // EvidenceGraphOptions are the optional parameters of EvidenceGraph.
