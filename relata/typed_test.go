@@ -704,6 +704,36 @@ func TestSearchClient_Query(t *testing.T) {
 	}
 }
 
+func TestSearchClient_Query_QueryVector(t *testing.T) {
+	var gotBody map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		_ = json.Unmarshal(b, &gotBody)
+		fmt.Fprint(w, `{"rows":[],"query_id":"q1","elapsed_ms":1}`)
+	}))
+	defer srv.Close()
+
+	s := NewSearchClient(newTestClient(srv, nil))
+	_, err := s.Query(context.Background(), SearchRequest{
+		From:             "Document",
+		RankBy:           []any{"vector", "ann", "fraud"},
+		QueryVector:      []float32{0.5, 0.25},
+		QueryVectorModel: "m1",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	qv, _ := gotBody["query_vector"].([]any)
+	if len(qv) != 2 || qv[0] != 0.5 || gotBody["query_vector_model"] != "m1" {
+		t.Fatalf("body = %v", gotBody)
+	}
+	if _, err := s.Query(context.Background(), SearchRequest{
+		From: "Document", QueryVectorModel: "m1",
+	}); err == nil {
+		t.Fatal("model without vector must error")
+	}
+}
+
 func TestSearchClient_Query_ComputeAttributes(t *testing.T) {
 	var gotBody map[string]any
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

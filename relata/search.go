@@ -1,6 +1,9 @@
 package relata
 
-import "context"
+import (
+	"context"
+	"fmt"
+)
 
 // SearchFilter is a single typed-search filter clause (#1983, #2169).
 // Op defaults to "eq" on the server side when empty.
@@ -29,6 +32,12 @@ type SearchRequest struct {
 	// COMPUTE clause (#1985 T3, #2465). Purely additive: never affects which
 	// rows match or their order.
 	ComputeAttributes map[string]string `json:"compute_attributes,omitempty"`
+	// QueryVector is a caller-supplied query embedding for a
+	// ["vector","ann", text] RankBy (ADR-0309, #5941); the server then makes no
+	// embedding call. QueryVectorModel names the producing model and requires
+	// QueryVector.
+	QueryVector      []float32 `json:"query_vector,omitempty"`
+	QueryVectorModel string    `json:"query_vector_model,omitempty"`
 	// BM25 shorthand — set Text (and optionally MatchColumn) instead of RankBy.
 	Text        string `json:"-"`
 	MatchColumn string `json:"-"`
@@ -71,6 +80,8 @@ func (s *SearchClient) Query(ctx context.Context, req SearchRequest) (*QueryResu
 		Consistency       string            `json:"consistency,omitempty"`
 		Limit             int               `json:"limit"`
 		ComputeAttributes map[string]string `json:"compute_attributes,omitempty"`
+		QueryVector       []float32         `json:"query_vector,omitempty"`
+		QueryVectorModel  string            `json:"query_vector_model,omitempty"`
 	}{
 		From:              req.From,
 		RankBy:            req.RankBy,
@@ -79,6 +90,14 @@ func (s *SearchClient) Query(ctx context.Context, req SearchRequest) (*QueryResu
 		Consistency:       req.Consistency,
 		Limit:             req.Limit,
 		ComputeAttributes: req.ComputeAttributes,
+		QueryVector:       req.QueryVector,
+		QueryVectorModel:  req.QueryVectorModel,
+	}
+	if req.QueryVector == nil && req.QueryVectorModel != "" {
+		return nil, fmt.Errorf("relata: QueryVectorModel requires QueryVector")
+	}
+	if req.QueryVector != nil && len(req.QueryVector) == 0 {
+		return nil, fmt.Errorf("relata: QueryVector must not be empty")
 	}
 	if len(body.RankBy) == 0 && req.Text != "" {
 		col := req.MatchColumn
