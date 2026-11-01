@@ -381,8 +381,8 @@ func (c *Client) TypeDetail(ctx context.Context, name string) (map[string]any, e
 	return resp, nil
 }
 
-// TypeLifecycle returns a type's lifecycle progress (#5724): the recent
-// register/alter/deregister outcomes this server process ran for it plus
+// TypeLifecycle returns a type's lifecycle progress (#5724): the durable
+// register/alter/deregister outcome journal (survives restart and restore) plus
 // derived-index progress and a freshness token.
 func (c *Client) TypeLifecycle(ctx context.Context, name string) (map[string]any, error) {
 	var resp map[string]any
