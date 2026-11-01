@@ -90,3 +90,30 @@ func TestRelateSimilarAndMinSimilarityReachTheWire(t *testing.T) {
 		t.Fatalf("got %s want %s", got, want)
 	}
 }
+
+func TestConfidenceAndUncertaintyReachTheWire(t *testing.T) {
+	var seen []map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var b map[string]any
+		_ = json.NewDecoder(r.Body).Decode(&b)
+		seen = append(seen, b)
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"ok":true}`))
+	}))
+	defer srv.Close()
+	a := NewAssertionsClient(newTestClient(srv, &ClientOptions{BearerToken: "scoped"}))
+	ctx := context.Background()
+	if _, err := a.RelateWithConfidence(ctx, "a", "supports", "b", "same figure", nil, 0.4, "one witness"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.AssessWithConfidence(ctx, "a", "inconclusive", "needs a second source", 0.6, ""); err != nil {
+		t.Fatal(err)
+	}
+	want := []map[string]any{
+		{"from": "a", "to": "b", "kind": "supports", "rationale": "same figure", "confidence": 0.4, "uncertainty": "one witness"},
+		{"judgment": "inconclusive", "reason": "needs a second source", "confidence": 0.6},
+	}
+	if !reflect.DeepEqual(seen, want) {
+		t.Fatalf("got %v want %v", seen, want)
+	}
+}
