@@ -343,6 +343,31 @@ type IngestDocumentResponse struct {
 	RowsRejected int      `json:"rows_rejected"`
 	Errors       []string `json:"errors"`
 	QueueDepth   int      `json:"queue_depth"`
+	// Extensions retains receipt fields introduced by newer servers without
+	// forcing older SDKs to interpret them.
+	Extensions map[string]json.RawMessage `json:"-"`
+}
+
+// UnmarshalJSON keeps additive receipt fields available to callers, matching
+// the task-status model.
+func (r *IngestDocumentResponse) UnmarshalJSON(data []byte) error {
+	type wire IngestDocumentResponse
+	var decoded wire
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return err
+	}
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(data, &fields); err != nil {
+		return err
+	}
+	*r = IngestDocumentResponse(decoded)
+	for _, key := range []string{"task_id", "rows_queued", "rows_rejected", "errors", "queue_depth"} {
+		delete(fields, key)
+	}
+	if len(fields) > 0 {
+		r.Extensions = fields
+	}
+	return nil
 }
 
 // IngestDocumentTaskStatus is the generic task response from
