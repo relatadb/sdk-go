@@ -343,7 +343,7 @@ func normalizeCDRRows(rows []map[string]any) ([]map[string]any, []any) {
 		}
 		duration := uint64(0)
 		if raw := value("duration"); raw != nil {
-			parsed, err := strconv.ParseUint(strings.TrimSpace(fmt.Sprint(raw)), 10, 32)
+			parsed, err := strconv.ParseUint(strings.TrimSpace(cdrText(raw)), 10, 32)
 			if err != nil && fail == "" {
 				fail = fmt.Sprintf("duration '%v': %v", raw, err)
 			} else if err == nil {
@@ -354,7 +354,7 @@ func normalizeCDRRows(rows []map[string]any) ([]map[string]any, []any) {
 			errors = append(errors, map[string]any{"row": index + 1, "error": fail})
 			continue
 		}
-		callType := strings.ToLower(strings.TrimSpace(fmt.Sprint(value("type"))))
+		callType := strings.ToLower(strings.TrimSpace(cdrText(value("type"))))
 		switch callType {
 		case "voice", "call", "0":
 			callType = "voice"
@@ -367,7 +367,7 @@ func normalizeCDRRows(rows []map[string]any) ([]map[string]any, []any) {
 		}
 		tower := ""
 		if raw := value("tower"); raw != nil {
-			tower = strings.TrimSpace(fmt.Sprint(raw))
+			tower = strings.TrimSpace(cdrText(raw))
 		}
 		normalizedRow := map[string]any{
 			"caller_msisdn": caller, "callee_msisdn": callee,
@@ -401,7 +401,7 @@ func cdrTimestamp(raw any, nowNs int64) (int64, error) {
 	if raw == nil {
 		return nowNs, nil
 	}
-	text := strings.TrimSpace(fmt.Sprint(raw))
+	text := strings.TrimSpace(cdrText(raw))
 	if parsed, err := strconv.ParseInt(text, 10, 64); err == nil {
 		if parsed < 10_000_000_000_000 {
 			const billion = int64(1_000_000_000)
@@ -465,8 +465,23 @@ func cdrMetadataValue(row map[string]any, field string) (any, bool) {
 	return nil, false
 }
 
+// cdrText renders a source value as the text the alias parsers expect. JSON
+// decoding into map[string]any yields float64 for every number, and fmt.Sprint
+// renders those in exponent form ("1.7e+09"), which would be rejected as a
+// timestamp or, worse, have its exponent digits folded into an MSISDN.
+func cdrText(value any) string {
+	switch v := value.(type) {
+	case float64:
+		return strconv.FormatFloat(v, 'f', -1, 64)
+	case float32:
+		return strconv.FormatFloat(float64(v), 'f', -1, 32)
+	default:
+		return fmt.Sprint(value)
+	}
+}
+
 func cdrDigits(value any) string {
-	text := fmt.Sprint(value)
+	text := cdrText(value)
 	var digits strings.Builder
 	for _, r := range text {
 		if r >= '0' && r <= '9' {

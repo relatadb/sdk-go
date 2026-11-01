@@ -252,3 +252,25 @@ func TestBulkEnvelopeOptionsRouteToBulkDoor(t *testing.T) {
 		t.Fatalf("on_conflict must be omitted when unset: %#v", body)
 	}
 }
+
+// #5744: rows decoded with encoding/json carry every number as float64. The
+// adapter must treat those exactly like the equivalent integer/string input
+// instead of rendering them in exponent form ("1.7e+09"), which was rejected
+// as a timestamp and, for MSISDNs, folded the exponent digits into the number.
+func TestNormalizeCDRRowsAcceptsJSONDecodedFloat64Numbers(t *testing.T) {
+	var rows []map[string]any
+	if err := json.Unmarshal([]byte(`[{"caller":911234567890,"callee":919876543210,"call_start":1700000000,"duration":3600}]`), &rows); err != nil {
+		t.Fatal(err)
+	}
+	out, errs := normalizeCDRRows(rows)
+	if len(errs) != 0 || len(out) != 1 {
+		t.Fatalf("rows=%v errors=%v", out, errs)
+	}
+	row := out[0]
+	if row["caller_msisdn"] != int64(911234567890) || row["callee_msisdn"] != int64(919876543210) {
+		t.Fatalf("MSISDNs corrupted by float formatting: %v", row)
+	}
+	if row["call_start_ns"] != int64(1_700_000_000_000_000_000) || row["duration_secs"] != uint64(3600) {
+		t.Fatalf("numeric fields mismatch: %v", row)
+	}
+}
