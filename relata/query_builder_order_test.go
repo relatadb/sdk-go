@@ -20,3 +20,11 @@ func TestQueryBuilderClauseOrderMatchesServerGrammar(t *testing.T) {
 		t.Fatalf("existing where: %q", got)
 	}
 }
+
+func TestGraphTraverseDirectionVocabulary(t *testing.T) {
+	for in, want := range map[string]string{"out": "outbound", "in": "inbound", "both": "any", "any": "any"} {
+		if got := graphTraverseDirections[in]; got != want {
+			t.Fatalf("%s -> %q, want %q", in, got, want)
+		}
+	}
+}

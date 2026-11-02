@@ -586,19 +586,30 @@ func (c *Client) EraseSubject(ctx context.Context, purpose, subject, reason stri
 
 // ── Sessions & cluster (#967 Tier 2d) ───────────────────────────────
 
-// ExportData bulk-exports all rows of a type (#967 Tier 5c). The type and
+// ExportData bulk-exports all rows of a type (#967 Tier 5c). JSON-shaped
+// exports (json, stix) are returned as the decoded object; a text export such
+// as format "csv" is returned as {"type", "format", "content"}. The type and
 // format are routed through url.Values so a caller-supplied '&', '?', or '#'
 // cannot smuggle extra query params (#3212).
 func (c *Client) ExportData(ctx context.Context, objectType, format string) (map[string]any, error) {
 	if format == "" {
 		format = "json"
 	}
-	var resp map[string]any
 	path := encodeGetURL("/v1/export", map[string]string{"type": objectType, "format": format, "purpose": "export"})
-	if err := c.get(ctx, path, &resp); err != nil {
+	status, body, _, err := c.rawHTTPRequest(ctx, http.MethodGet, path, nil, "")
+	if err != nil {
 		return nil, err
 	}
-	return resp, nil
+	if status < 200 || status >= 300 {
+		return nil, errorFromStatus(status, body, "", 0, "", "")
+	}
+	var resp map[string]any
+	if json.Unmarshal(body, &resp) == nil {
+		return resp, nil
+	}
+	// Non-JSON formats (csv) arrive as raw text: return it under "content"
+	// instead of failing to decode it as a JSON object.
+	return map[string]any{"type": objectType, "format": format, "content": string(body)}, nil
 }
 
 // SessionDiff views uncommitted session changes.
@@ -698,7 +709,11 @@ func (c *Client) GraphShortestPath(ctx context.Context, from, to string, opts *G
 
 // GraphTraverseOptions configures the governed GET /v1/graph/traverse door.
 type GraphTraverseOptions struct {
-	// Direction: "out" | "in" | "both" ("" = server default out).
+	// Direction: "out" | "in" | "both" ("" = server default out). The SDK
+	// translates these to the server's "outbound" | "inbound" | "any"; the
+	// server's own spellings are also accepted unchanged. The server silently
+	// treats any other value as matching nothing, so unknown values are
+	// rejected client-side.
 	Direction string
 	// MaxDepth caps the BFS depth. <= 0 omits the param.
 	MaxDepth int
@@ -706,12 +721,24 @@ type GraphTraverseOptions struct {
 	Limit int
 }
 
+// graphTraverseDirections maps the SDK's short direction names to the wire
+// vocabulary of GET /v1/graph/traverse (crates/relata-cli/src/serve/graph.rs
+// TraverseParams.direction); wire spellings map to themselves.
+var graphTraverseDirections = map[string]string{
+	"out": "outbound", "in": "inbound", "both": "any",
+	"outbound": "outbound", "inbound": "inbound", "any": "any",
+}
+
 // GraphTraverse runs a breadth-first traversal via GET /v1/graph/traverse.
 func (c *Client) GraphTraverse(ctx context.Context, from string, opts *GraphTraverseOptions) (map[string]any, error) {
 	params := map[string]string{"from": from}
 	if opts != nil {
 		if opts.Direction != "" {
-			params["direction"] = opts.Direction
+			wire, ok := graphTraverseDirections[opts.Direction]
+			if !ok {
+				return nil, fmt.Errorf("relata: unknown traverse direction %q; expected out, in, both (or outbound, inbound, any)", opts.Direction)
+			}
+			params["direction"] = wire
 		}
 		if opts.MaxDepth > 0 {
 			params["max_depth"] = strconv.Itoa(opts.MaxDepth)
