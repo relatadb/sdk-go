@@ -98,6 +98,10 @@ type QueryResult struct {
 	Truncated bool `json:"truncated,omitempty"`
 	// Partial reports an HTTP 206 fan-out result missing one or more shards.
 	Partial bool `json:"partial,omitempty"`
+	// Provenance holds the per-row provenance chains returned for a
+	// WITH PROVENANCE query, index-aligned with Rows (an entry is nil for a row
+	// with no recorded derivation). Nil when provenance was not requested.
+	Provenance []any `json:"provenance,omitempty"`
 }
 
 // queryResultWire is the raw wire shape used for normalisation.
@@ -113,6 +117,7 @@ type queryResultWire struct {
 	GraphVersion     string           `json:"graph_version"`
 	Truncated        bool             `json:"truncated"`
 	Partial          bool             `json:"partial"`
+	Provenance       []any            `json:"provenance"`
 }
 
 // UnmarshalJSON normalises the two wire shapes the server emits for POST /v1/query
@@ -137,6 +142,7 @@ func (r *QueryResult) UnmarshalJSON(b []byte) error {
 	r.GraphVersion = wire.GraphVersion
 	r.HasNextCursor = wire.NextCursor != nil
 	r.Truncated = wire.Truncated
+	r.Provenance = wire.Provenance
 	r.Partial = wire.Partial
 	if r.HasNextCursor && string(wire.NextCursor) != "null" {
 		var cursor string
