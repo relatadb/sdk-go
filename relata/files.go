@@ -52,6 +52,9 @@ type FileMetadata struct {
 
 // FileContent is the capped binary body and representation metadata returned by Get.
 type FileContent struct {
+	// Size is the object's byte length: len(Bytes) for Get, the Content-Length
+	// header for Head (which transfers no body); -1 when the server sent none.
+	Size        int64
 	Bytes       []byte
 	ETag        string
 	ContentType string
@@ -121,7 +124,7 @@ func (f *FilesClient) Get(ctx context.Context, key string, opts *FilesOptions) (
 	if raw.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("relata: Files Get expected HTTP 200, got %d", raw.StatusCode)
 	}
-	return &FileContent{Bytes: raw.Body, ETag: raw.Headers.Get("ETag"), ContentType: raw.Headers.Get("Content-Type")}, nil
+	return &FileContent{Bytes: raw.Body, Size: int64(len(raw.Body)), ETag: raw.Headers.Get("ETag"), ContentType: raw.Headers.Get("Content-Type")}, nil
 }
 
 // Head checks whether a file exists and returns its representation metadata
@@ -139,7 +142,13 @@ func (f *FilesClient) Head(ctx context.Context, key string, opts *FilesOptions) 
 	if raw.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("relata: Files Head expected HTTP 200, got %d", raw.StatusCode)
 	}
-	return &FileContent{ETag: raw.Headers.Get("ETag"), ContentType: raw.Headers.Get("Content-Type")}, nil
+	size := int64(-1)
+	if cl := raw.Headers.Get("Content-Length"); cl != "" {
+		if n, err := strconv.ParseInt(cl, 10, 64); err == nil {
+			size = n
+		}
+	}
+	return &FileContent{Size: size, ETag: raw.Headers.Get("ETag"), ContentType: raw.Headers.Get("Content-Type")}, nil
 }
 
 // ListFilesOptions filters FilesClient.List.
@@ -191,7 +200,7 @@ func (f *FilesClient) MediaContent(ctx context.Context, rowID string) (*FileCont
 	if raw.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("relata: MediaContent expected HTTP 200, got %d", raw.StatusCode)
 	}
-	return &FileContent{Bytes: raw.Body, ETag: raw.Headers.Get("ETag"), ContentType: raw.Headers.Get("Content-Type")}, nil
+	return &FileContent{Bytes: raw.Body, Size: int64(len(raw.Body)), ETag: raw.Headers.Get("ETag"), ContentType: raw.Headers.Get("Content-Type")}, nil
 }
 
 // Delete acknowledges the server's empty HTTP 204 response; it is not retried automatically.
