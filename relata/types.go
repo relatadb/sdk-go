@@ -319,7 +319,9 @@ func (r *ReadyReport) UnmarshalJSON(b []byte) error {
 		return err
 	}
 	*r = ReadyReport(alias)
-	if r.Status == "ok" && !r.isReadySet(b) {
+	// An unauthenticated probe answers "ok"; an authenticated one answers
+	// "ready" (the full readiness report). Both mean HTTP 200 / serving.
+	if (r.Status == "ok" || r.Status == "ready") && !r.isReadySet(b) {
 		r.IsReady = true
 	}
 	return nil
