@@ -103,7 +103,26 @@ func TestLifecycleLive(t *testing.T) {
 	if _, err := ac.DeregisterType(ctx, name); err != nil {
 		t.Fatalf("drop: %v", err)
 	}
-	if _, err := dc.TypeLifecycle(ctx, name); statusOf(err) != 404 {
-		t.Fatalf("dropped type must be gone, got %v", err)
+	// The journal outlives the dataset: exists=false with the drop journaled.
+	after, err = dc.TypeLifecycle(ctx, name)
+	if err != nil {
+		t.Fatalf("lifecycle after drop: %v", err)
+	}
+	if after["exists"] != false {
+		t.Fatalf("dropped type must report exists=false, got %v", after["exists"])
+	}
+	aops, _ := after["operations"].([]any)
+	if len(aops) == 0 {
+		t.Fatalf("drop must stay journaled, got %v", after)
+	}
+	first, _ := aops[0].(map[string]any)
+	if first["operation"] != "deregister" || first["outcome"] != "applied" {
+		t.Fatalf("newest journal entry = %v, want deregister/applied", first)
+	}
+	if _, err := dc.TypeDetail(ctx, name); statusOf(err) != 404 {
+		t.Fatalf("dropped type detail must be 404, got %v", err)
+	}
+	if _, err := dc.TypeLifecycle(ctx, name+"NeverExisted"); statusOf(err) != 404 {
+		t.Fatalf("never-existed name must be 404, got %v", err)
 	}
 }
