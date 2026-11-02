@@ -36,13 +36,26 @@ func (a *A2AClient) GetTask(ctx context.Context, taskID string) (map[string]any,
 	return resp, nil
 }
 
-// ListCheckpoints lists the LangGraph checkpoints for a thread.
+// ListCheckpoints lists the LangGraph checkpoints for a thread. The server
+// answers with a list of checkpoint ids; each is returned as a
+// {"checkpoint_id": id, "thread_id": thread} map (an object entry is passed
+// through unchanged), so the id is never lost to the map-only decoder.
 func (a *A2AClient) ListCheckpoints(ctx context.Context, threadID string) ([]map[string]any, error) {
 	var resp map[string]any
 	if err := a.c.get(ctx, "/v1/a2a/checkpoints/"+pathSegment(threadID), &resp); err != nil {
 		return nil, err
 	}
-	return unwrapList(resp, "checkpoints"), nil
+	raw, _ := resp["checkpoints"].([]any)
+	out := make([]map[string]any, 0, len(raw))
+	for _, item := range raw {
+		switch v := item.(type) {
+		case string:
+			out = append(out, map[string]any{"checkpoint_id": v, "thread_id": threadID})
+		case map[string]any:
+			out = append(out, v)
+		}
+	}
+	return out, nil
 }
 
 // LoadCheckpoint loads a specific checkpoint by id.
