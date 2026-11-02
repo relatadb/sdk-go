@@ -203,7 +203,7 @@ type StatusResponse struct {
 	Profile string `json:"profile"`
 
 	// Role is the cluster role: "coordinator", "reader", or "writer".
-	// On free/server profiles this is always "coordinator".
+	// On a single node this is always "coordinator".
 	Role string `json:"role"`
 
 	// QueryQuota is the hard per-principal cost-unit cap configured on the node.
