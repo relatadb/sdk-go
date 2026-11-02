@@ -39,7 +39,18 @@ func TestLifecycleLive(t *testing.T) {
 	host := getEnv("RELATA_HOST", "http://localhost:9090")
 	ctx := context.Background()
 	dc := relata.New(host, &relata.ClientOptions{BearerToken: data, Timeout: 15 * time.Second})
-	ac := relata.New(host, &relata.ClientOptions{BearerToken: admin, Timeout: 15 * time.Second})
+	// Schema administration needs a schema-admin REGISTRY token (#5961); the admin
+	// secret itself is refused on the data plane. Mint one on the loopback admin
+	// listener, or take RELATA_SCHEMA_ADMIN_TOKEN, falling back to the secret for
+	// servers that predate the role.
+	schemaAdmin := os.Getenv("RELATA_SCHEMA_ADMIN_TOKEN")
+	if schemaAdmin == "" {
+		schemaAdmin, _, _ = tryMint(admin, "schema-admin", "")
+	}
+	if schemaAdmin == "" {
+		schemaAdmin = admin
+	}
+	ac := relata.New(host, &relata.ClientOptions{BearerToken: schemaAdmin, Timeout: 15 * time.Second})
 	name := fmt.Sprintf("GoLife%d", time.Now().UnixNano())
 
 	if _, err := ac.RegisterType(ctx, name, map[string]any{"description": "go lifecycle run"}); err != nil {
