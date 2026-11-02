@@ -5,7 +5,7 @@ import (
 )
 
 // McpClient is the synchronous Model Context Protocol client. It wraps
-// /mcp/initialize, /mcp/tools, /mcp/tools/call, and provides typed wrappers for retained MCP tools. Responses are returned unwrapped
+// /v1/mcp/initialize, /v1/mcp/tools, /v1/mcp/tools/call, and provides typed wrappers for retained MCP tools. Responses are returned unwrapped
 // from the MCP envelope.
 type McpClient struct {
 	c *Client
