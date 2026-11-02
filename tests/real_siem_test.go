@@ -15,11 +15,12 @@ import (
 	relata "github.com/relatadb/sdk-go/v2/relata"
 )
 
-func findAlert(t *testing.T, g *relata.GovernanceClient, ruleID string) map[string]any {
+// The alert list is oldest-first and capped, so a long-lived server needs a since cursor.
+func findAlert(t *testing.T, g *relata.GovernanceClient, ruleID string, sinceNS int64) map[string]any {
 	t.Helper()
 	deadline := time.Now().Add(20 * time.Second)
 	for time.Now().Before(deadline) {
-		al, err := g.ListAlerts(ctxT(t), &relata.ListAlertsOptions{Limit: 200})
+		al, err := g.ListAlerts(ctxT(t), &relata.ListAlertsOptions{Limit: 200, SinceNS: sinceNS})
 		must(t, err, "list alerts")
 		for _, a := range al {
 			if a["rule_id"] == ruleID {
@@ -64,13 +65,14 @@ func TestRealJourneySIEM(t *testing.T) {
 	_, err = g.GetRule(ctx, "no-such-rule")
 	wantProblem(t, err, 404, "")
 
+	since := time.Now().Add(-5 * time.Second).UnixNano()
 	// The attack: three failed logins above threshold from one source.
 	ingestRowsWait(t, c, ty, []map[string]any{
 		{"id": "bad-1", "action": "login_failed", "sev": 9, "src_ip": "10.0.0.9", "user": "admin"},
 		{"id": "bad-2", "action": "login_failed", "sev": 9, "src_ip": "10.0.0.9", "user": "admin"},
 		{"id": "bad-3", "action": "login_failed", "sev": 8, "src_ip": "10.0.0.9", "user": "root"},
 	})
-	alert := findAlert(t, g, rid)
+	alert := findAlert(t, g, rid, since)
 	aid, _ := alert["alert_id"].(string)
 	if alert["severity"] != "high" || alert["status"] != "open" || alert["matched_type"] != ty {
 		t.Fatalf("alert: %v", alert)

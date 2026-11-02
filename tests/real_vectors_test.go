@@ -52,16 +52,24 @@ func TestRealJourneyVectors(t *testing.T) {
 	}
 	q, err := v.Embed(ctx, "login failures blocked by the firewall", "")
 	must(t, err, "embed query")
-	var hits []map[string]any
+	// A long-lived server holds earlier runs' identical chunks, so over-fetch and
+	// rank only this run's rows.
+	var mine []map[string]any
 	for deadline := time.Now().Add(20 * time.Second); time.Now().Before(deadline); time.Sleep(300 * time.Millisecond) {
-		hits, err = v.KNNSearch(ctx, "DocumentChunk", "_emb_text", q.Embedding, 3, &relata.KNNOptions{Purpose: "investigation"})
+		hits, err := v.KNNSearch(ctx, "DocumentChunk", "_emb_text", q.Embedding, 500, &relata.KNNOptions{Purpose: "investigation"})
 		must(t, err, "knn")
-		if len(hits) > 0 && strings.Contains(str(hits[0]), run) {
+		mine = mine[:0]
+		for _, h := range hits {
+			if strings.HasPrefix(str(h["chunk_id"]), run) {
+				mine = append(mine, h)
+			}
+		}
+		if len(mine) == len(texts) {
 			break
 		}
 	}
-	if len(hits) == 0 || !strings.Contains(str(hits[0]["chunk_id"]), run+"-b") {
-		t.Fatalf("nearest neighbour of the firewall query must be the firewall chunk: %v", hits)
+	if len(mine) != len(texts) || !strings.HasSuffix(str(mine[0]["chunk_id"]), "-b") {
+		t.Fatalf("nearest neighbour of the firewall query must be the firewall chunk of this run: %v", mine)
 	}
 	var hy []map[string]any
 	for deadline := time.Now().Add(20 * time.Second); time.Now().Before(deadline); time.Sleep(300 * time.Millisecond) {
