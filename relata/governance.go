@@ -45,7 +45,8 @@ type ListAlertsOptions struct {
 
 // UpdateAlertOptions configures the optional fields of UpdateAlert.
 type UpdateAlertOptions struct {
-	// Status transitions the alert (e.g. "ack", "closed").
+	// Status transitions the alert: "open", "acknowledged", "resolved" or
+	// "false_positive" (the server rejects any other value with 400).
 	Status string
 	// Assignee sets the owner.
 	Assignee string
@@ -137,6 +138,9 @@ func (g *GovernanceClient) SnoozeRule(ctx context.Context, ruleID string, durati
 type SuppressRuleOptions struct {
 	// Condition is an informational note about why entityID is suppressed.
 	Condition string
+	// DurationSecs is how long the suppression lasts. The server refuses a
+	// suppression without a positive duration (#3197: suppressions expire).
+	DurationSecs int
 }
 
 // SuppressRule permanently suppresses future matches of the rule for a
@@ -146,6 +150,9 @@ func (g *GovernanceClient) SuppressRule(ctx context.Context, ruleID, entityID st
 	body := map[string]any{"entity_id": entityID}
 	if opts != nil && opts.Condition != "" {
 		body["condition"] = opts.Condition
+	}
+	if opts != nil && opts.DurationSecs > 0 {
+		body["duration_secs"] = opts.DurationSecs
 	}
 	var resp map[string]any
 	if err := g.c.postJSON(ctx, "/v1/rules/"+pathSegment(ruleID)+"/suppress", body, &resp); err != nil {
