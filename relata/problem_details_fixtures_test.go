@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -31,6 +32,7 @@ type problemFixtureCase struct {
 		Retryable         bool     `json:"retryable"`
 		RequestID         *string  `json:"request_id"`
 		RetryAfterSeconds *float64 `json:"retry_after_seconds"`
+		MessageContains   []string `json:"message_contains"`
 	} `json:"expect"`
 }
 
@@ -121,6 +123,11 @@ func TestProblemDetailsSharedFixtures(t *testing.T) {
 			}
 			if re.RetryAfter != wantRetry {
 				t.Fatalf("retry-after %v want %v", re.RetryAfter, wantRetry)
+			}
+			for _, needle := range c.Expect.MessageContains {
+				if !strings.Contains(err.Error(), needle) {
+					t.Fatalf("%q missing from error %q", needle, err.Error())
+				}
 			}
 		})
 	}
