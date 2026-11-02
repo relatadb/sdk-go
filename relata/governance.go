@@ -260,13 +260,23 @@ func (g *GovernanceClient) LiftLegalHold(ctx context.Context, caseID string) (ma
 	return resp, nil
 }
 
-// ListWormPolicies lists WORM (write-once-read-many) retention policies.
+// ListWormPolicies lists WORM (write-once-read-many) retention policies. The
+// server answers {"worm_types": [<object type>...]}; each type is returned as
+// {"object_type": name}. A "policies" array of objects is passed through.
 func (g *GovernanceClient) ListWormPolicies(ctx context.Context) ([]map[string]any, error) {
 	var resp map[string]any
 	if err := g.c.get(ctx, "/v1/retention/worm", &resp); err != nil {
 		return nil, err
 	}
-	return unwrapList(resp, "policies"), nil
+	out := unwrapList(resp, "policies")
+	if types, ok := resp["worm_types"].([]any); ok {
+		for _, t := range types {
+			if name, ok := t.(string); ok {
+				out = append(out, map[string]any{"object_type": name})
+			}
+		}
+	}
+	return out, nil
 }
 
 // SetWormPolicy sets WORM retention for an object type. Rows cannot be mutated
