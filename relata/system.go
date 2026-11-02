@@ -2,6 +2,8 @@ package relata
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"net/url"
 	"strconv"
 )
@@ -40,11 +42,20 @@ func (s *SystemClient) JobStatus(ctx context.Context, name string) (map[string]a
 
 // NotificationRules lists notification rules for the caller's tenant.
 func (s *SystemClient) NotificationRules(ctx context.Context) ([]map[string]any, error) {
-	var resp []map[string]any
-	if err := s.c.get(ctx, "/v1/notification-rules", &resp); err != nil {
+	// The server answers {"rules": [...], "total": n}; a bare array is accepted too.
+	var raw json.RawMessage
+	if err := s.c.get(ctx, "/v1/notification-rules", &raw); err != nil {
 		return nil, err
 	}
-	return resp, nil
+	var arr []map[string]any
+	if json.Unmarshal(raw, &arr) == nil {
+		return arr, nil
+	}
+	var wrapped map[string]any
+	if err := json.Unmarshal(raw, &wrapped); err != nil {
+		return nil, fmt.Errorf("relata: decode notification rules: %w", err)
+	}
+	return unwrapList(wrapped, "rules"), nil
 }
 
 // CreateNotificationRule creates a notification rule. A webhook is a delivery
