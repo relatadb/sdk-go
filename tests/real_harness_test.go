@@ -185,3 +185,5 @@ func roleClient(t *testing.T, role string, mutate ...func(*relata.ClientOptions)
 	}
 	return relata.New(realHost(), o)
 }
+
+func os_token() string { return os.Getenv("RELATA_TOKEN") }
