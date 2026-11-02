@@ -21,6 +21,7 @@
 package relata
 
 import (
+	"bytes"
 	"encoding/json"
 	"net/http"
 	"time"
@@ -579,12 +580,51 @@ type SearchHit struct {
 	Fields map[string]any `json:"fields"`
 	// Score is the BM25 relevance score.
 	Score float64 `json:"score"`
-	// Highlights contains field-level snippets with <em> tags (non-nil when
-	// WithHighlight option is used).
-	Highlights map[string]string `json:"highlights"`
+	// Highlights contains legacy field-level snippets with <em> tags (dict-shaped
+	// servers only; nil otherwise). The current server sends HighlightSpans.
+	Highlights map[string]string `json:"-"`
+	// HighlightSpans are the matched {start, end, term} spans (non-nil when the
+	// WithHighlight option is used against the current server).
+	HighlightSpans []SearchHighlightSpan `json:"-"`
+	// Snippet is the highlighted snippet with <mark> tags (WithHighlight).
+	Snippet string `json:"snippet,omitempty"`
 	// Definition is the ontology definition version the row was written under
 	// ({stamp, current, stale}); nil when the type has no published definition (#5711).
 	Definition map[string]any `json:"definition,omitempty"`
+}
+
+// SearchHighlightSpan is one matched span of a search hit (#5666 shared fixtures).
+type SearchHighlightSpan struct {
+	Start int    `json:"start"`
+	End   int    `json:"end"`
+	Term  string `json:"term"`
+}
+
+// UnmarshalJSON decodes the wire hit: the row arrives under "data" (older servers
+// used "fields") and "highlights" is an array of spans (older servers sent a
+// field-to-snippet object). object_type is not on the wire; Client.Search fills it
+// from the request.
+func (h *SearchHit) UnmarshalJSON(b []byte) error {
+	type plain SearchHit
+	aux := struct {
+		*plain
+		Data       map[string]any  `json:"data"`
+		Highlights json.RawMessage `json:"highlights"`
+	}{plain: (*plain)(h)}
+	if err := json.Unmarshal(b, &aux); err != nil {
+		return err
+	}
+	if h.Fields == nil {
+		h.Fields = aux.Data
+	}
+	h.Highlights, h.HighlightSpans = nil, nil
+	switch raw := bytes.TrimSpace(aux.Highlights); {
+	case len(raw) > 0 && raw[0] == '[':
+		return json.Unmarshal(raw, &h.HighlightSpans)
+	case len(raw) > 0 && raw[0] == '{':
+		return json.Unmarshal(raw, &h.Highlights)
+	}
+	return nil
 }
 
 // SearchResponse is the response from the Search method.

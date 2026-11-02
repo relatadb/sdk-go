@@ -290,6 +290,11 @@ func (c *Client) Search(ctx context.Context, query, objectType string, opts ...S
 	if err := c.postJSON(ctx, "/v1/search", body, &resp); err != nil {
 		return nil, err
 	}
+	for i := range resp.Hits {
+		if resp.Hits[i].ObjectType == "" {
+			resp.Hits[i].ObjectType = objectType
+		}
+	}
 	return &resp, nil
 }
 
