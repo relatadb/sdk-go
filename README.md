@@ -251,7 +251,7 @@ sql := relata.NewQuery("SELECT * FROM Person").
     Where("risk_score > 0.7").
     AsOf("2025-01-01").
     SQL()
-// → SELECT * FROM Person WHERE risk_score > 0.7 AS OF '2025-01-01'
+// → SELECT * FROM Person AS OF '2025-01-01' WHERE risk_score > 0.7
 ```
 
 | Method | Description |

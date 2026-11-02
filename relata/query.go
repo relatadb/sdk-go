@@ -3,6 +3,7 @@ package relata
 import (
 	"context"
 	"fmt"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -208,8 +209,25 @@ func (b *QueryBuilder) Timeout(d time.Duration) *QueryBuilder {
 // SQL returns the fully assembled SQL string that will be sent to the server.
 // Call this to inspect the generated query before executing it.
 func (b *QueryBuilder) SQL() string {
+	base := strings.TrimRight(b.baseSQL, " \t\n\r;")
 	var sb strings.Builder
-	sb.WriteString(strings.TrimRight(b.baseSQL, " \t\n\r;"))
+
+	// AS OF belongs directly after FROM <Type> (before WHERE) per the Relata
+	// grammar `FROM <Type> [AS OF '<ts>'] … WHERE …`; the server rejects it
+	// after WHERE. The timestamp is escaped into a contained literal (#3211).
+	asOf := ""
+	if b.asOf != "" {
+		asOf = fmt.Sprintf(" AS OF '%s'", escapeSQLString(b.asOf))
+	}
+	if loc := fromTypeRE.FindStringIndex(base); asOf != "" && loc != nil &&
+		(loc[1] == len(base) || (base[loc[1]] != '(' && base[loc[1]] != '.')) {
+		sb.WriteString(base[:loc[1]])
+		sb.WriteString(asOf)
+		sb.WriteString(base[loc[1]:])
+		asOf = ""
+	} else {
+		sb.WriteString(base)
+	}
 
 	// WHERE clauses
 	if len(b.whereClauses) > 0 {
@@ -222,24 +240,26 @@ func (b *QueryBuilder) SQL() string {
 		sb.WriteString(strings.Join(b.whereClauses, " AND "))
 	}
 
-	// AS OF — must precede WITH PROVENANCE per the Relata grammar. The
-	// timestamp is escaped into a contained literal (#3211).
-	if b.asOf != "" {
-		sb.WriteString(fmt.Sprintf(" AS OF '%s'", escapeSQLString(b.asOf)))
-	}
-
-	// WITH PROVENANCE
-	if b.withProv {
-		sb.WriteString(" WITH PROVENANCE")
-	}
+	// Base SQL with no plain `FROM <Type>` (a table function, say): keep the
+	// previous trailing placement.
+	sb.WriteString(asOf)
 
 	// LIMIT
 	if b.limitVal > 0 {
 		sb.WriteString(fmt.Sprintf(" LIMIT %d", b.limitVal))
 	}
 
+	// WITH PROVENANCE is a trailing modifier: the server rejects it before
+	// WHERE/LIMIT.
+	if b.withProv {
+		sb.WriteString(" WITH PROVENANCE")
+	}
+
 	return sb.String()
 }
+
+// fromTypeRE finds `FROM <Type>` (a plain identifier, not a table function).
+var fromTypeRE = regexp.MustCompile(`(?i)\bFROM\s+[A-Za-z_][A-Za-z0-9_]*`)
 
 // Execute assembles the SQL and executes it against client, returning the
 // result set. The purpose must have been set via Purpose(); if it is empty
