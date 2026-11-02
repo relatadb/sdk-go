@@ -272,7 +272,13 @@ func (c *Client) Search(ctx context.Context, query, objectType string, opts ...S
 		body["facets"] = p.facets
 	}
 	if len(p.filters) > 0 {
-		body["filters"] = p.filters
+		// The simple search door applies field equality filters from the singular
+		// "filter" object; "filters" is the typed door's condition list (and the
+		// tenant_id scope), so a {"field": "value"} map there was silently ignored.
+		body["filter"] = p.filters
+		if tenant, ok := p.filters["tenant_id"]; ok {
+			body["filters"] = map[string]string{"tenant_id": tenant}
+		}
 	}
 	if p.matchingStrategy != "" {
 		body["matching_strategy"] = p.matchingStrategy

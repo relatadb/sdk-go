@@ -320,7 +320,7 @@ func LookupIdentity(identifier string) *QueryBuilder {
 	return NewQuery(sql)
 }
 
-// HybridSearch builds a HYBRID_SCORE full-text + vector search query against
+// HybridSearch builds a HYBRID_SEARCH full-text + vector retrieval query against
 // the given object type. query is the natural-language search string;
 // topK limits results.
 //
@@ -336,9 +336,8 @@ func HybridSearch(objectType, query string, topK int) (*QueryBuilder, error) {
 	if err := validateIdentifier(objectType, "object_type"); err != nil {
 		return nil, err
 	}
-	sql := fmt.Sprintf(
-		"SELECT *, HYBRID_SCORE('%s') AS score FROM %s WHERE score > 0 ORDER BY score DESC LIMIT %d",
-		escapeSQLString(query), objectType, topK,
-	)
+	// The server parses hybrid retrieval as its own statement; the earlier
+	// "SELECT *, HYBRID_SCORE(...) AS score" form was rejected as a parse error.
+	sql := fmt.Sprintf("HYBRID_SEARCH FROM %s QUERY '%s' LIMIT %d", objectType, escapeSQLString(query), topK)
 	return NewQuery(sql), nil
 }

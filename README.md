@@ -670,7 +670,7 @@ go run ./sdks/go/examples/investigation \
 | `WITH PROVENANCE` | Attach PROV-O lineage columns to every row (SPECS §5.9) |
 | `PATHS_BETWEEN(a, b, max_hops => N)` | Pregel BFS graph traversal (SPECS §5.13) |
 | `LOOKUP_IDENTITY(id)` | IdentityIndex resolver (SPECS §5.8) |
-| `HYBRID_SCORE(query)` | BM25 + vector combined score (SPECS §5.14) |
+| `HYBRID_SEARCH FROM <Type> QUERY '<text>' LIMIT n` | BM25 + vector combined retrieval (SPECS §5.14) |
 
 See the [SQL reference](https://www.relatadb.dev/docs/reference/sql) for full syntax.
 
