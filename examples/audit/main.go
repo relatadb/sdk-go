@@ -10,8 +10,7 @@
 //  2. Query the audit log for recent query activity (SELECT from AuditEntry).
 //  3. Flag any queries that lacked a valid purpose or came from unrecognised
 //     principals.
-//  4. Check cluster node health for a multi-node deployment.
-//  5. Exit with a non-zero status if any anomaly is detected — designed to
+//  4. Exit with a non-zero status if any anomaly is detected — designed to
 //     run as a cron-scheduled health gate.
 //
 // Usage:

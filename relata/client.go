@@ -943,8 +943,7 @@ func (c *Client) IngestDocumentStatus(ctx context.Context, taskID string) (*Inge
 
 // AppendEvent synchronously appends one event to an installed schema type
 // marked append_only. Exact retries return the original receipt; key reuse
-// with a different payload returns a conflict. Requires local persistent WAL
-// and currently rejects cluster mode.
+// with a different payload returns a conflict. Requires local persistent WAL.
 func (c *Client) AppendEvent(ctx context.Context, req EventAppendRequest) (*EventAppendReceipt, error) {
 	var resp EventAppendReceipt
 	if err := c.postJSON(ctx, "/v1/ingest/events", req, &resp); err != nil {
