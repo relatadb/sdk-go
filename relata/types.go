@@ -188,7 +188,7 @@ type HealthResponse struct {
 	// Status is "ok" when the node is healthy.
 	Status string `json:"status"`
 
-	// Profile is one of "free", "server", or "cluster".
+	// Profile is the deployment profile ("free" on the open edition).
 	Profile string `json:"profile"`
 
 	// NodeID is the identifier configured via the NODE_ID environment variable.
@@ -200,11 +200,10 @@ func (r *HealthResponse) IsHealthy() bool { return r.Status == "ok" }
 
 // StatusResponse is the response from GET /v1/system/status.
 type StatusResponse struct {
-	// Profile is one of "free", "server", or "cluster".
+	// Profile is the deployment profile ("free" on the open edition).
 	Profile string `json:"profile"`
 
-	// Role is the cluster role: "coordinator", "reader", or "writer".
-	// On free/server profiles this is always "coordinator".
+	// Role is the node role; always "coordinator" on the open edition.
 	Role string `json:"role"`
 
 	// QueryQuota is the hard per-principal cost-unit cap configured on the node.
@@ -235,7 +234,7 @@ type VersionInfo struct {
 	// Commit is the git commit hash the binary was built from.
 	Commit string `json:"commit"`
 
-	// Profile is the deployment profile — free / server / cluster.
+	// Profile is the deployment profile ("free" on the open edition).
 	Profile string `json:"profile"`
 
 	// SchemaVersion is the ontology / row-model schema version.
@@ -415,7 +414,7 @@ func (s *IngestDocumentTaskStatus) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-// IngestWriteToken is an optional cluster watermark attached to a terminal
+// IngestWriteToken is an optional write watermark attached to a terminal
 // ingest task that wrote rows, when the server has a write watermark available.
 type IngestWriteToken struct {
 	WallNS  int64  `json:"wall_ns"`
@@ -502,7 +501,7 @@ type ClientOptions struct {
 	// 127.0.0.1:9091 — ADR-0261) instead of BaseURL (relatadb/RelataDB#2321).
 	// Per ADR-0261 v1, those routes are mounted ONLY on that listener, never
 	// the main data-plane listener BaseURL usually targets, so a hardened
-	// server/cluster deployment needs this set for BackupClient/
+	// (network-facing) deployment needs this set for BackupClient/
 	// the admin clients (e.g. BackupClient) to reach them at all.
 	// Leave empty (the default) when the admin listener isn't split from the
 	// data plane (e.g. local/free-profile dev) — every request then goes to

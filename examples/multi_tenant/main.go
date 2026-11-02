@@ -1,8 +1,8 @@
 // Command multi_tenant demonstrates organisation isolation: tenant A writes,
 // tenant B cannot see the rows.
 //
-// The server must be running with RELATA_TENANCY_MODE=multi and two
-// admin-issued bearer tokens for two different tenants.
+// The server must be running with two admin-issued, tenant-scoped bearer
+// tokens for two different tenants.
 //
 // Usage:
 //
