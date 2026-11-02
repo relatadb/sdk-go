@@ -18,7 +18,7 @@ import (
 	"testing"
 )
 
-// mcpCapture spins up a test server that records the /mcp/tools/call body
+// mcpCapture spins up a test server that records the /v1/mcp/tools/call body
 // into gotBody and always replies with a minimal, valid MCP envelope.
 func mcpCapture(t *testing.T) (*McpClient, *map[string]any) {
 	t.Helper()
