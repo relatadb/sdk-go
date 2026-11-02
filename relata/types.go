@@ -582,6 +582,9 @@ type SearchHit struct {
 	// Highlights contains field-level snippets with <em> tags (non-nil when
 	// WithHighlight option is used).
 	Highlights map[string]string `json:"highlights"`
+	// Definition is the ontology definition version the row was written under
+	// ({stamp, current, stale}); nil when the type has no published definition (#5711).
+	Definition map[string]any `json:"definition,omitempty"`
 }
 
 // SearchResponse is the response from the Search method.
