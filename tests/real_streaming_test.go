@@ -103,6 +103,9 @@ func TestRealJourneyStreaming(t *testing.T) {
 				seen = true
 			}
 		}
+		if err := w.Err(); err != nil {
+			t.Errorf("a healthy watch stream must report no error: %v", err)
+		}
 	}
 
 	gc, err := st.GraphChanges(ctx, &relata.GraphChangesOptions{Type: ty, Reconnect: &no})

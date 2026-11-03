@@ -34,7 +34,15 @@ func TestRealPlatformOps(t *testing.T) {
 	st, err := c.Stats(ctx)
 	must(t, err, "stats")
 	t.Logf("stats: %+v", *st)
-	if rr, err := c.Ready(ctx); err != nil {
+	// A freshly started server answers 503 while the FTS index hydrates; ready must
+	// become true shortly after.
+	rr, err := c.Ready(ctx)
+	for deadline := time.Now().Add(30 * time.Second); err != nil && time.Now().Before(deadline); {
+		wantProblem(t, err, 503, "")
+		time.Sleep(500 * time.Millisecond)
+		rr, err = c.Ready(ctx)
+	}
+	if err != nil {
 		t.Errorf("ready: %v", err)
 	} else if !rr.IsReady {
 		t.Errorf("authenticated /health/ready answered 200 but IsReady is false: %+v", *rr)
