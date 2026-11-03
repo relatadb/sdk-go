@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math/big"
+	"net/http"
 	"regexp"
 	"sort"
 	"strconv"
@@ -135,12 +136,12 @@ func (i *IngestClient) IngestAuto(ctx context.Context, objectType string, rows [
 	if err != nil {
 		return nil, fmt.Errorf("relata: encode ingest/auto body: %w", err)
 	}
-	status, data, _, err := i.c.rawHTTPRequest(ctx, "POST", "/v1/ingest/auto", encoded, "application/json")
+	status, data, respHeaders, err := i.c.rawHTTPRequest(ctx, "POST", "/v1/ingest/auto", encoded, "application/json")
 	if err != nil {
 		return nil, err
 	}
 	if status < 200 || status >= 300 {
-		return nil, errorFromStatus(status, data, "", 0, "", "")
+		return nil, rawErrorFromStatus(status, data, respHeaders)
 	}
 	var resp map[string]any
 	if len(data) == 0 {
@@ -502,12 +503,12 @@ func (i *IngestClient) postIngest(ctx context.Context, objectType, body, content
 	if purpose != "" {
 		params["purpose"] = purpose
 	}
-	status, data, _, err := i.c.rawHTTPRequest(ctx, "POST", encodeGetURL("/v1/ingest", params), []byte(body), contentType, i.detectHeader(opts))
+	status, data, respHeaders, err := i.c.rawHTTPRequest(ctx, "POST", encodeGetURL("/v1/ingest", params), []byte(body), contentType, i.detectHeader(opts))
 	if err != nil {
 		return nil, err
 	}
 	if status < 200 || status >= 300 {
-		return nil, errorFromStatus(status, data, "", 0, "", "")
+		return nil, rawErrorFromStatus(status, data, respHeaders)
 	}
 	var resp map[string]any
 	if len(data) == 0 {
@@ -556,12 +557,12 @@ func (i *IngestClient) postBulkTyped(ctx context.Context, objectType string, row
 	if err != nil {
 		return nil, fmt.Errorf("relata: encode bulk body: %w", err)
 	}
-	status, data, _, err := i.c.rawHTTPRequest(ctx, "POST", "/v1/ingest/bulk", encoded, "application/json", i.detectHeader(opts))
+	status, data, respHeaders, err := i.c.rawHTTPRequest(ctx, "POST", "/v1/ingest/bulk", encoded, "application/json", i.detectHeader(opts))
 	if err != nil {
 		return nil, err
 	}
 	if status < 200 || status >= 300 {
-		return nil, errorFromStatus(status, data, "", 0, "", "")
+		return nil, rawErrorFromStatus(status, data, respHeaders)
 	}
 	var resp map[string]any
 	if len(data) == 0 {
@@ -599,4 +600,20 @@ func (i *IngestClient) detectHeader(opts *BulkOptions) map[string]string {
 		set(MediaWorkClaimHeader, strconv.FormatUint(opts.MediaWorkClaim, 10))
 	}
 	return h
+}
+
+// rawErrorFromStatus builds the typed error for a raw (non-JSON-decoded) ingest
+// response, keeping the server's Retry-After, request ID and rate-limit
+// headers so overload guidance (429/503) is not lost on these paths (#5688).
+func rawErrorFromStatus(status int, data []byte, respHeaders map[string]string) *RelataError {
+	h := http.Header{}
+	for k, v := range respHeaders {
+		h.Set(k, v)
+	}
+	rerr := errorFromStatus(
+		status, data, h.Get(headerRequestID), parseRetryAfter(h.Get(headerRetryAfter)),
+		"", h.Get(headerContentType),
+	)
+	rerr.RateLimitLimit, rerr.RateLimitRemaining, rerr.RateLimitReset = readRateLimitHeaders(h)
+	return rerr
 }
