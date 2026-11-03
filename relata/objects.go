@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -188,6 +189,26 @@ func (o *ObjectClient) Delete(ctx context.Context, objectType, objectID string, 
 	}
 	var out map[string]any
 	if err := o.c.doRequestWithHeaders(ctx, http.MethodDelete, objectPath(objectType, objectID, o.resolvePurpose(purpose)), nil, "", &out, headers); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// DeleteWhere tombstones every live row of objectType matching where, via
+// DELETE /v1/objects/{type} with {"where": ...}. where is a SQL WHERE
+// expression such as "status = 'stale'", not a statement. A blank where is
+// refused before any request is sent, so this cannot delete every row of a
+// type by accident. The receipt looks like {"deleted": 3, "type": "Doc"}.
+func (o *ObjectClient) DeleteWhere(ctx context.Context, objectType, where string) (map[string]any, error) {
+	if strings.TrimSpace(where) == "" {
+		return nil, errors.New("relata: where must be a non-empty SQL WHERE expression")
+	}
+	body, err := json.Marshal(map[string]string{"where": where})
+	if err != nil {
+		return nil, err
+	}
+	var out map[string]any
+	if err := o.c.doRequestWithHeaders(ctx, http.MethodDelete, "/v1/objects/"+url.PathEscape(objectType), body, defaultContentType, &out, nil); err != nil {
 		return nil, err
 	}
 	return out, nil

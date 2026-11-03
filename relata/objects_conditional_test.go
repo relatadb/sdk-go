@@ -141,3 +141,18 @@ func TestCommitPostsBundleAndReportsFailingOperation(t *testing.T) {
 		t.Fatalf("err = %v re=%+v", err, re)
 	}
 }
+
+func TestDeleteWhereSendsPredicateBodyAndRefusesBlank(t *testing.T) {
+	oc, seen := conditionalServer(t, 200, `{"deleted":3,"type":"Doc"}`)
+	out, err := oc.DeleteWhere(context.Background(), "Doc", "status = 'stale'")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out["deleted"] != float64(3) || seen.method != "DELETE" || seen.path != "/v1/objects/Doc" || string(seen.body) != `{"where":"status = 'stale'"}` {
+		t.Fatalf("out=%v request=%s %s body=%s", out, seen.method, seen.path, seen.body)
+	}
+	blank, blankSeen := conditionalServer(t, 200, `{}`)
+	if _, err := blank.DeleteWhere(context.Background(), "Doc", "  "); err == nil || blankSeen.method != "" {
+		t.Fatalf("blank where must fail before any request: err=%v method=%q", err, blankSeen.method)
+	}
+}
