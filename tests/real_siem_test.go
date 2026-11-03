@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	relata "github.com/relatadb/sdk-go/v2/relata"
+	relata "github.com/relatadb/sdk-go/v3/relata"
 )
 
 // The alert list is oldest-first by default and capped per page, so ask for the newest first.

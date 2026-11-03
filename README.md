@@ -4,9 +4,9 @@ Go client for the [Relata DB](https://relatadb.dev) engine. Stdlib-only (no exte
 dependencies), context-based blocking API, fluent query builder, Mem0-style Memory
 client, 15 typed v1.1 clients, and RFC 7807 problem+json-aware errors.
 
-- **Repo:** [github.com/relatadb/sdk-go/v2](https://github.com/relatadb/sdk-go/v2)
-- **Module:** `github.com/relatadb/sdk-go/v2`
-- **Docs:** [relatadb.dev](https://relatadb.dev) · [Issues](https://github.com/relatadb/sdk-go/v2/issues)
+- **Repo:** [github.com/relatadb/sdk-go/v3](https://github.com/relatadb/sdk-go/v3)
+- **Module:** `github.com/relatadb/sdk-go/v3`
+- **Docs:** [relatadb.dev](https://relatadb.dev) · [Issues](https://github.com/relatadb/sdk-go/v3/issues)
 - **Go:** 1.25+
 - **Dependencies:** none (stdlib only — `net/http`, `encoding/json`, `crypto/rand`,
   `context`, `time`)
@@ -20,7 +20,7 @@ Other languages use the HTTP API and its OpenAPI reference at `GET /openapi.json
 ## Install
 
 ```bash
-go get github.com/relatadb/sdk-go/v2
+go get github.com/relatadb/sdk-go/v3
 ```
 
 ## Quick start
@@ -33,7 +33,7 @@ import (
     "fmt"
     "log"
 
-    "github.com/relatadb/sdk-go/v2/relata"
+    "github.com/relatadb/sdk-go/v3/relata"
 )
 
 func main() {
@@ -402,7 +402,7 @@ package main
 import (
     "context"
     "fmt"
-    "github.com/relatadb/sdk-go/v2/relata"
+    "github.com/relatadb/sdk-go/v3/relata"
 )
 
 func main() {

@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	relata "github.com/relatadb/sdk-go/v2/relata"
+	relata "github.com/relatadb/sdk-go/v3/relata"
 )
 
 func dataRows(t *testing.T, resp map[string]any) []map[string]any {

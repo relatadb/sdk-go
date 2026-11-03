@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	relata "github.com/relatadb/sdk-go/v2/relata"
+	relata "github.com/relatadb/sdk-go/v3/relata"
 )
 
 func i64(v int64) *int64 { return &v }

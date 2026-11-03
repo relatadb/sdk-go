@@ -20,7 +20,7 @@ import (
 	"testing"
 	"time"
 
-	relata "github.com/relatadb/sdk-go/v2/relata"
+	relata "github.com/relatadb/sdk-go/v3/relata"
 )
 
 func rawJSON(t *testing.T, method, host, token, path string, body any) (int, map[string]any) {

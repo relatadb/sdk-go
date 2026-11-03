@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"testing"
 
-	relata "github.com/relatadb/sdk-go/v2/relata"
+	relata "github.com/relatadb/sdk-go/v3/relata"
 )
 
 // Object HEAD must report the stored size (coordinator-reported SD defect).

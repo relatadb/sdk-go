@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	relata "github.com/relatadb/sdk-go/v2/relata"
+	relata "github.com/relatadb/sdk-go/v3/relata"
 )
 
 // Vector journey: embed through the server, store chunks with embeddings,

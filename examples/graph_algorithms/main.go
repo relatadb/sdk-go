@@ -24,7 +24,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/relatadb/sdk-go/v2/relata"
+	"github.com/relatadb/sdk-go/v3/relata"
 )
 
 const objectType = "Person"

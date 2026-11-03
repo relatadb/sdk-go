@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	relata "github.com/relatadb/sdk-go/v2/relata"
+	relata "github.com/relatadb/sdk-go/v3/relata"
 )
 
 // Search options, query-builder helpers, identity governance, lookups, media

@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	relata "github.com/relatadb/sdk-go/v2/relata"
+	relata "github.com/relatadb/sdk-go/v3/relata"
 )
 
 // Streaming journey: NDJSON row stream with completion proof, raw Arrow bytes,

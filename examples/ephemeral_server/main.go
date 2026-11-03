@@ -17,7 +17,7 @@ import (
 	"os/exec"
 	"time"
 
-	"github.com/relatadb/sdk-go/v2/relata"
+	"github.com/relatadb/sdk-go/v3/relata"
 )
 
 func freePort() (int, error) {

@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	relata "github.com/relatadb/sdk-go/v2/relata"
+	relata "github.com/relatadb/sdk-go/v3/relata"
 )
 
 // TestRealTypeLifecycle drives type registration, introspection, online alter

@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	relata "github.com/relatadb/sdk-go/v2/relata"
+	relata "github.com/relatadb/sdk-go/v3/relata"
 )
 
 // Entity-resolution journey: publish a rule set, run it over real records,
