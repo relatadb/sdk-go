@@ -39,8 +39,24 @@ type ListAlertsOptions struct {
 	Severity string
 	// SinceNS filters to alerts at/after the given nanosecond cursor.
 	SinceNS int64
-	// Limit caps the response. Defaults to 100.
+	// Limit caps the response page (server maximum 1000). Defaults to 100.
 	Limit int
+	// Cursor continues from a previous page's NextCursor.
+	Cursor string
+	// NewestFirst lists the newest alerts first. The server default is
+	// oldest-first, so a capped page would otherwise hide the newest alerts.
+	NewestFirst bool
+}
+
+// AlertsPage is one page of ListAlertsPage.
+type AlertsPage struct {
+	// Items are the alerts on this page.
+	Items []map[string]any
+	// Total counts all matching alerts before pagination.
+	Total int
+	// NextCursor is empty on the last page; pass it as ListAlertsOptions.Cursor
+	// to continue in the same order.
+	NextCursor string
 }
 
 // UpdateAlertOptions configures the optional fields of UpdateAlert.
@@ -289,10 +305,19 @@ func (g *GovernanceClient) SetWormPolicy(ctx context.Context, objectType string,
 	return resp, nil
 }
 
-// ListAlerts lists alerts, optionally filtered by severity / since-cursor.
+// ListAlerts lists one page of alerts, optionally filtered by severity /
+// since-cursor. Use ListAlertsPage to also receive the pagination cursor.
 func (g *GovernanceClient) ListAlerts(ctx context.Context, opts *ListAlertsOptions) ([]map[string]any, error) {
-	limit := 100
-	params := map[string]string{"limit": fmt.Sprintf("%d", limit)}
+	page, err := g.ListAlertsPage(ctx, opts)
+	if err != nil {
+		return nil, err
+	}
+	return page.Items, nil
+}
+
+// ListAlertsPage lists one page of alerts with its total and NextCursor.
+func (g *GovernanceClient) ListAlertsPage(ctx context.Context, opts *ListAlertsOptions) (*AlertsPage, error) {
+	params := map[string]string{"limit": "100"}
 	if opts != nil {
 		if opts.Limit > 0 {
 			params["limit"] = fmt.Sprintf("%d", opts.Limit)
@@ -303,12 +328,29 @@ func (g *GovernanceClient) ListAlerts(ctx context.Context, opts *ListAlertsOptio
 		if opts.SinceNS > 0 {
 			params["since_ns"] = fmt.Sprintf("%d", opts.SinceNS)
 		}
+		if opts.Cursor != "" {
+			params["cursor"] = opts.Cursor
+		}
+		if opts.NewestFirst {
+			params["order"] = "desc"
+		}
 	}
 	var resp map[string]any
 	if err := g.c.get(ctx, encodeGetURL("/v1/alerts", params), &resp); err != nil {
 		return nil, err
 	}
-	return unwrapList(resp, "alerts"), nil
+	items := unwrapList(resp, "items")
+	if items == nil {
+		items = unwrapList(resp, "alerts")
+	}
+	page := &AlertsPage{Items: items, Total: len(items)}
+	if total, ok := resp["total"].(float64); ok {
+		page.Total = int(total)
+	}
+	if next, ok := resp["nextCursor"].(string); ok {
+		page.NextCursor = next
+	}
+	return page, nil
 }
 
 // UpdateAlert updates an alert (ack, assign, close, add a note).

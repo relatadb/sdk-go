@@ -15,12 +15,12 @@ import (
 	relata "github.com/relatadb/sdk-go/v2/relata"
 )
 
-// The alert list is oldest-first and capped, so a long-lived server needs a since cursor.
+// The alert list is oldest-first by default and capped per page, so ask for the newest first.
 func findAlert(t *testing.T, g *relata.GovernanceClient, ruleID string, sinceNS int64) map[string]any {
 	t.Helper()
 	deadline := time.Now().Add(20 * time.Second)
 	for time.Now().Before(deadline) {
-		al, err := g.ListAlerts(ctxT(t), &relata.ListAlertsOptions{Limit: 200, SinceNS: sinceNS})
+		al, err := g.ListAlerts(ctxT(t), &relata.ListAlertsOptions{Limit: 200, SinceNS: sinceNS, NewestFirst: true})
 		must(t, err, "list alerts")
 		for _, a := range al {
 			if a["rule_id"] == ruleID {
@@ -238,4 +238,62 @@ func keysOf(m map[string]any) []string {
 		out = append(out, k)
 	}
 	return out
+}
+
+// The alert list pages by cursor in either order; newest-first reaches a fresh
+// alert even when the oldest-first page is full of older ones.
+func TestRealAlertsCursorPagination(t *testing.T) {
+	c := realClient(t)
+	g := relata.NewGovernanceClient(c)
+	ctx := ctxT(t)
+	ty := uniq("AlPg")
+	ingestRowsWait(t, c, ty, []map[string]any{{"_pk": "r1", "id": "r1"}})
+	var ids []string
+	for i := 0; i < 5; i++ {
+		r, err := c.SubmitAlert(ctx, relata.AlertSubmitRequest{IdempotencyKey: uniq("alpg"), Purpose: "investigation", AlertType: "paging", Severity: "low", MatchedType: ty, MatchedKey: "id", MatchedRowID: "r1", Context: map[string]any{"i": i}})
+		must(t, err, "submit alert")
+		ids = append(ids, r.AlertID)
+		time.Sleep(10 * time.Millisecond)
+	}
+	mine := func(items []map[string]any) []string {
+		var out []string
+		for _, a := range items {
+			for _, id := range ids {
+				if a["alert_id"] == id {
+					out = append(out, id)
+				}
+			}
+		}
+		return out
+	}
+	for _, newest := range []bool{false, true} {
+		var seen []string
+		cursor := ""
+		for pages := 0; pages < 500; pages++ {
+			page, err := g.ListAlertsPage(ctx, &relata.ListAlertsOptions{Limit: 2, Cursor: cursor, NewestFirst: newest})
+			must(t, err, "list alerts page")
+			if len(page.Items) > 2 {
+				t.Fatalf("page larger than limit: %d", len(page.Items))
+			}
+			seen = append(seen, mine(page.Items)...)
+			if page.NextCursor == "" {
+				break
+			}
+			cursor = page.NextCursor
+		}
+		want := append([]string(nil), ids...)
+		if newest {
+			for i, j := 0, len(want)-1; i < j; i, j = i+1, j-1 {
+				want[i], want[j] = want[j], want[i]
+			}
+		}
+		if strings.Join(seen, ",") != strings.Join(want, ",") {
+			t.Errorf("newest=%v: walked %v, want %v", newest, seen, want)
+		}
+	}
+	top, err := g.ListAlerts(ctx, &relata.ListAlertsOptions{Limit: 1, NewestFirst: true})
+	must(t, err, "newest alert")
+	if len(top) != 1 || top[0]["alert_id"] != ids[len(ids)-1] {
+		t.Errorf("newest-first must surface the latest alert, got %v want %s", top, ids[len(ids)-1])
+	}
 }
