@@ -242,6 +242,13 @@ func (it *BytesIterator) Next() bool {
 	if it.closed || it.err != nil {
 		return false
 	}
+	// Peek so exhaustion (io.EOF) ends the loop instead of spinning forever.
+	if _, err := it.reader.Peek(1); err != nil {
+		if err != io.EOF {
+			it.err = fmt.Errorf("relata: read arrow stream: %w", err)
+		}
+		return false
+	}
 	return true
 }
 
