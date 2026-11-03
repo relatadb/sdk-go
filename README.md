@@ -594,7 +594,7 @@ oc.Upsert(ctx, "AgentTask", "t-1",
 
 For ACL access in strict mode, grant via env var: `RELATA_ACL_GRANT=AgentTask:read+write`.
 
-## Governed Files client — v3.0 candidate, SDK 2.7.1
+## Governed Files client — v3.0 candidate, SDK 3.0.0
 
 For the v3.0 candidate (engine source `57e11676c`), version-aligned SDK source
 `8924d6ce8` builds cleanly and Go tests pass in two packages. The five-lane
