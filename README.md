@@ -460,7 +460,7 @@ Sigma YAML conversion is an optional application workflow, not an SDK method.
 Convert Sigma YAML in OpenETL (the former `relata-connectors import-sigma` was removed),
 or convert externally and submit prepared rule
 JSON with `GovernanceClient.CreateRule`. The v3 SDK no longer sends raw YAML to
-the database listener or MCP `import_sigma` tool.
+the database listener or MCP `import_sigma` tool; `POST /v1/rules/sigma` answers `410 sigma-import-removed`. What a native rule can express is in the [Sigma target contract](../../docs/src/openetl-handoff/sigma-target-contract.md).
 
 ### Streaming iterators
 
