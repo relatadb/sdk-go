@@ -1,6 +1,8 @@
 package tests
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -102,32 +104,26 @@ func TestRealIdentityGovernance(t *testing.T) {
 	ctx := ctxT(t)
 	id := relata.NewIdentityClient(c)
 	who := strings.ToLower(uniq("ig")) + "@example.com"
-	// KNOWN CONTRACT DRIFT (all three SDKs): Label posts {identity,label,confidence}
-	// but POST /v1/identity/label requires {left,right,is_match}. The call is a
-	// typed 422, never a silent success.
-	_, err := id.Label(ctx, who, "vip", &relata.LabelOptions{Confidence: 0.9, SourceID: "analyst-1"})
-	wantProblem(t, err, 422, "")
-	if r, err := id.RecordUncertainty(ctx, who, "two people share this mailbox", &relata.RecordUncertaintyOptions{SuggestedAlternatives: []string{"a@example.com", "b@example.com"}}); err != nil {
+	// POST /v1/identity/label takes a pair judgement {left,right,is_match}.
+	lab, err := id.Label(ctx, who, "alt-"+who, true)
+	must(t, err, "label match")
+	if len(lab) == 0 {
+		t.Errorf("label must return the server's receipt")
+	}
+	_, err = id.Label(ctx, who, "other-"+who, false)
+	must(t, err, "label non-match")
+	if r, err := id.RecordUncertainty(ctx, who, "two people share this mailbox", &relata.RecordUncertaintyOptions{SuggestedAlternatives: []string{"a@example.com", "b@example.com"}, Candidates: []string{who + "|alt-" + who}, K: 1}); err != nil {
 		t.Errorf("uncertainty: %v", err)
 	} else {
 		t.Logf("uncertainty: %v", r)
 	}
-	// KNOWN CONTRACT DRIFT (all three SDKs): RegisterLookup posts JSON with
-	// inline csv_data but the route takes a raw `REGISTER LOOKUP ... FROM
-	// '<server path>'` statement. Typed 400, never a silent success.
-	name := uniq("tbl")
-	csv := "code,country,risk\nPK,Pakistan,medium\n"
-	_, err = id.RegisterLookup(ctx, name, csv, "code", &relata.RegisterLookupOptions{ValueColumns: []string{"country", "risk"}})
-	wantProblem(t, err, 400, "")
 	ls, err := id.ListLookups(ctx)
 	must(t, err, "list lookups")
-	if strings.Contains(str(ls), name) {
-		t.Errorf("a refused registration must not be listed: %v", ls)
+	if ls == nil {
+		t.Errorf("list lookups must return a (possibly empty) slice")
 	}
-	got, err := id.InvokeLookup(ctx, name, "PK")
-	if err == nil && strings.Contains(str(got), "Pakistan") {
-		t.Errorf("an unregistered lookup must not return data: %v", got)
-	}
+	_, err = id.InvokeLookup(ctx, "no_such_table_"+uniq("t"), "PK")
+	wantProblem(t, err, 404, "")
 	// Erasure without CERTIFY is refused with a typed 400, not executed.
 	_, err = id.EraseSubject(ctx, who, "gdpr", "investigation", &relata.EraseSubjectOptions{Certify: false, CertifySet: true})
 	wantProblem(t, err, 400, "")
@@ -191,4 +187,41 @@ func TestRealFeedBrokerUnreachable(t *testing.T) {
 	if err := fb.Close(); err != nil {
 		t.Errorf("close: %v", err)
 	}
+}
+
+// RegisterLookup sends the REGISTER LOOKUP statement for a CSV that already
+// exists under the server's <data dir>/lookups; InvokeLookup reads a row back.
+// Needs RELATA_LOOKUP_DIR (that directory) -- skipped otherwise.
+func TestRealLookupRegisterAndInvoke(t *testing.T) {
+	dir := os.Getenv("RELATA_LOOKUP_DIR")
+	if dir == "" {
+		t.Skip("RELATA_LOOKUP_DIR (the server's <data dir>/lookups) is not set")
+	}
+	c := realClient(t)
+	ctx := ctxT(t)
+	id := relata.NewIdentityClient(c)
+	name := strings.ToLower(uniq("tbl"))
+	must(t, os.MkdirAll(dir, 0o755), "mkdir lookups")
+	file := filepath.Join(dir, name+".csv")
+	must(t, os.WriteFile(file, []byte("code,country,risk\nPK,Pakistan,medium\nIN,India,low\n"), 0o600), "write csv")
+	reg, err := id.RegisterLookup(ctx, name, file, "code", &relata.RegisterLookupOptions{ValueColumns: []string{"country", "risk"}})
+	must(t, err, "register lookup")
+	if reg["registered"] != name || reg["rows"] != float64(2) {
+		t.Fatalf("register = %v", reg)
+	}
+	ls, err := id.ListLookups(ctx)
+	must(t, err, "list lookups")
+	if !strings.Contains(str(ls), name) {
+		t.Errorf("registered table must be listed: %v", ls)
+	}
+	got, err := id.InvokeLookup(ctx, name, "PK")
+	must(t, err, "invoke lookup")
+	row, _ := got["row"].(map[string]any)
+	if row["country"] != "Pakistan" || row["risk"] != "medium" {
+		t.Errorf("invoke must return the PK row, got %v", got)
+	}
+	_, err = id.InvokeLookup(ctx, name, "ZZ")
+	wantProblem(t, err, 404, "")
+	_, err = id.RegisterLookup(ctx, name+"x", "/etc/hosts", "code", nil)
+	wantProblem(t, err, 403, "")
 }

@@ -6,9 +6,10 @@
 // into a human-readable label without denormalising it into every row.
 //
 // Flow:
-//  1. RegisterLookup   — upload name + CSV (keyColumn + valueColumns)
+//  1. RegisterLookup   — register a CSV that already exists ON THE SERVER under
+//     <data dir>/lookups (keyColumn + valueColumns)
 //  2. ListLookups      — confirm it landed
-//  3. InvokeLookup     — read back one value by key
+//  3. InvokeLookup     — read back one row by key (GET /v1/lookup/{name}/{key})
 //
 // Usage:
 //
@@ -25,16 +26,13 @@ import (
 	"github.com/relatadb/sdk-go/v2/relata"
 )
 
-const countryCSV = `alpha2,alpha3,name
-PK,PAK,Pakistan
-IN,IND,India
-AE,ARE,United Arab Emirates
-SA,SAU,Saudi Arabia
-`
+// The CSV must already exist on the server, under <data dir>/lookups.
+const defaultLookupPath = "/var/lib/relata/lookups/country_alpha3.csv"
 
 func main() {
 	url := flag.String("url", "http://localhost:9090", "Relata server base URL")
 	token := flag.String("token", "", "Bearer token (optional)")
+	lookupPath := flag.String("lookup-path", defaultLookupPath, "server-side CSV path under <data dir>/lookups")
 	flag.Parse()
 
 	client := relata.New(*url, &relata.ClientOptions{
@@ -49,7 +47,7 @@ func main() {
 
 	// ── 1. Register the country_alpha3 lookup ─────────────────────────────
 	fmt.Println("=== 1. RegisterLookup: country_alpha3 ===")
-	registered, err := identity.RegisterLookup(ctx, "country_alpha3", countryCSV, "alpha2",
+	registered, err := identity.RegisterLookup(ctx, "country_alpha3", *lookupPath, "alpha2",
 		&relata.RegisterLookupOptions{ValueColumns: []string{"alpha3", "name"}})
 	if err != nil {
 		fmt.Printf("  error: %v\n", err)
@@ -68,7 +66,7 @@ func main() {
 		if i >= 10 {
 			break
 		}
-		fmt.Printf("    - %v (size=%v)\n", l["name"], l["size"])
+		fmt.Printf("    - %v\n", l["name"])
 	}
 
 	// ── 3. Invoke a lookup by key ─────────────────────────────────────────

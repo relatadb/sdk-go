@@ -3,7 +3,10 @@ package relata
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"regexp"
+	"strconv"
+	"strings"
 )
 
 // IdentityClient is the synchronous identity + lookup client. It wraps identity
@@ -20,18 +23,16 @@ func NewIdentityClient(c *Client) *IdentityClient {
 	return &IdentityClient{c: c}
 }
 
-// LabelOptions configures IdentityClient.Label.
-type LabelOptions struct {
-	// Confidence clamps to [0, 1]; defaults to 1.0.
-	Confidence float64
-	// SourceID attaches a provenance source.
-	SourceID string
-}
-
 // RecordUncertaintyOptions configures IdentityClient.RecordUncertainty.
 type RecordUncertaintyOptions struct {
 	// SuggestedAlternatives lists alternate identity candidates for human review.
 	SuggestedAlternatives []string
+	// Candidates are "left|right" pairs the server ranks by uncertainty
+	// (max 500). Empty means an empty sample.
+	Candidates []string
+	// K caps how many of the most uncertain candidates are returned. Zero
+	// leaves the server default.
+	K int
 }
 
 // RegisterLookupOptions configures IdentityClient.RegisterLookup.
@@ -52,22 +53,12 @@ type EraseSubjectOptions struct {
 	CertifySet bool
 }
 
-// Label assigns a canonical label to an identity.
-func (i *IdentityClient) Label(ctx context.Context, identity, label string, opts *LabelOptions) (map[string]any, error) {
-	confidence := 1.0
-	payload := map[string]any{
-		"identity":   identity,
-		"label":      label,
-		"confidence": confidence,
-	}
-	if opts != nil {
-		if opts.Confidence != 0 {
-			payload["confidence"] = opts.Confidence
-		}
-		if opts.SourceID != "" {
-			payload["source_id"] = opts.SourceID
-		}
-	}
+// Label records a human label on a candidate identity pair: isMatch says
+// whether left and right refer to the same entity. The server takes one
+// learning step on the caller's tenant resolver weights and persists the
+// history. Wraps POST /v1/identity/label with {left, right, is_match}.
+func (i *IdentityClient) Label(ctx context.Context, left, right string, isMatch bool) (map[string]any, error) {
+	payload := map[string]any{"left": left, "right": right, "is_match": isMatch}
 	var resp map[string]any
 	if err := i.c.postJSON(ctx, "/v1/identity/label", payload, &resp); err != nil {
 		return nil, err
@@ -95,6 +86,12 @@ func (i *IdentityClient) RecordUncertainty(ctx context.Context, identity, reason
 		}
 		params["suggested_alternatives"] = joined
 	}
+	if opts != nil && len(opts.Candidates) > 0 {
+		params["candidates"] = strings.Join(opts.Candidates, ",")
+	}
+	if opts != nil && opts.K > 0 {
+		params["k"] = strconv.Itoa(opts.K)
+	}
 	var resp map[string]any
 	if err := i.c.get(ctx, encodeGetURL("/v1/identity/uncertainty", params), &resp); err != nil {
 		return nil, err
@@ -102,37 +99,63 @@ func (i *IdentityClient) RecordUncertainty(ctx context.Context, identity, reason
 	return resp, nil
 }
 
-// RegisterLookup registers a lookup table (CSV). Matches Splunk's `lookup`
-// semantics.
-func (i *IdentityClient) RegisterLookup(ctx context.Context, name, csvData, keyColumn string, opts *RegisterLookupOptions) (map[string]any, error) {
-	payload := map[string]any{
-		"name":       name,
-		"csv_data":   csvData,
-		"key_column": keyColumn,
+var lookupIdent = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
+
+// RegisterLookup registers a lookup table from a CSV file that already exists
+// ON THE SERVER, under <data dir>/lookups (files elsewhere, or over 16 MiB,
+// are refused). It wraps POST /v1/lookup/register with a text/plain
+// "REGISTER LOOKUP <name> FROM '<path>' KEY (<col>) FIELDS (<cols>)"
+// statement -- the only body the server accepts; it cannot receive CSV text.
+// Returns {registered, rows}.
+func (i *IdentityClient) RegisterLookup(ctx context.Context, name, serverPath, keyColumn string, opts *RegisterLookupOptions) (map[string]any, error) {
+	cols := []string{keyColumn}
+	var values []string
+	if opts != nil {
+		values = opts.ValueColumns
+		cols = append(cols, values...)
 	}
-	if opts != nil && len(opts.ValueColumns) > 0 {
-		payload["value_columns"] = opts.ValueColumns
+	ok := lookupIdent.MatchString(name)
+	for _, c := range cols {
+		ok = ok && lookupIdent.MatchString(c)
+	}
+	if !ok {
+		return nil, fmt.Errorf("relata: RegisterLookup: name and column names must be identifiers ([A-Za-z_][A-Za-z0-9_]*)")
+	}
+	if serverPath == "" || strings.ContainsAny(serverPath, "'\r\n") {
+		return nil, fmt.Errorf("relata: RegisterLookup: serverPath must be a non-empty path without quotes or newlines")
+	}
+	stmt := fmt.Sprintf("REGISTER LOOKUP %s FROM '%s' KEY (%s)", name, serverPath, keyColumn)
+	if len(values) > 0 {
+		stmt += fmt.Sprintf(" FIELDS (%s)", strings.Join(values, ", "))
 	}
 	var resp map[string]any
-	if err := i.c.postJSON(ctx, "/v1/lookup/register", payload, &resp); err != nil {
+	if err := i.c.doRequest(ctx, http.MethodPost, "/v1/lookup/register", []byte(stmt), "text/plain", &resp); err != nil {
 		return nil, err
 	}
 	return resp, nil
 }
 
-// ListLookups lists registered lookup tables.
+// ListLookups lists registered lookup tables as [{"name": ...}] (the route
+// returns {"lookup_tables": [names]}).
 func (i *IdentityClient) ListLookups(ctx context.Context) ([]map[string]any, error) {
 	var resp map[string]any
 	if err := i.c.get(ctx, "/v1/lookup", &resp); err != nil {
 		return nil, err
 	}
-	return unwrapList(resp, "lookups"), nil
+	names, _ := resp["lookup_tables"].([]any)
+	out := make([]map[string]any, 0, len(names))
+	for _, n := range names {
+		out = append(out, map[string]any{"name": n})
+	}
+	return out, nil
 }
 
-// InvokeLookup invokes a registered lookup. Returns the row(s) matching key.
+// InvokeLookup fetches the enrichment row for key in lookup table name.
+// Wraps GET /v1/lookup/{name}/{key}; returns {name, key, row} and a not-found
+// error when the table or key is absent.
 func (i *IdentityClient) InvokeLookup(ctx context.Context, name, key string) (map[string]any, error) {
 	var resp map[string]any
-	if err := i.c.get(ctx, encodeGetURL("/v1/lookup", map[string]string{"name": name, "key": key}), &resp); err != nil {
+	if err := i.c.get(ctx, "/v1/lookup/"+pathSegment(name)+"/"+pathSegment(key), &resp); err != nil {
 		return nil, err
 	}
 	return resp, nil
