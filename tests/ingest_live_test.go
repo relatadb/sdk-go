@@ -14,10 +14,12 @@ package tests
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -174,6 +176,56 @@ func TestIngestContractLive(t *testing.T) {
 	first, _ := items[0].(map[string]any)
 	if len(items) != 1 || first["source_offset"] != "seg:1" || first["reason"] != "above_max:temp" {
 		t.Fatalf("quarantine must name the offset and reason: %v", q)
+	}
+
+	// 7b. schema evolution: additive version accepted, breaking version refused,
+	// a later batch with a new field is accepted (schemaless type)
+	if out, err := control.PutContract(ctx, dataset, map[string]any{
+		"version": 2, "object_type": cty,
+		"fields": []map[string]any{
+			{"name": "id", "type": "string", "required": true},
+			{"name": "temp", "type": "number", "min": -50, "max": 150, "required": true},
+			{"name": "unit", "type": "string"},
+		},
+	}); err != nil || fmt.Sprint(out["status"]) != "created" {
+		t.Fatalf("an additive optional field must be backward compatible: %v %v", out, err)
+	}
+	if _, err := control.PutContract(ctx, dataset, map[string]any{
+		"version": 3, "object_type": cty,
+		"fields": []map[string]any{
+			{"name": "id", "type": "string", "required": true},
+			{"name": "temp", "type": "string", "required": true},
+		},
+	}); !errors.Is(err, relata.ErrConflict) {
+		t.Fatalf("a field type change must be refused as breaking (409): %v", err)
+	}
+	evo, err := ingest.Bulk(ctx, ty, []map[string]any{{"_pk": "evo", "qty": 1, "added_later": "new-field"}}, &relata.BulkOptions{OnConflict: "upsert", Durability: "sync"})
+	gotEvo := ingestRows(t, client, "SELECT _pk, added_later FROM "+ty+" WHERE _pk = 'evo'")
+	if err != nil || fmt.Sprint(evo["inserted"]) != "1" || len(gotEvo) != 1 || gotEvo[0]["added_later"] != "new-field" {
+		t.Fatalf("a new field in a later batch must be stored: %v %v %v", evo, gotEvo, err)
+	}
+
+	// 7c. delete by predicate (parity with Python delete_where / TypeScript deleteWhere)
+	objects := relata.NewObjectClient(client)
+	if _, err := objects.DeleteWhere(ctx, ty, "  "); err == nil {
+		t.Fatal("a blank predicate must be refused client-side")
+	}
+	gone, err := objects.DeleteWhere(ctx, ty, "qty >= 30")
+	left := ingestRows(t, client, "SELECT _pk FROM "+ty)
+	keys := []string{}
+	for _, r := range left {
+		keys = append(keys, fmt.Sprint(r["_pk"]))
+	}
+	sort.Strings(keys)
+	if err != nil || fmt.Sprint(gone["deleted"]) != "1" || !reflect.DeepEqual(keys, []string{"a", "evo"}) {
+		t.Fatalf("DeleteWhere must tombstone exactly the matching rows: %v %v %v", gone, keys, err)
+	}
+	if _, err := objects.Delete(ctx, ty, "a", nil); err != nil {
+		t.Fatalf("delete by key: %v", err)
+	}
+	left = ingestRows(t, client, "SELECT _pk FROM "+ty)
+	if len(left) != 1 || fmt.Sprint(left[0]["_pk"]) != "evo" {
+		t.Fatalf("delete by key must remove one row: %v", left)
 	}
 
 	// 8. prepared documents, two independent providers, read back in order
