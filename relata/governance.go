@@ -276,30 +276,45 @@ func (g *GovernanceClient) LiftLegalHold(ctx context.Context, caseID string) (ma
 	return resp, nil
 }
 
-// ListWormPolicies lists WORM (write-once-read-many) retention policies. The
-// server answers {"worm_types": [<object type>...]}; each type is returned as
-// {"object_type": name}. A "policies" array of objects is passed through.
+// ListWormPolicies lists the object types under WORM (write-once-read-many),
+// one entry per type sorted by object_type:
+// {"object_type", "worm": true, "retention": "indefinite", "retention_secs": nil}
+// (#6045). A server that only sends "worm_types" (type names) is still read;
+// each name becomes {"object_type": name, "worm": true}.
 func (g *GovernanceClient) ListWormPolicies(ctx context.Context) ([]map[string]any, error) {
 	var resp map[string]any
 	if err := g.c.get(ctx, "/v1/retention/worm", &resp); err != nil {
 		return nil, err
 	}
-	out := unwrapList(resp, "policies")
+	if _, ok := resp["policies"].([]any); ok {
+		return unwrapList(resp, "policies"), nil
+	}
+	out := []map[string]any{}
 	if types, ok := resp["worm_types"].([]any); ok {
 		for _, t := range types {
 			if name, ok := t.(string); ok {
-				out = append(out, map[string]any{"object_type": name})
+				out = append(out, map[string]any{"object_type": name, "worm": true})
 			}
 		}
 	}
 	return out, nil
 }
 
-// SetWormPolicy sets WORM retention for an object type. Rows cannot be mutated
-// or purged until retentionSecs elapses from their system_from.
-func (g *GovernanceClient) SetWormPolicy(ctx context.Context, objectType string, retentionSecs int) (map[string]any, error) {
+// SetWormPolicy puts objectType under WORM. The lock is indefinite: rows of the
+// type cannot be mutated or purged, and the server stores no finite retention
+// ("retention_secs" in the reply is always nil) (#6045).
+//
+// retentionSecs is optional and only recorded as a request: a fresh type echoes
+// it as "requested_retention_secs". A finite value on a type already under WORM
+// is refused with 409 worm-retention-cannot-shorten (ErrConflict); call with no
+// retentionSecs to re-assert the lock. Only the first value is used.
+func (g *GovernanceClient) SetWormPolicy(ctx context.Context, objectType string, retentionSecs ...int) (map[string]any, error) {
+	body := map[string]any{}
+	if len(retentionSecs) > 0 {
+		body["retention_secs"] = retentionSecs[0]
+	}
 	var resp map[string]any
-	if err := g.c.postJSON(ctx, "/v1/retention/worm/"+pathSegment(objectType), map[string]any{"retention_secs": retentionSecs}, &resp); err != nil {
+	if err := g.c.postJSON(ctx, "/v1/retention/worm/"+pathSegment(objectType), body, &resp); err != nil {
 		return nil, err
 	}
 	return resp, nil
