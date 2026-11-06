@@ -52,12 +52,22 @@ func (a *AppPrimitivesClient) Enqueue(ctx context.Context, queue string, payload
 	return resp, err
 }
 
-// Claim leases up to max ready jobs (leaseMs / max <= 0 use server defaults).
+// DefaultLeaseMs is the lease Claim and Renew send when leaseMs <= 0; the
+// server rejects either call without one.
+const DefaultLeaseMs int64 = 30000
+
+func leaseOrDefault(leaseMs int64) int64 {
+	if leaseMs > 0 {
+		return leaseMs
+	}
+	return DefaultLeaseMs
+}
+
+// Claim leases up to max ready jobs (leaseMs <= 0 sends DefaultLeaseMs; max <= 0
+// uses the server default of 1).
 func (a *AppPrimitivesClient) Claim(ctx context.Context, queue, workerID string, leaseMs int64, max int) ([]any, error) {
 	body := map[string]any{"workerId": workerID}
-	if leaseMs > 0 {
-		body["leaseMs"] = leaseMs
-	}
+	body["leaseMs"] = leaseOrDefault(leaseMs)
 	if max > 0 {
 		body["max"] = max
 	}
@@ -72,9 +82,7 @@ func (a *AppPrimitivesClient) Claim(ctx context.Context, queue, workerID string,
 // Renew extends a held lease.
 func (a *AppPrimitivesClient) Renew(ctx context.Context, jobID string, fencingToken, leaseMs int64) (map[string]any, error) {
 	body := map[string]any{"fencingToken": fencingToken}
-	if leaseMs > 0 {
-		body["leaseMs"] = leaseMs
-	}
+	body["leaseMs"] = leaseOrDefault(leaseMs)
 	var resp map[string]any
 	err := a.c.postJSON(ctx, "/v1/jobs/"+pathSegment(jobID)+"/renew", body, &resp)
 	return resp, err
