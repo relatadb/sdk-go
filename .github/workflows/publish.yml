@@ -1,9 +1,21 @@
 name: Tag & index on pkg.go.dev
 
+# Two release channels (sdks/README-v3-migration.md, "Release channels"):
+#   main -> 2.x line (module path /v2). Push or dispatch tags the canonical version.
+#   v3   -> 3.x line (module path /v3). Dispatch ONLY; tags the canonical 3.x
+#           version, or the `tag` input (e.g. v3.0.0-rc.1) for a pre-release.
+# The /v3 module path keeps 2.x importers on /v2 whatever is tagged here.
+# A push to `v3` (the mirror) tags nothing: only `main` is a push trigger.
+
 on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      tag:
+        description: "v3 branch only, optional: exact tag to create, e.g. v3.0.0-rc.1 (default: canonical version)"
+        required: false
+        default: ""
 
 concurrency:
   group: publish-go
@@ -29,6 +41,8 @@ jobs:
         run: go build ./...
 
       - name: Tag new version
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
         run: |
           # Tag the CANONICAL version from relata/version.go (kept in lockstep
           # with Cargo.toml's [workspace.package].version by
@@ -44,6 +58,20 @@ jobs:
             echo "cannot read 'const Version' from relata/version.go" >&2
             exit 1
           fi
+          case "$GITHUB_REF_NAME" in
+            main) ;;
+            v3)
+              [ -n "$INPUT_TAG" ] && NEW="$INPUT_TAG"
+              if ! printf '%s' "$NEW" | grep -Eq '^v3\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$'; then
+                echo "::error::The v3 channel only tags v3.x versions (got '$NEW')."
+                exit 1
+              fi
+              ;;
+            *)
+              echo "::error::Tagging runs only from main (2.x) or v3 (3.x), not '$GITHUB_REF_NAME'."
+              exit 1
+              ;;
+          esac
 
           # Skip if tag already exists
           if git rev-parse "$NEW" >/dev/null 2>&1; then
