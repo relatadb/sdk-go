@@ -53,7 +53,10 @@ type QueryRequest struct {
 
 	// QueryVectorModel is the model tag QueryVector was produced with. A tag
 	// matching none of the type's indexed models is HTTP 409
-	// query-embedding-model-mismatch.
+	// query-embedding-model-mismatch. After a vector cutover the query is
+	// served from this model's own index, or refused with HTTP 409
+	// REL_VECTOR_MODEL_UNAVAILABLE once that index is retired; omit it to use
+	// the active model.
 	QueryVectorModel string `json:"query_vector_model,omitempty"`
 }
 
