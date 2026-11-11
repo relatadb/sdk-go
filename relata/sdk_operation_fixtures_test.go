@@ -187,7 +187,7 @@ func dispatchOp(t *testing.T, srv *httptest.Server, c opCase) (any, error) {
 }
 
 func TestSDKOperationSharedFixtures(t *testing.T) {
-	raw, err := os.ReadFile(filepath.Join("..", "..", "shared", "sdk-operation-fixtures.json"))
+	raw, err := os.ReadFile(filepath.Join("testdata", "sdk-operation-fixtures.json"))
 	if err != nil {
 		t.Fatalf("read shared fixtures: %v", err)
 	}

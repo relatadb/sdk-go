@@ -56,7 +56,7 @@ func extensionKeys(m map[string]json.RawMessage) []string {
 }
 
 func TestTaskReceiptSharedFixtures(t *testing.T) {
-	raw, err := os.ReadFile(filepath.Join("..", "..", "shared", "task-receipt-fixtures.json"))
+	raw, err := os.ReadFile(filepath.Join("testdata", "task-receipt-fixtures.json"))
 	if err != nil {
 		t.Fatalf("read shared fixtures: %v", err)
 	}

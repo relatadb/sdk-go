@@ -43,7 +43,7 @@ type problemFixtureFile struct {
 
 func loadProblemFixtures(t *testing.T) problemFixtureFile {
 	t.Helper()
-	raw, err := os.ReadFile(filepath.Join("..", "..", "shared", "problem-details-fixtures.json"))
+	raw, err := os.ReadFile(filepath.Join("testdata", "problem-details-fixtures.json"))
 	if err != nil {
 		t.Fatalf("read shared fixtures: %v", err)
 	}

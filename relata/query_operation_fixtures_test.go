@@ -45,7 +45,7 @@ type queryOpCase struct {
 }
 
 func TestQueryOperationSharedFixtures(t *testing.T) {
-	raw, err := os.ReadFile(filepath.Join("..", "..", "shared", "query-operation-fixtures.json"))
+	raw, err := os.ReadFile(filepath.Join("testdata", "query-operation-fixtures.json"))
 	if err != nil {
 		t.Fatalf("read shared fixtures: %v", err)
 	}

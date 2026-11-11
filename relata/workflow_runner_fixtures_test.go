@@ -60,7 +60,7 @@ type wrFixtures struct {
 
 func loadWorkflowRunnerFixtures(t *testing.T) wrFixtures {
 	t.Helper()
-	raw, err := os.ReadFile(filepath.Join("..", "..", "shared", "workflow-runner-fixtures.json"))
+	raw, err := os.ReadFile(filepath.Join("testdata", "workflow-runner-fixtures.json"))
 	if err != nil {
 		t.Fatalf("read fixtures: %v", err)
 	}
