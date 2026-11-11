@@ -2,8 +2,9 @@ name: Tag & index on pkg.go.dev
 
 # Two release channels (sdks/README-v3-migration.md, "Release channels"):
 #   main -> 2.x line (module path /v2). Push or dispatch tags the canonical version.
-#   v3   -> 3.x line (module path /v3). Dispatch ONLY; tags the canonical 3.x
-#           version, or the `tag` input (e.g. v3.0.0-rc.1) for a pre-release.
+#   v3   -> 3.x line (module path /v3). Dispatch ONLY; tags the `tag` input
+#           (e.g. v3.0.0-rc.1). A final v3.x tag (the canonical version or an
+#           explicit final tag) needs `allow_final`, since proxy tags are permanent.
 # The /v3 module path keeps 2.x importers on /v2 whatever is tagged here.
 # A push to `v3` (the mirror) tags nothing: only `main` is a push trigger.
 
@@ -16,6 +17,11 @@ on:
         description: "v3 branch only, optional: exact tag to create, e.g. v3.0.0-rc.1 (default: canonical version)"
         required: false
         default: ""
+      allow_final:
+        description: "v3 branch only: allow a final (non pre-release) v3.x tag; Go proxy tags are permanent, so set this only at 3.0 GA"
+        type: boolean
+        required: false
+        default: false
 
 concurrency:
   group: publish-go
@@ -43,6 +49,7 @@ jobs:
       - name: Tag new version
         env:
           INPUT_TAG: ${{ inputs.tag }}
+          ALLOW_FINAL: ${{ inputs.allow_final }}
         run: |
           # Tag the CANONICAL version from relata/version.go (kept in lockstep
           # with Cargo.toml's [workspace.package].version by
@@ -64,6 +71,12 @@ jobs:
               [ -n "$INPUT_TAG" ] && NEW="$INPUT_TAG"
               if ! printf '%s' "$NEW" | grep -Eq '^v3\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$'; then
                 echo "::error::The v3 channel only tags v3.x versions (got '$NEW')."
+                exit 1
+              fi
+              # The canonical version.go is a final 3.x, so a dispatch without a
+              # `tag` input would cut a permanent final tag before GA (#6039).
+              if ! printf '%s' "$NEW" | grep -Eq -- '-[0-9A-Za-z.]+$' && [ "$ALLOW_FINAL" != "true" ]; then
+                echo "::error::'$NEW' is a final tag and Go proxy tags are permanent. Pass a pre-release 'tag' input (e.g. v3.0.0-rc.1), or set allow_final at 3.0 GA."
                 exit 1
               fi
               ;;
