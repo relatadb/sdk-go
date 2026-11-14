@@ -1196,6 +1196,17 @@ func (c *Client) doRequestWithHeaders(ctx context.Context, method, path string, 
 	if maxAttempts > defaultRetryMaxAttempts {
 		maxAttempts = defaultRetryMaxAttempts
 	}
+	// #5689 D06: a bulk ingest gets one Idempotency-Key reused by every
+	// attempt, which makes re-sending it safe.
+	keyedBulk := isBulkIngest(method, path)
+	if keyedBulk {
+		keyed, err := withBulkIngestIdempotencyKey(extraHeaders)
+		if err != nil {
+			return err
+		}
+		extraHeaders = keyed
+	}
+	retrySafe := isIdempotent(method) || keyedBulk
 
 	var lastErr error
 	for attempt := 0; attempt <= maxAttempts; attempt++ {
@@ -1222,7 +1233,7 @@ func (c *Client) doRequestWithHeaders(ctx context.Context, method, path string, 
 			// Network error or timeout. Retry if attempts remain, the
 			// context is still live, AND the method is idempotent.
 			lastErr = c.classifyTransportError(ctx, err)
-			if attempt < maxAttempts && isRetryableTransport(ctx, err) && isIdempotent(method) {
+			if attempt < maxAttempts && isRetryableTransport(ctx, err) && retrySafe {
 				c.sleepBackoff(ctx, attempt)
 				continue
 			}
@@ -1236,7 +1247,7 @@ func (c *Client) doRequestWithHeaders(ctx context.Context, method, path string, 
 				return readErr
 			}
 			lastErr = fmt.Errorf("relata: read body: %w", readErr)
-			if attempt < maxAttempts && isIdempotent(method) {
+			if attempt < maxAttempts && retrySafe {
 				c.sleepBackoff(ctx, attempt)
 				continue
 			}
@@ -1257,12 +1268,13 @@ func (c *Client) doRequestWithHeaders(ctx context.Context, method, path string, 
 			return nil
 		}
 
-		// Error status. Retry 502/503/504 if attempts remain AND method is idempotent.
+		// Error status. Retry 502/503/504 if attempts remain AND method is idempotent
+		// (a keyed bulk ingest: 502/504 only, see retryableStatusFor).
 		rid := resp.Header.Get(headerRequestID)
 		retryAfter := parseRetryAfter(resp.Header.Get(headerRetryAfter))
 		rerr := errorFromStatus(resp.StatusCode, respBody, rid, retryAfter, path, resp.Header.Get(headerContentType))
 		rerr.RateLimitLimit, rerr.RateLimitRemaining, rerr.RateLimitReset = readRateLimitHeaders(resp.Header)
-		if isRetryableStatus(resp.StatusCode) && attempt < maxAttempts && isIdempotent(method) {
+		if retryableStatusFor(method, resp.StatusCode, keyedBulk) && attempt < maxAttempts {
 			lastErr = rerr
 			c.sleepBackoffWithJitter(ctx, attempt, retryAfter)
 			continue

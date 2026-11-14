@@ -48,6 +48,9 @@ type BulkOptions struct {
 	// IdempotencyKey sets the Idempotency-Key header (#5689): a retry with the
 	// same key and rows replays the recorded response without a second write; a
 	// different body is 409 idempotency-conflict. Routes the call to /v1/ingest/bulk.
+	// When empty, every /v1/ingest/bulk request gets an automatic key that the
+	// client's retries (MaxRetries) reuse; set your own to retry exactly-once
+	// across separate calls.
 	IdempotencyKey string
 	// Durability "sync" sends X-Relata-Durability: sync (WAL fsynced before the
 	// response).
@@ -557,18 +560,19 @@ func (i *IngestClient) postBulkTyped(ctx context.Context, objectType string, row
 	if err != nil {
 		return nil, fmt.Errorf("relata: encode bulk body: %w", err)
 	}
-	status, data, respHeaders, err := i.c.rawHTTPRequest(ctx, "POST", "/v1/ingest/bulk", encoded, "application/json", i.detectHeader(opts))
+	// The shared transport adds an automatic Idempotency-Key when none is set
+	// and reuses it on retry (#5689 D06).
+	var raw rawHTTPResponse
+	err = i.c.doRequestWithHeaders(ctx, http.MethodPost, bulkIngestPath, encoded,
+		defaultContentType, &raw, i.detectHeader(opts))
 	if err != nil {
 		return nil, err
 	}
-	if status < 200 || status >= 300 {
-		return nil, rawErrorFromStatus(status, data, respHeaders)
-	}
 	var resp map[string]any
-	if len(data) == 0 {
+	if len(raw.Body) == 0 {
 		return resp, nil
 	}
-	if err := json.Unmarshal(data, &resp); err != nil {
+	if err := json.Unmarshal(raw.Body, &resp); err != nil {
 		return nil, fmt.Errorf("relata: decode response: %w", err)
 	}
 	return resp, nil
