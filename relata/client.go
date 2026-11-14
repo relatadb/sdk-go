@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"net"
 	"net/http"
 	"net/url"
@@ -55,6 +56,8 @@ type Client struct {
 	http           *http.Client
 	maxRetries     int
 	retryBackoff   time.Duration
+	// pauseRetryBudget bounds maintenance-pause resends per call (#6302).
+	pauseRetryBudget time.Duration
 	// allowCleartextBearer opts in to sending the bearer over a plaintext
 	// http:// transport to a non-loopback host (#3217). Default false: such
 	// requests fail closed with ErrCleartextBearerDisallowed.
@@ -91,6 +94,7 @@ func New(baseURL string, opts *ClientOptions) *Client {
 	c := &Client{
 		baseURL:          baseURL,
 		retryBackoff:     defaultRetryBackoff,
+		pauseRetryBudget: defaultPauseRetryBudget,
 		maxResponseBytes: defaultMaxResponseBytes,
 	}
 	if opts == nil {
@@ -112,6 +116,9 @@ func New(baseURL string, opts *ClientOptions) *Client {
 	}
 	if opts.RetryBackoff > 0 {
 		c.retryBackoff = opts.RetryBackoff
+	}
+	if opts.PauseRetryBudget != 0 {
+		c.pauseRetryBudget = opts.PauseRetryBudget // negative disables
 	}
 	if len(opts.Headers) > 0 {
 		c.headers = make(map[string]string, len(opts.Headers))
@@ -1209,6 +1216,7 @@ func (c *Client) doRequestWithHeaders(ctx context.Context, method, path string, 
 	retrySafe := isIdempotent(method) || keyedBulk
 
 	var lastErr error
+	var pauseWaited time.Duration
 	for attempt := 0; attempt <= maxAttempts; attempt++ {
 		// Rewindable body reader per attempt.
 		var bodyReader io.Reader
@@ -1274,6 +1282,22 @@ func (c *Client) doRequestWithHeaders(ctx context.Context, method, path string, 
 		retryAfter := parseRetryAfter(resp.Header.Get(headerRetryAfter))
 		rerr := errorFromStatus(resp.StatusCode, respBody, rid, retryAfter, path, resp.Header.Get(headerContentType))
 		rerr.RateLimitLimit, rerr.RateLimitRemaining, rerr.RateLimitReset = readRateLimitHeaders(resp.Header)
+		// #6302: a maintenance-pause 503 is resent for every method after its
+		// Retry-After, within the budget; it is not one of the MaxRetries attempts.
+		if delay, ok := maintenancePauseDelay(resp.StatusCode, retryAfter, respBody); ok && pauseWaited < c.pauseRetryBudget {
+			wait := delay
+			if left := c.pauseRetryBudget - pauseWaited; wait > left {
+				wait = left
+			}
+			select {
+			case <-time.After(wait):
+			case <-ctx.Done():
+				return rerr
+			}
+			pauseWaited += wait
+			attempt--
+			continue
+		}
 		if retryableStatusFor(method, resp.StatusCode, keyedBulk) && attempt < maxAttempts {
 			lastErr = rerr
 			c.sleepBackoffWithJitter(ctx, attempt, retryAfter)
@@ -1373,6 +1397,60 @@ func (c *Client) sleepBackoffWithJitter(ctx context.Context, attempt int, retryA
 	case <-time.After(delay):
 	case <-ctx.Done():
 	}
+}
+
+const (
+	// defaultPauseRetryBudget is ClientOptions.PauseRetryBudget's default.
+	defaultPauseRetryBudget = 30 * time.Second
+	pauseRetryMaxDelay      = 5 * time.Second
+	pauseRetryMinDelay      = 100 * time.Millisecond
+	pauseRetryDefaultDelay  = time.Second
+)
+
+// maintenancePauseReasons are the pause_reason values of a node maintenance
+// pause (#6302). poisoned and storage_recovering are not maintenance pauses
+// and are never resent this way.
+var maintenancePauseReasons = map[string]bool{
+	"rollover_begin":  true,
+	"rollover_commit": true,
+	"backup":          true,
+	"restore":         true,
+}
+
+// maintenancePauseDelay reports how long to wait before resending a request
+// refused by a node maintenance pause (#6302): a 503 whose body names a
+// maintenance pause_reason with "retryable": true. Such a request reached no
+// handler (or wrote nothing), so it is safe to resend for every method. The
+// delay is Retry-After, else the body's retry_after_secs, else 1 s, clamped
+// to 100 ms..5 s.
+func maintenancePauseDelay(status int, retryAfter time.Duration, body []byte) (time.Duration, bool) {
+	if status != http.StatusServiceUnavailable {
+		return 0, false
+	}
+	var problem struct {
+		PauseReason    string   `json:"pause_reason"`
+		Retryable      *bool    `json:"retryable"`
+		RetryAfterSecs *float64 `json:"retry_after_secs"`
+	}
+	if json.Unmarshal(body, &problem) != nil || problem.Retryable == nil || !*problem.Retryable ||
+		!maintenancePauseReasons[problem.PauseReason] {
+		return 0, false
+	}
+	delay := retryAfter
+	if delay <= 0 {
+		delay = pauseRetryDefaultDelay
+		if s := problem.RetryAfterSecs; s != nil && *s >= 0 {
+			delay = time.Duration(math.Min(*s, pauseRetryMaxDelay.Seconds()) * float64(time.Second))
+		}
+	}
+	// The package's min(int, int) shadows the builtin, so clamp by hand.
+	if delay < pauseRetryMinDelay {
+		delay = pauseRetryMinDelay
+	}
+	if delay > pauseRetryMaxDelay {
+		delay = pauseRetryMaxDelay
+	}
+	return delay, true
 }
 
 // isRetryableStatus reports whether the HTTP status warrants a retry.

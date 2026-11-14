@@ -507,6 +507,15 @@ type ClientOptions struct {
 	// delay for attempt N is RetryBackoff * 2^N. Defaults to 500ms if zero.
 	RetryBackoff time.Duration
 
+	// PauseRetryBudget is the total time one call may spend waiting out a
+	// node maintenance pause (#6302). A 503 whose body names pause_reason
+	// rollover_begin, rollover_commit, backup or restore with
+	// "retryable": true was refused before any handler ran, so it is resent
+	// for every method after its Retry-After (at most 5 s per wait),
+	// independently of MaxRetries. Zero uses the 30 s default; a negative
+	// value disables it and the 503 is returned at once.
+	PauseRetryBudget time.Duration
+
 	// AdminBaseURL points /admin/* requests at the loopbound
 	// admin control-plane listener (RELATA_ADMIN_BIND, default
 	// 127.0.0.1:9091 — ADR-0261) instead of BaseURL (relatadb/RelataDB#2321).

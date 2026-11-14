@@ -191,6 +191,7 @@ type ClientOptions struct {
     // Transport hardening (mirrors _http.py)
     MaxRetries     int               // retry 502/503/504 + network errors (default 0)
     RetryBackoff   time.Duration     // exponential base (default 500ms)
+    PauseRetryBudget time.Duration   // maintenance-pause resends per call (default 30s, <0 disables)
 }
 ```
 
@@ -218,6 +219,11 @@ The Go SDK mirrors the Python `_http.py` transport layer exactly:
 - **Retry** on HTTP 502 / 503 / 504 and network errors, with exponential backoff
   (`RetryBackoff * 2^attempt`). Off by default; opt in via `MaxRetries` (capped at 5
   attempts).
+- **Maintenance pauses** (#6302): a `503` whose body names `pause_reason`
+  `rollover_begin`, `rollover_commit`, `backup` or `restore` with
+  `"retryable": true` reached no handler, so it is resent for every method after
+  its `Retry-After` (at most 5 s per wait), independently of `MaxRetries`, until
+  `PauseRetryBudget` (default 30 s per call) is spent. A negative budget disables it.
 - **RFC 7807 problem+json** parsing — every error carries `Code`, `TypeURL`,
   `Retryable`, `RequestID`, and `RetryAfter` (from the `Retry-After` header).
 
