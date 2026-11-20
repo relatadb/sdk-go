@@ -105,6 +105,9 @@ type QueryResult struct {
 	// WITH PROVENANCE query, index-aligned with Rows (an entry is nil for a row
 	// with no recorded derivation). Nil when provenance was not requested.
 	Provenance []any `json:"provenance,omitempty"`
+	// Embedding is the query-embedding flag on HYBRID_SEARCH / SIMILAR /
+	// RAG_RETRIEVE results (#5726); nil for other statements.
+	Embedding *EmbeddingFlag `json:"embedding,omitempty"`
 }
 
 // queryResultWire is the raw wire shape used for normalisation.
@@ -121,6 +124,7 @@ type queryResultWire struct {
 	Truncated        bool             `json:"truncated"`
 	Partial          bool             `json:"partial"`
 	Provenance       []any            `json:"provenance"`
+	Embedding        *EmbeddingFlag   `json:"embedding"`
 }
 
 // UnmarshalJSON normalises the two wire shapes the server emits for POST /v1/query
@@ -147,6 +151,8 @@ func (r *QueryResult) UnmarshalJSON(b []byte) error {
 	r.Truncated = wire.Truncated
 	r.Provenance = wire.Provenance
 	r.Partial = wire.Partial
+	r.Embedding = wire.Embedding
+	warnIfLexical(r.Embedding) // #5726
 	if r.HasNextCursor && string(wire.NextCursor) != "null" {
 		var cursor string
 		if err := json.Unmarshal(wire.NextCursor, &cursor); err != nil {

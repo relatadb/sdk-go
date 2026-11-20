@@ -93,6 +93,8 @@ type RagHit struct {
 // RagQueryResponse is the response from POST /v1/rag/query.
 type RagQueryResponse struct {
 	Hits []RagHit `json:"hits"`
+	// Embedding is the retrieval's query-embedding flag (#5726).
+	Embedding *EmbeddingFlag `json:"embedding,omitempty"`
 }
 
 // Query runs a governed retrieval via POST /v1/rag/query (#4514's exact
@@ -129,5 +131,6 @@ func (r *RagClient) Query(ctx context.Context, req RagQueryRequest) (*RagQueryRe
 	if err := r.c.postJSON(ctx, "/v1/rag/query", body, &out); err != nil {
 		return nil, err
 	}
+	warnIfLexical(out.Embedding) // #5726
 	return &out, nil
 }

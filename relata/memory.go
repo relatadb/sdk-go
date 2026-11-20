@@ -199,6 +199,8 @@ type RecallResult struct {
 	Rows             []map[string]any
 	RecallCostTokens uint64
 	Cancelled        bool
+	// Embedding is the recall's query-embedding flag (#5726).
+	Embedding *EmbeddingFlag
 }
 
 // recallBody builds the POST /v1/memory/recall JSON body shared by Search,
@@ -254,7 +256,9 @@ func (m *Memory) Search(ctx context.Context, query string, opts ...MemoryOption)
 	if err := m.c.postJSON(ctx, "/v1/memory/recall", m.recallBody(query, cfg), &resp); err != nil {
 		return nil, err
 	}
-	return unwrapRows(unwrapMCP(resp)), nil
+	inner := unwrapMCP(resp)
+	warnIfLexical(embeddingFlagFromMap(inner)) // #5726
+	return unwrapRows(inner), nil
 }
 
 // SearchDetailed is like Search but returns the full RecallResult, including
@@ -267,7 +271,8 @@ func (m *Memory) SearchDetailed(ctx context.Context, query string, opts ...Memor
 		return RecallResult{}, err
 	}
 	inner := unwrapMCP(resp)
-	result := RecallResult{Rows: unwrapRows(inner)}
+	result := RecallResult{Rows: unwrapRows(inner), Embedding: embeddingFlagFromMap(inner)}
+	warnIfLexical(result.Embedding) // #5726
 	if v, ok := inner["recall_cost_tokens"].(float64); ok {
 		result.RecallCostTokens = uint64(v)
 	}
