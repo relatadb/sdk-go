@@ -153,3 +153,26 @@ func (o *OntologyDefinitionsClient) RunMigration(ctx context.Context, name strin
 	}
 	return o.post(ctx, ontoPath(name, "migrations", strconv.Itoa(version), "run"), body)
 }
+
+// ExportOssie calls GET .../export?format=ossie (experimental, #6400): a
+// published version (0: the latest) as an Apache Ossie 0.3.0.dev0 semantic
+// model in JSON. baseIRI, when non-empty, adds iri = <baseIRI>/<Type> to each
+// dataset's relata extension.
+func (o *OntologyDefinitionsClient) ExportOssie(ctx context.Context, name string, version int, baseIRI string) (map[string]any, error) {
+	q := url.Values{}
+	q.Set("format", "ossie")
+	if version > 0 {
+		q.Set("version", strconv.Itoa(version))
+	}
+	if baseIRI != "" {
+		q.Set("base_iri", baseIRI)
+	}
+	return o.get(ctx, ontoPath(name, "export")+"?"+q.Encode())
+}
+
+// ImportOssie calls POST .../import?format=ossie (experimental, #6401): the
+// model's datasets, fields and links become review-queue suggestions; nothing
+// changes the definition until they are accepted, applied and published.
+func (o *OntologyDefinitionsClient) ImportOssie(ctx context.Context, name string, document map[string]any) (map[string]any, error) {
+	return o.post(ctx, ontoPath(name, "import")+"?format=ossie", document)
+}

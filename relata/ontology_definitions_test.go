@@ -83,3 +83,38 @@ func TestOntologyDefinitionsRoutesAndBodies(t *testing.T) {
 		t.Fatal("a 412 must be an error, never a success")
 	}
 }
+
+func TestOntologyDefinitionsOssieRoutes(t *testing.T) {
+	var seen [][]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var b map[string]any
+		if r.Method == http.MethodPost {
+			_ = json.NewDecoder(r.Body).Decode(&b)
+		}
+		seen = append(seen, []any{r.Method, r.URL.EscapedPath(), r.URL.RawQuery, b})
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"ok":true}`))
+	}))
+	defer srv.Close()
+	o := NewOntologyDefinitionsClient(newTestClient(srv, &ClientOptions{BearerToken: "scoped"}))
+	ctx := context.Background()
+	doc := map[string]any{"version": "0.3.0.dev0", "name": "crm"}
+	if _, err := o.ExportOssie(ctx, "crm", 0, ""); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := o.ExportOssie(ctx, "crm", 2, "https://example.org/o"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := o.ImportOssie(ctx, "crm", doc); err != nil {
+		t.Fatal(err)
+	}
+	nb := map[string]any(nil)
+	want := [][]any{
+		{"GET", "/v1/ontology/definitions/crm/export", "format=ossie", nb},
+		{"GET", "/v1/ontology/definitions/crm/export", "base_iri=https%3A%2F%2Fexample.org%2Fo&format=ossie&version=2", nb},
+		{"POST", "/v1/ontology/definitions/crm/import", "format=ossie", doc},
+	}
+	if !reflect.DeepEqual(seen, want) {
+		t.Fatalf("got %#v\nwant %#v", seen, want)
+	}
+}
