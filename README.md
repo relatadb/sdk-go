@@ -658,7 +658,7 @@ reference client and Python SDK both lack them too).
 | Example | Description |
 |---|---|
 | [`examples/basic/`](./examples/basic) | Health check + simple SELECT |
-| [`examples/investigation/`](./examples/investigation) | Full FIU investigation workflow (identity → transactions → CDR) |
+| [`examples/investigation/`](./examples/investigation) | Alert to archive: ingest fixed events, window rule and alert, evidence and reproduction query, timeline, authorized pivot, saved search, archived export with its SHA-256 (reads `RELATA_URL`/`RELATA_TOKEN`) |
 | [`examples/hybrid_search/`](./examples/hybrid_search) | `VectorClient.HybridSearch` — embed, ingest, BM25-only vs. vector-only vs. fused (RRF) search |
 | [`examples/graph_traversal/`](./examples/graph_traversal) | `PATHS_BETWEEN` Pregel BFS + edge distribution |
 | [`examples/audit/`](./examples/audit) | Daily audit-chain verification + compliance report |
@@ -670,9 +670,8 @@ Run any example against a local server:
 
 go run ./sdks/go/examples/basic -url http://localhost:9090
 
-go run ./sdks/go/examples/investigation \
-    -url   http://localhost:9090 \
-    -phone "+919876543210"
+RELATA_URL=http://localhost:9090 RELATA_TOKEN=<token> \
+    go run ./sdks/go/examples/investigation
 ```
 
 ## SQL extensions reference
