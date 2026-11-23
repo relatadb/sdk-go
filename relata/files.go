@@ -48,6 +48,10 @@ type FileMetadata struct {
 	ModifiedNS  int64   `json:"modified_ns"`
 	IsFolder    bool    `json:"is_folder"`
 	DownloadURL string  `json:"download_url"`
+	// MediaWork is set by an upload committed with Process (#5938): either
+	// {work_id, state, created, status_url} for a queued OpenETL media work
+	// item, or {queued: false, reason, status?} when none was queued.
+	MediaWork map[string]any `json:"media_work,omitempty"`
 }
 
 // FileContent is the capped binary body and representation metadata returned by Get.
@@ -241,6 +245,12 @@ type UploadOptions struct {
 	UploadID string
 	// SHA256 is the whole-file hex digest the server verifies on completion.
 	SHA256 string
+	// Process queues an OpenETL media work item when the upload commits
+	// (#5938); the result is reported in FileMetadata.MediaWork.
+	Process bool
+	// Access is the parent's access attributes children inherit (#5989); an
+	// empty non-nil map declares an open file. It requires Process.
+	Access map[string]any
 }
 
 const defaultUploadChunk = 8 * 1024 * 1024
@@ -284,6 +294,12 @@ func (f *FilesClient) StartUpload(ctx context.Context, key string, size int64, o
 		}
 		if opts.SHA256 != "" {
 			body["sha256"] = opts.SHA256
+		}
+		if opts.Process {
+			body["process"] = true
+		}
+		if opts.Access != nil {
+			body["access"] = opts.Access
 		}
 	}
 	payload, err := json.Marshal(body)

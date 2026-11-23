@@ -643,10 +643,31 @@ folder operations.
 ## File-ingest limits
 
 `POST /ingest/media` was removed (#5942); poll OpenETL work items with
-`MediaWorkClient.Get`. `FilesClient` transfers
-opaque tenant-owned content through `/v1/files/content`; it does not invoke media
-processing or document extraction. Use the deployment's supported connector
-integration when source-file transfer must also trigger ingestion.
+`MediaWorkClient.Get`. `FilesClient.Put` transfers opaque tenant-owned content
+through `/v1/files/content` without processing.
+
+**Uploading a media file for processing (#5938, #5989).** Set
+`UploadOptions.Process` on `Upload` (or `StartUpload`) to queue an OpenETL media
+work item when the upload commits; `UploadOptions.Access` carries the parent's
+access attributes that derived children inherit (an empty non-nil map declares
+an open file) and is rejected with a 400 without `Process`. Both are omitted
+from the request by default. The returned `FileMetadata.MediaWork` is then
+`{work_id, state, created, status_url}` when an item was queued, or
+`{queued: false, reason, status?}` when it was not (for example, a
+non-image/audio/video content type).
+
+```go
+meta, err := files.Upload(ctx, "scans/scan.png", f, size, &relata.UploadOptions{
+	ContentType: "image/png", Process: true,
+	Access: map[string]any{"classification": "internal"},
+})
+if err == nil {
+	if id, ok := meta.MediaWork["work_id"].(string); ok {
+		item, err := relata.NewMediaWorkClient(client).Get(ctx, id)
+		_, _ = item, err
+	}
+}
+```
 
 `ObjectClient.List`/`.Get` (present in the TypeScript SDK) are intentionally **not**
 ported — see the doc comment on `ObjectClient` in `relata/objects.go` for why (the

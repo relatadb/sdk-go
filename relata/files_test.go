@@ -3,6 +3,7 @@ package relata
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -227,5 +228,53 @@ func TestFilesUploadResumesAfterTransientFailure(t *testing.T) {
 	}
 	if meta.Size != 10 || !bytes.Equal(completed, payload) || statusReads != 1 || chunks != 3 {
 		t.Fatalf("meta=%+v completed=%q statusReads=%d chunks=%d", meta, completed, statusReads, chunks)
+	}
+}
+
+func TestFilesUploadSendsProcessAndAccessOnlyWhenSet(t *testing.T) {
+	var bodies []map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(201)
+		if r.URL.Path == "/v1/files/uploads" {
+			var body map[string]any
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				t.Error(err)
+			}
+			bodies = append(bodies, body)
+			fmt.Fprint(w, `{"upload_id":"u1","bucket":"b","key":"k","size":0,"offset":0,"complete":true,"sha256":null,"expires_ns":1}`)
+			return
+		}
+		work := ""
+		if bodies[len(bodies)-1]["process"] == true {
+			work = `,"media_work":{"work_id":"w1","state":"queued","created":true,"status_url":"/v1/media/work/w1"}`
+		}
+		fmt.Fprintf(w, `{"bucket":"b","key":"k","row_id":null,"size":0,"etag":"\"h\"","content_type":"image/png","modified_ns":1,"is_folder":false,"download_url":"/v1/files/content"%s}`, work)
+	}))
+	defer srv.Close()
+	f := NewFilesClient(newTestClient(srv, nil))
+	ctx := context.Background()
+	plain, err := f.Upload(ctx, "k", bytes.NewReader(nil), 0, &UploadOptions{ContentType: "image/png"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	processed, err := f.Upload(ctx, "k", bytes.NewReader(nil), 0, &UploadOptions{
+		ContentType: "image/png", Process: true, Access: map[string]any{"classification": "internal"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := bodies[0]["process"]; ok {
+		t.Fatalf("process sent by default: %v", bodies[0])
+	}
+	if _, ok := bodies[0]["access"]; ok || plain.MediaWork != nil {
+		t.Fatalf("access/media_work by default: %v %v", bodies[0], plain.MediaWork)
+	}
+	acc, _ := bodies[1]["access"].(map[string]any)
+	if bodies[1]["process"] != true || acc["classification"] != "internal" {
+		t.Fatalf("process/access not sent: %v", bodies[1])
+	}
+	if processed.MediaWork["work_id"] != "w1" {
+		t.Fatalf("media_work not exposed: %v", processed.MediaWork)
 	}
 }
