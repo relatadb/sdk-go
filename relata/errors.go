@@ -148,6 +148,13 @@ type RelataError struct {
 	// example "uncertain"); empty when absent.
 	ReceiptStatus string
 
+	// ConfirmationID is set on a TWO_PERSON_REQUIRED refusal: send it back
+	// from a different admin credential to confirm the operation.
+	ConfirmationID string
+	// ConfirmationExpiresAtNs is when ConfirmationID expires (Unix ns); zero
+	// when absent.
+	ConfirmationExpiresAtNs int64
+
 	// RateLimitLimit is the X-RateLimit-Limit header — the per-window request
 	// budget (#1321). Zero when the server did not emit the header.
 	RateLimitLimit int64
@@ -195,6 +202,9 @@ type problemShape struct {
 	TaskID        string `json:"task_id"`
 	Accepted      *bool  `json:"accepted"`
 	ReceiptStatus string `json:"receipt_status"`
+
+	ConfirmationID string `json:"confirmation_id"`
+	ExpiresAtNs    int64  `json:"expires_at_ns"`
 
 	CurrentVersion  *int64 `json:"current_version"`
 	FailedOperation *int   `json:"failed_operation"`
@@ -327,6 +337,9 @@ func errorFromStatus(
 		TaskID:        prob.TaskID,
 		Accepted:      prob.Accepted,
 		ReceiptStatus: prob.ReceiptStatus,
+
+		ConfirmationID:          prob.ConfirmationID,
+		ConfirmationExpiresAtNs: prob.ExpiresAtNs,
 
 		CurrentVersion:  currentVersion,
 		FailedOperation: failedOperation,
