@@ -95,6 +95,14 @@ type RestoreOptions struct {
 	// PointInTimeNS performs a point-in-time restore at the given nanosecond
 	// timestamp when set.
 	PointInTimeNS int64
+	// Force restores over writes made after the snapshot.
+	Force bool
+	// ConfirmationID confirms a two-person restore. The first call fails with
+	// a *RelataError whose Code is "TWO_PERSON_REQUIRED" and whose
+	// ConfirmationID is set; repeat the call with that id from a client
+	// holding a different admin credential (for example a token minted with
+	// scope "admin:backup").
+	ConfirmationID string
 }
 
 // WaitForRestoreOptions configures BackupClient.WaitForRestore.
@@ -150,6 +158,12 @@ func (b *BackupClient) Restore(ctx context.Context, snapshotID string, opts *Res
 		}
 		if opts.PointInTimeNS > 0 {
 			payload["point_in_time_ns"] = opts.PointInTimeNS
+		}
+		if opts.Force {
+			payload["force"] = true
+		}
+		if opts.ConfirmationID != "" {
+			payload["confirmation_id"] = opts.ConfirmationID
 		}
 	}
 	var resp map[string]any
