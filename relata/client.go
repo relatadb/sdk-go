@@ -599,30 +599,57 @@ func (c *Client) EraseSubject(ctx context.Context, purpose, subject, reason stri
 
 // ── Sessions & cluster (#967 Tier 2d) ───────────────────────────────
 
-// ExportData bulk-exports all rows of a type (#967 Tier 5c). JSON-shaped
-// exports (json, stix) are returned as the decoded object; a text export such
-// as format "csv" is returned as {"type", "format", "content"}. The type and
-// format are routed through url.Values so a caller-supplied '&', '?', or '#'
-// cannot smuggle extra query params (#3212).
+// ExportData bulk-exports all rows of a type (#967 Tier 5c). The response
+// Content-Type decides the shape: JSON-shaped exports (json, stix) are
+// returned as the decoded object; a text export such as format "csv" or
+// "jsonl" is returned as {"type", "format", "content"} with the body as a
+// string ("" when the type has no rows). The type and format are routed
+// through url.Values so a caller-supplied '&', '?', or '#' cannot smuggle
+// extra query params (#3212).
 func (c *Client) ExportData(ctx context.Context, objectType, format string) (map[string]any, error) {
 	if format == "" {
 		format = "json"
 	}
 	path := encodeGetURL("/v1/export", map[string]string{"type": objectType, "format": format, "purpose": "export"})
-	status, body, _, err := c.rawHTTPRequest(ctx, http.MethodGet, path, nil, "")
+	status, body, headers, err := c.rawHTTPRequest(ctx, http.MethodGet, path, nil, "")
 	if err != nil {
 		return nil, err
 	}
 	if status < 200 || status >= 300 {
 		return nil, errorFromStatus(status, body, "", 0, "", "")
 	}
-	var resp map[string]any
-	if json.Unmarshal(body, &resp) == nil {
-		return resp, nil
+	decoded, err := decodeBodyByMediaType(headers[headerContentType], body)
+	if err != nil {
+		return nil, fmt.Errorf("relata: decode export: %w", err)
 	}
-	// Non-JSON formats (csv) arrive as raw text: return it under "content"
-	// instead of failing to decode it as a JSON object.
-	return map[string]any{"type": objectType, "format": format, "content": string(body)}, nil
+	if obj, ok := decoded.(map[string]any); ok {
+		return obj, nil
+	}
+	return map[string]any{"type": objectType, "format": format, "content": decoded}, nil
+}
+
+// decodeBodyByMediaType decodes a success body by its media type (#6778):
+// JSON (application/json, *+json, or no type) is unmarshalled, an empty body
+// as an empty object; text/* and application/x-ndjson return a string; any
+// other type returns the raw bytes.
+func decodeBodyByMediaType(contentType string, body []byte) (any, error) {
+	media, _, _ := strings.Cut(contentType, ";")
+	media = strings.ToLower(strings.TrimSpace(media))
+	switch {
+	case media == "" || media == "application/json" || strings.HasSuffix(media, "+json"):
+		if len(bytes.TrimSpace(body)) == 0 {
+			return map[string]any{}, nil
+		}
+		var v any
+		if err := json.Unmarshal(body, &v); err != nil {
+			return nil, err
+		}
+		return v, nil
+	case strings.HasPrefix(media, "text/") || media == "application/x-ndjson":
+		return string(body), nil
+	default:
+		return body, nil
+	}
 }
 
 // SessionDiff views uncommitted session changes.
