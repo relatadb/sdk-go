@@ -233,6 +233,20 @@ func responseDetailIsBlank(contentType string, body []byte) bool {
 	return strings.TrimSpace(string(body)) == ""
 }
 
+// mcpErrorText returns content[0].text of an MCP isError envelope, else "" (#6779).
+func mcpErrorText(body []byte) string {
+	var env struct {
+		IsError bool `json:"isError"`
+		Content []struct {
+			Text string `json:"text"`
+		} `json:"content"`
+	}
+	if json.Unmarshal(body, &env) != nil || !env.IsError || len(env.Content) == 0 {
+		return ""
+	}
+	return env.Content[0].Text
+}
+
 // adminListenerHint builds the "you're probably pointed at the wrong port"
 // hint for a bare 404 against an admin-only path (#2321).
 func adminListenerHint(path string) string {
@@ -310,6 +324,9 @@ func errorFromStatus(
 	// this only fires on the router's own "no matching route" fallback.
 	if statusCode == 404 && errorPathIsAdminOnly(path) && responseDetailIsBlank(contentType, body) {
 		detail = adminListenerHint(path)
+	}
+	if detail == "" {
+		detail = mcpErrorText(body)
 	}
 	if detail == "" {
 		detail = string(body)
